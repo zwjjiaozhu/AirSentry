@@ -3,7 +3,7 @@ import Foundation
 enum ByteFormatter {
     private static let formatter: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
         formatter.countStyle = .binary
         formatter.includesUnit = true
         formatter.includesCount = true

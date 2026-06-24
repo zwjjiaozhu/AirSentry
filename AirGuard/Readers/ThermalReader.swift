@@ -126,14 +126,19 @@ private enum TemperatureSourcePreference {
 }
 
 private struct HIDTemperatureReader {
+#if !APP_STORE
     private let temperatureType: Int32 = 15
     private let sensorUsagePage: Int32 = 0xff00
     private let sensorUsage: Int32 = 5
     private let cpuNameMarkers = [
         "pACC", "eACC", "CPU", "SOC", "PMGR SOC Die", "PMU tdie"
     ]
+#endif
 
     func readTemperature() -> TemperatureResult? {
+#if APP_STORE
+        return nil
+#else
         let sensors = AirSentryAppleSiliconSensors(sensorUsagePage, sensorUsage, temperatureType)
         guard !sensors.isEmpty else {
             NSLog("AirSentry temperature HID: no sensors")
@@ -161,6 +166,7 @@ private struct HIDTemperatureReader {
         let selectedReadings = cpuReadings.isEmpty ? validReadings : cpuReadings
         let average = selectedReadings.reduce(0) { $0 + $1.value } / Double(selectedReadings.count)
         return TemperatureResult(source: .hid, value: average)
+#endif
     }
 }
 

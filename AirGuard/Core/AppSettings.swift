@@ -41,6 +41,26 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var agentNotchEnabled: Bool {
+        didSet { defaults.set(agentNotchEnabled, forKey: Keys.agentNotchEnabled) }
+    }
+
+    @Published var codexMonitoringEnabled: Bool {
+        didSet { defaults.set(codexMonitoringEnabled, forKey: Keys.codexMonitoringEnabled) }
+    }
+
+    @Published var claudeMonitoringEnabled: Bool {
+        didSet { defaults.set(claudeMonitoringEnabled, forKey: Keys.claudeMonitoringEnabled) }
+    }
+
+    @Published var agentCompletionDisplayDuration: TimeInterval {
+        didSet { defaults.set(agentCompletionDisplayDuration, forKey: Keys.agentCompletionDisplayDuration) }
+    }
+
+    @Published var musicNotchEnabled: Bool {
+        didSet { defaults.set(musicNotchEnabled, forKey: Keys.musicNotchEnabled) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -60,6 +80,12 @@ final class AppSettings: ObservableObject {
         let savedCooldown = defaults.double(forKey: Keys.notificationCooldown)
         notificationCooldown = savedCooldown >= 0 ? savedCooldown : 60
         launchAtLoginEnabled = defaults.object(forKey: Keys.launchAtLoginEnabled) as? Bool ?? LaunchAtLoginManager.isEnabled
+        agentNotchEnabled = defaults.object(forKey: Keys.agentNotchEnabled) as? Bool ?? false
+        codexMonitoringEnabled = defaults.object(forKey: Keys.codexMonitoringEnabled) as? Bool ?? true
+        claudeMonitoringEnabled = defaults.object(forKey: Keys.claudeMonitoringEnabled) as? Bool ?? true
+        let savedAgentCompletionDuration = defaults.double(forKey: Keys.agentCompletionDisplayDuration)
+        agentCompletionDisplayDuration = savedAgentCompletionDuration > 0 ? savedAgentCompletionDuration : 4
+        musicNotchEnabled = defaults.object(forKey: Keys.musicNotchEnabled) as? Bool ?? true
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
     }
@@ -120,7 +146,12 @@ final class AppSettings: ObservableObject {
     }
 
     func setNotificationCooldown(_ value: TimeInterval) {
-        notificationCooldown = min(max(value, 0), 60 * 60)
+        let clampedValue = min(max(value, 0), 60 * 60)
+        notificationCooldown = (clampedValue / 5).rounded() * 5
+    }
+
+    func setAgentCompletionDisplayDuration(_ value: TimeInterval) {
+        agentCompletionDisplayDuration = min(max(value, 2), 15)
     }
 
     private func normalizeLoadedTemperatureThresholds() {
@@ -131,7 +162,8 @@ final class AppSettings: ObservableObject {
 
     private func normalizeLoadedIntervals() {
         refreshInterval = min(max(refreshInterval, 1), 60)
-        notificationCooldown = min(max(notificationCooldown, 0), 60 * 60)
+        let clampedCooldown = min(max(notificationCooldown, 0), 60 * 60)
+        notificationCooldown = (clampedCooldown / 5).rounded() * 5
     }
 }
 
@@ -145,4 +177,9 @@ private enum Keys {
     static let refreshInterval = "refreshInterval"
     static let notificationCooldown = "notificationCooldown"
     static let launchAtLoginEnabled = "launchAtLoginEnabled"
+    static let agentNotchEnabled = "agentNotchEnabled"
+    static let codexMonitoringEnabled = "codexMonitoringEnabled"
+    static let claudeMonitoringEnabled = "claudeMonitoringEnabled"
+    static let agentCompletionDisplayDuration = "agentCompletionDisplayDuration"
+    static let musicNotchEnabled = "musicNotchEnabled"
 }

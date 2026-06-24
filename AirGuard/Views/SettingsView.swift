@@ -5,6 +5,7 @@ import UserNotifications
 struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var alertManager: AlertManager
+    @EnvironmentObject private var agentMonitorStore: AgentMonitorStore
     @State private var selectedSection: SettingsSectionID = .reminder
     @State private var editingThreshold: TemperatureThresholdID?
     @FocusState private var focusedThreshold: TemperatureThresholdID?
@@ -22,6 +23,8 @@ struct SettingsView: View {
                             .id(SettingsSectionID.reminder)
                         thresholdSection
                             .id(SettingsSectionID.threshold)
+                        labSection
+                            .id(SettingsSectionID.labs)
                         startupSection
                             .id(SettingsSectionID.startup)
                     }
@@ -55,15 +58,9 @@ struct SettingsView: View {
                 .frame(height: 34)
 
             VStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.blue.opacity(0.11))
-
-                    Image(systemName: "shield.lefthalf.filled")
-                        .font(.system(size: 36, weight: .semibold))
-                        .foregroundStyle(.blue)
-                }
-                .frame(width: 60, height: 60)
+                AppLogo()
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(spacing: 7) {
                     Text("AirSentry 设置")
@@ -99,6 +96,14 @@ struct SettingsView: View {
                     isSelected: selectedSection == .threshold
                 ) {
                     selectedSection = .threshold
+                }
+
+                SidebarItem(
+                    title: "AI 实验室",
+                    systemImage: "flask.fill",
+                    isSelected: selectedSection == .labs
+                ) {
+                    selectedSection = .labs
                 }
 
                 SidebarItem(
@@ -179,8 +184,8 @@ struct SettingsView: View {
                     valueText: notificationCooldownText,
                     canDecrease: settings.notificationCooldown > 0,
                     canIncrease: settings.notificationCooldown < 60 * 60,
-                    decrease: { settings.setNotificationCooldown(settings.notificationCooldown - 60) },
-                    increase: { settings.setNotificationCooldown(settings.notificationCooldown + 60) }
+                    decrease: { settings.setNotificationCooldown(settings.notificationCooldown - 5) },
+                    increase: { settings.setNotificationCooldown(settings.notificationCooldown + 5) }
                 )
 
                 InsetDivider()
@@ -287,6 +292,163 @@ struct SettingsView: View {
         }
     }
 
+    private var labSection: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 6) {
+                SectionTitle("AI 实验室")
+                Text("探索刘海交互与智能工具状态等增强能力，不影响 AirSentry 的温度哨兵核心功能。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+            }
+
+            agentSection
+            musicSection
+        }
+    }
+
+    private var agentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionTitle("AI 编程状态")
+                Spacer()
+                Text(agentMonitorStore.isListening ? "监听中" : "未监听")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(agentMonitorStore.isListening ? .green : .secondary)
+            }
+
+            SettingsGroup {
+                PreferenceRow(
+                    title: "刘海状态提示",
+                    subtitle: "在屏幕刘海区域显示 AI 编程任务状态",
+                    systemImage: "macbook",
+                    isOn: $settings.agentNotchEnabled
+                )
+
+                InsetDivider()
+
+                PreferenceRow(
+                    title: "监控 Codex",
+                    subtitle: "接收会话、工具调用、批准请求和完成事件",
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    isOn: $settings.codexMonitoringEnabled
+                )
+
+                InsetDivider()
+
+                PreferenceRow(
+                    title: "监控 Claude Code",
+                    subtitle: "通过 Claude Code Hooks 接收本机会话状态",
+                    systemImage: "brain.head.profile",
+                    isOn: $settings.claudeMonitoringEnabled
+                )
+
+                InsetDivider()
+
+                IntervalPreferenceRow(
+                    title: "完成提示时长",
+                    subtitle: "任务完成后，提示在刘海区域停留的时间",
+                    systemImage: "clock",
+                    valueText: settings.agentCompletionDisplayDuration.formatted(.number.precision(.fractionLength(0))) + " 秒",
+                    canDecrease: settings.agentCompletionDisplayDuration > 2,
+                    canIncrease: settings.agentCompletionDisplayDuration < 15,
+                    decrease: { settings.setAgentCompletionDisplayDuration(settings.agentCompletionDisplayDuration - 1) },
+                    increase: { settings.setAgentCompletionDisplayDuration(settings.agentCompletionDisplayDuration + 1) }
+                )
+            }
+
+            SettingsGroup {
+                HStack(spacing: 14) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .frame(width: 34)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Hooks 连接")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(agentMonitorStore.installationStatus.summary)
+                            .font(.system(size: 13))
+                            .foregroundStyle(agentMonitorStore.installationStatus.lastError == nil ? Color.secondary : Color.red)
+                    }
+
+                    Spacer()
+
+                    Button("测试提示") {
+                        if !settings.agentNotchEnabled {
+                            settings.agentNotchEnabled = true
+                        }
+                        agentMonitorStore.sendTestEvent()
+                    }
+                    .buttonStyle(.bordered)
+
+                    if agentMonitorStore.installationStatus.codexInstalled || agentMonitorStore.installationStatus.claudeInstalled {
+                        Button("卸载") { agentMonitorStore.uninstallHooks() }
+                            .buttonStyle(.bordered)
+                    } else {
+                        Button("安装 Hooks") { agentMonitorStore.installHooks() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!settings.codexMonitoringEnabled && !settings.claudeMonitoringEnabled)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 15)
+            }
+
+            Text("安装时会合并现有配置，并在同目录保留 .airsentry-backup 备份。Codex 首次使用新增 Hook 时可能要求在 /hooks 中确认信任。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+        }
+    }
+
+    private var musicSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionTitle("音乐状态")
+                Spacer()
+                Text("系统事件实时监听")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(settings.musicNotchEnabled ? .green : .secondary)
+            }
+
+            SettingsGroup {
+                PreferenceRow(
+                    title: "刘海显示当前音乐",
+                    subtitle: "显示歌名、歌手、封面和播放进度",
+                    systemImage: "music.note",
+                    isOn: $settings.musicNotchEnabled
+                )
+
+                InsetDivider()
+
+                HStack(spacing: 14) {
+                    Image(systemName: "waveform.badge.magnifyingglass")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .frame(width: 34)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Now Playing 监听")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("由播放器主动推送切歌、暂停和恢复事件，不需要设置刷新频率")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 15)
+            }
+
+            Text("支持所有会向 macOS 控制中心上报播放状态的应用；播放器仅打开但没有当前歌曲时，刘海不会显示音乐卡片。")
+                .font(.system(size: 12.5))
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+        }
+    }
+
     private var sidebarBackground: some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
@@ -328,7 +490,18 @@ struct SettingsView: View {
 
     private var notificationCooldownText: String {
         guard settings.notificationCooldown > 0 else { return "不冷却" }
-        return (settings.notificationCooldown / 60).formatted(.number.precision(.fractionLength(0))) + " 分钟"
+
+        let totalSeconds = Int(settings.notificationCooldown)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+
+        if minutes > 0, seconds > 0 {
+            return "\(minutes) 分 \(seconds) 秒"
+        }
+        if minutes > 0 {
+            return "\(minutes) 分钟"
+        }
+        return "\(seconds) 秒"
     }
 
     private var alertThermalLevelBinding: Binding<ThermalLevel> {
@@ -349,6 +522,7 @@ struct SettingsView: View {
 private enum SettingsSectionID: Hashable {
     case reminder
     case threshold
+    case labs
     case startup
 }
 
@@ -641,26 +815,32 @@ private struct IntervalPreferenceRow: View {
 
             Spacer()
 
-            HStack(spacing: 10) {
-                Button(action: decrease) {
-                    Image(systemName: "minus")
-                        .frame(width: 18, height: 18)
-                }
-                .disabled(!canDecrease)
+            HStack(spacing: 0) {
+                IntervalStepButton(
+                    systemImage: "minus",
+                    helpText: "减少",
+                    isEnabled: canDecrease,
+                    action: decrease
+                )
+
+                Divider()
+                    .frame(height: 20)
 
                 Text(valueText)
                     .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                    .frame(width: 72)
+                    .frame(width: 84)
 
-                Button(action: increase) {
-                    Image(systemName: "plus")
-                        .frame(width: 18, height: 18)
-                }
-                .disabled(!canIncrease)
+                Divider()
+                    .frame(height: 20)
+
+                IntervalStepButton(
+                    systemImage: "plus",
+                    helpText: "增加",
+                    isEnabled: canIncrease,
+                    action: increase
+                )
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 10)
-            .frame(height: 30)
+            .frame(height: 34)
             .background(.white.opacity(0.80), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -670,6 +850,33 @@ private struct IntervalPreferenceRow: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 15)
         .contentShape(Rectangle())
+    }
+}
+
+private struct IntervalStepButton: View {
+    let systemImage: String
+    let helpText: String
+    let isEnabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+                .background(
+                    isHovering && isEnabled
+                        ? Color.primary.opacity(0.07)
+                        : Color.clear
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
+        .help(helpText)
+        .onHover { isHovering = $0 }
     }
 }
 

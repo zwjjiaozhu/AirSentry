@@ -27,6 +27,23 @@
 		A00000000000000000000012 /* ByteFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000112 /* ByteFormatter.swift */; };
 		A00000000000000000000013 /* DateFormatterUtil.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000113 /* DateFormatterUtil.swift */; };
 		A00000000000000000000014 /* HIDTemperatureReader.m in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000115 /* HIDTemperatureReader.m */; };
+		A00000000000000000000015 /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000118 /* logo.png */; };
+		A00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000119 /* Assets.xcassets */; };
+		A00000000000000000000017 /* AgentEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000011E /* AgentEvent.swift */; };
+		A00000000000000000000018 /* AgentEventServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000011F /* AgentEventServer.swift */; };
+		A00000000000000000000019 /* AgentHookManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000120 /* AgentHookManager.swift */; };
+		A0000000000000000000001A /* AgentMonitorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000121 /* AgentMonitorStore.swift */; };
+		A0000000000000000000001B /* NotchWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000122 /* NotchWindowController.swift */; };
+		A0000000000000000000001C /* NotchStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000123 /* NotchStatusView.swift */; };
+		A0000000000000000000001D /* ASMediaRemoteBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000124 /* ASMediaRemoteBridge.m */; };
+		A0000000000000000000001E /* NowPlayingTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000126 /* NowPlayingTrack.swift */; };
+		A0000000000000000000001F /* NowPlayingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000127 /* NowPlayingStore.swift */; };
+		A00000000000000000000020 /* MediaRemoteAdapterClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000128 /* MediaRemoteAdapterClient.swift */; };
+		A00000000000000000000021 /* MediaRemoteAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000129 /* MediaRemoteAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A00000000000000000000022 /* StorageInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012A /* StorageInfo.swift */; };
+		A00000000000000000000023 /* StorageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012B /* StorageReader.swift */; };
+		A00000000000000000000024 /* StorageAnalyzerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012C /* StorageAnalyzerStore.swift */; };
+		A00000000000000000000025 /* ToolboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012D /* ToolboxView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -54,7 +71,43 @@
 		A00000000000000000000115 /* HIDTemperatureReader.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HIDTemperatureReader.m; sourceTree = "<group>"; };
 		A00000000000000000000116 /* HIDTemperatureReader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HIDTemperatureReader.h; sourceTree = "<group>"; };
 		A00000000000000000000117 /* AirGuard-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AirGuard-Bridging-Header.h"; sourceTree = "<group>"; };
+		A00000000000000000000118 /* logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = logo.png; sourceTree = "<group>"; };
+		A00000000000000000000119 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0000000000000000000011A /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
+		A0000000000000000000011B /* build-release.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-release.sh"; sourceTree = "<group>"; };
+		A0000000000000000000011C /* archive-app-store.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "archive-app-store.sh"; sourceTree = "<group>"; };
+		A0000000000000000000011D /* AppStoreExportOptions.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = AppStoreExportOptions.plist; sourceTree = "<group>"; };
+		A0000000000000000000011E /* AgentEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEvent.swift; sourceTree = "<group>"; };
+		A0000000000000000000011F /* AgentEventServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEventServer.swift; sourceTree = "<group>"; };
+		A00000000000000000000120 /* AgentHookManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentHookManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000121 /* AgentMonitorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMonitorStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000122 /* NotchWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchWindowController.swift; sourceTree = "<group>"; };
+		A00000000000000000000123 /* NotchStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchStatusView.swift; sourceTree = "<group>"; };
+		A00000000000000000000124 /* ASMediaRemoteBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ASMediaRemoteBridge.m; sourceTree = "<group>"; };
+		A00000000000000000000125 /* ASMediaRemoteBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ASMediaRemoteBridge.h; sourceTree = "<group>"; };
+		A00000000000000000000126 /* NowPlayingTrack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingTrack.swift; sourceTree = "<group>"; };
+		A00000000000000000000127 /* NowPlayingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000128 /* MediaRemoteAdapterClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRemoteAdapterClient.swift; sourceTree = "<group>"; };
+		A00000000000000000000129 /* MediaRemoteAdapter.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = MediaRemoteAdapter.framework; sourceTree = "<group>"; };
+		A0000000000000000000012A /* StorageInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageInfo.swift; sourceTree = "<group>"; };
+		A0000000000000000000012B /* StorageReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageReader.swift; sourceTree = "<group>"; };
+		A0000000000000000000012C /* StorageAnalyzerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageAnalyzerStore.swift; sourceTree = "<group>"; };
+		A0000000000000000000012D /* ToolboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolboxView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A00000000000000000000502 /* Embed Media Adapter */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A00000000000000000000021 /* MediaRemoteAdapter.framework in Embed Frameworks */,
+			);
+			name = "Embed Media Adapter";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A00000000000000000000200 /* Frameworks */ = {
@@ -71,6 +124,10 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000301 /* AirGuard */,
+				A00000000000000000000315 /* media */,
+				A00000000000000000000316 /* scripts */,
+				A00000000000000000000317 /* config */,
+				A00000000000000000000318 /* Vendor */,
 				A00000000000000000000302 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -81,6 +138,8 @@
 				A00000000000000000000101 /* AirGuardApp.swift */,
 				A00000000000000000000114 /* Info.plist */,
 				A00000000000000000000117 /* AirGuard-Bridging-Header.h */,
+				A00000000000000000000119 /* Assets.xcassets */,
+				A0000000000000000000011A /* AppStore.entitlements */,
 				A00000000000000000000310 /* Views */,
 				A00000000000000000000311 /* Core */,
 				A00000000000000000000312 /* Readers */,
@@ -105,6 +164,8 @@
 				A00000000000000000000103 /* MetricCardView.swift */,
 				A00000000000000000000104 /* SettingsView.swift */,
 				A00000000000000000000105 /* AboutView.swift */,
+				A00000000000000000000123 /* NotchStatusView.swift */,
+				A0000000000000000000012D /* ToolboxView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -116,6 +177,13 @@
 				A00000000000000000000107 /* AlertManager.swift */,
 				A00000000000000000000108 /* AppSettings.swift */,
 				A00000000000000000000109 /* LaunchAtLoginManager.swift */,
+				A0000000000000000000011F /* AgentEventServer.swift */,
+				A00000000000000000000120 /* AgentHookManager.swift */,
+				A00000000000000000000121 /* AgentMonitorStore.swift */,
+				A00000000000000000000122 /* NotchWindowController.swift */,
+				A00000000000000000000127 /* NowPlayingStore.swift */,
+				A00000000000000000000128 /* MediaRemoteAdapterClient.swift */,
+				A0000000000000000000012C /* StorageAnalyzerStore.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -127,8 +195,11 @@
 				A0000000000000000000010B /* CPUReader.swift */,
 				A0000000000000000000010C /* MemoryReader.swift */,
 				A0000000000000000000010D /* NetworkReader.swift */,
+				A0000000000000000000012B /* StorageReader.swift */,
 				A00000000000000000000115 /* HIDTemperatureReader.m */,
 				A00000000000000000000116 /* HIDTemperatureReader.h */,
+				A00000000000000000000124 /* ASMediaRemoteBridge.m */,
+				A00000000000000000000125 /* ASMediaRemoteBridge.h */,
 			);
 			path = Readers;
 			sourceTree = "<group>";
@@ -140,6 +211,9 @@
 				A0000000000000000000010F /* ThermalLevel.swift */,
 				A00000000000000000000110 /* MemoryInfo.swift */,
 				A00000000000000000000111 /* NetworkSpeed.swift */,
+				A0000000000000000000011E /* AgentEvent.swift */,
+				A00000000000000000000126 /* NowPlayingTrack.swift */,
+				A0000000000000000000012A /* StorageInfo.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -153,6 +227,39 @@
 			path = Utils;
 			sourceTree = "<group>";
 		};
+		A00000000000000000000315 /* media */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000118 /* logo.png */,
+			);
+			path = media;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000316 /* scripts */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000011C /* archive-app-store.sh */,
+				A0000000000000000000011B /* build-release.sh */,
+			);
+			path = scripts;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000317 /* config */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000011D /* AppStoreExportOptions.plist */,
+			);
+			path = config;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000318 /* Vendor */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000129 /* MediaRemoteAdapter.framework */,
+			);
+			path = Vendor;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -162,6 +269,8 @@
 			buildPhases = (
 				A00000000000000000000500 /* Sources */,
 				A00000000000000000000200 /* Frameworks */,
+				A00000000000000000000501 /* Resources */,
+				A00000000000000000000502 /* Embed Media Adapter */,
 			);
 			buildRules = (
 			);
@@ -206,6 +315,18 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		A00000000000000000000501 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000015 /* logo.png in Resources */,
+				A00000000000000000000016 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A00000000000000000000500 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -231,6 +352,20 @@
 				A00000000000000000000012 /* ByteFormatter.swift in Sources */,
 				A00000000000000000000013 /* DateFormatterUtil.swift in Sources */,
 				A00000000000000000000014 /* HIDTemperatureReader.m in Sources */,
+				A00000000000000000000017 /* AgentEvent.swift in Sources */,
+				A00000000000000000000018 /* AgentEventServer.swift in Sources */,
+				A00000000000000000000019 /* AgentHookManager.swift in Sources */,
+				A0000000000000000000001A /* AgentMonitorStore.swift in Sources */,
+				A0000000000000000000001B /* NotchWindowController.swift in Sources */,
+				A0000000000000000000001C /* NotchStatusView.swift in Sources */,
+				A0000000000000000000001D /* ASMediaRemoteBridge.m in Sources */,
+				A0000000000000000000001E /* NowPlayingTrack.swift in Sources */,
+				A0000000000000000000001F /* NowPlayingStore.swift in Sources */,
+				A00000000000000000000020 /* MediaRemoteAdapterClient.swift in Sources */,
+				A00000000000000000000022 /* StorageInfo.swift in Sources */,
+				A00000000000000000000023 /* StorageReader.swift in Sources */,
+				A00000000000000000000024 /* StorageAnalyzerStore.swift in Sources */,
+				A00000000000000000000025 /* ToolboxView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

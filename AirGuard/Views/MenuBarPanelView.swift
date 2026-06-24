@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MenuBarPanelView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var monitorStore: MonitorStore
     @EnvironmentObject private var alertManager: AlertManager
@@ -263,6 +264,16 @@ struct MenuBarPanelView: View {
 
     private var footer: some View {
         HStack(spacing: 14) {
+            Button {
+                openWindow(id: "toolbox")
+                dismiss()
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("工具箱", systemImage: "wrench.and.screwdriver")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(PanelButtonStyle())
+
             settingsButton
 
             Button {

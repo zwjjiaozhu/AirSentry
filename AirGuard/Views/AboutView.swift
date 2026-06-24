@@ -1,12 +1,13 @@
 import SwiftUI
+import AppKit
 
 struct AboutView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                Image(systemName: "thermometer.sun.fill")
-                    .font(.system(size: 38))
-                    .foregroundStyle(.orange)
+                AppLogo()
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("AirSentry")
@@ -33,5 +34,24 @@ struct AboutView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(28)
+    }
+}
+
+struct AppLogo: View {
+    private let image = Bundle.main.image(forResource: "logo")
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "shield.lefthalf.filled")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.blue)
+            }
+        }
     }
 }
