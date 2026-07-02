@@ -30,6 +30,10 @@ final class StorageAnalyzerStore: ObservableObject {
         items.reduce(0) { $0 + $1.bytes }
     }
 
+    var selectedFolderPath: String? {
+        homeURL?.path
+    }
+
     func requestFolderAccess() {
         let panel = NSOpenPanel()
         panel.title = "选择个人文件夹"

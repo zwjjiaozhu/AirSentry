@@ -265,9 +265,7 @@ struct MenuBarPanelView: View {
     private var footer: some View {
         HStack(spacing: 14) {
             Button {
-                openWindow(id: "toolbox")
-                dismiss()
-                NSApp.activate(ignoringOtherApps: true)
+                openToolboxWindow()
             } label: {
                 Label("工具箱", systemImage: "wrench.and.screwdriver")
                     .frame(maxWidth: .infinity)
@@ -363,6 +361,19 @@ struct MenuBarPanelView: View {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    private func openToolboxWindow() {
+        openWindow(id: "toolbox")
+        dismiss()
+        NSApp.activate(ignoringOtherApps: true)
+
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows
+                .first { $0.title == "工具箱" }?
+                .makeKeyAndOrderFront(nil)
+        }
+    }
+
     private func openActivityMonitor() {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
@@ -383,6 +394,8 @@ struct MenuBarPanelView: View {
             content()
         }
         .buttonStyle(.plain)
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .pointingHandCursor()
         .help("打开活动监视器")
     }
 
@@ -532,5 +545,34 @@ private struct PanelButtonStyle: ButtonStyle {
                     .stroke(.white.opacity(0.72), lineWidth: 1)
             )
             .shadow(color: .black.opacity(configuration.isPressed ? 0.03 : 0.06), radius: 10, y: 4)
+    }
+}
+
+private struct PointingHandCursorModifier: ViewModifier {
+    @State private var isPointing = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering, !isPointing {
+                    NSCursor.pointingHand.push()
+                    isPointing = true
+                } else if !hovering, isPointing {
+                    NSCursor.pop()
+                    isPointing = false
+                }
+            }
+            .onDisappear {
+                if isPointing {
+                    NSCursor.pop()
+                    isPointing = false
+                }
+            }
+    }
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursorModifier())
     }
 }

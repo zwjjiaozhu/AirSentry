@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Carbon.HIToolbox
 
 final class AppSettings: ObservableObject {
     @Published var notificationsEnabled: Bool {
@@ -61,6 +62,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(musicNotchEnabled, forKey: Keys.musicNotchEnabled) }
     }
 
+    @Published var inputMethodShortcutsEnabled: Bool {
+        didSet { defaults.set(inputMethodShortcutsEnabled, forKey: Keys.inputMethodShortcutsEnabled) }
+    }
+
+    @Published var inputMethodShortcutRules: [InputMethodShortcutRule] {
+        didSet { saveInputMethodShortcutRules() }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -86,6 +95,8 @@ final class AppSettings: ObservableObject {
         let savedAgentCompletionDuration = defaults.double(forKey: Keys.agentCompletionDisplayDuration)
         agentCompletionDisplayDuration = savedAgentCompletionDuration > 0 ? savedAgentCompletionDuration : 4
         musicNotchEnabled = defaults.object(forKey: Keys.musicNotchEnabled) as? Bool ?? true
+        inputMethodShortcutsEnabled = defaults.object(forKey: Keys.inputMethodShortcutsEnabled) as? Bool ?? false
+        inputMethodShortcutRules = Self.loadInputMethodShortcutRules(from: defaults)
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
     }
@@ -154,6 +165,23 @@ final class AppSettings: ObservableObject {
         agentCompletionDisplayDuration = min(max(value, 2), 15)
     }
 
+    func setInputMethodShortcutRules(_ rules: [InputMethodShortcutRule]) {
+        inputMethodShortcutRules = rules
+    }
+
+    func addInputMethodShortcutRule() {
+        inputMethodShortcutRules.append(InputMethodShortcutRule())
+    }
+
+    func updateInputMethodShortcutRule(_ rule: InputMethodShortcutRule) {
+        guard let index = inputMethodShortcutRules.firstIndex(where: { $0.id == rule.id }) else { return }
+        inputMethodShortcutRules[index] = rule
+    }
+
+    func removeInputMethodShortcutRule(id: UUID) {
+        inputMethodShortcutRules.removeAll { $0.id == id }
+    }
+
     private func normalizeLoadedTemperatureThresholds() {
         fairTemperatureThreshold = min(max(fairTemperatureThreshold, 30), 123)
         seriousTemperatureThreshold = min(max(seriousTemperatureThreshold, fairTemperatureThreshold + 1), 124)
@@ -164,6 +192,38 @@ final class AppSettings: ObservableObject {
         refreshInterval = min(max(refreshInterval, 1), 60)
         let clampedCooldown = min(max(notificationCooldown, 0), 60 * 60)
         notificationCooldown = (clampedCooldown / 5).rounded() * 5
+    }
+
+    private func saveInputMethodShortcutRules() {
+        do {
+            let data = try JSONEncoder().encode(inputMethodShortcutRules)
+            defaults.set(data, forKey: Keys.inputMethodShortcutRules)
+        } catch {
+            NSLog("AirSentry input method shortcut rules save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private static func loadInputMethodShortcutRules(from defaults: UserDefaults) -> [InputMethodShortcutRule] {
+        guard let data = defaults.data(forKey: Keys.inputMethodShortcutRules) else {
+            return [
+                InputMethodShortcutRule(
+                    shortcut: KeyboardShortcut(keyCode: 18, modifiers: UInt32(controlKey)),
+                    inputSourceID: nil
+                ),
+                InputMethodShortcutRule(
+                    shortcut: KeyboardShortcut(keyCode: 19, modifiers: UInt32(controlKey)),
+                    inputSourceID: nil
+                )
+            ]
+        }
+
+        do {
+            let rules = try JSONDecoder().decode([InputMethodShortcutRule].self, from: data)
+            return rules.isEmpty ? [InputMethodShortcutRule()] : rules
+        } catch {
+            NSLog("AirSentry input method shortcut rules load failed: \(error.localizedDescription)")
+            return [InputMethodShortcutRule()]
+        }
     }
 }
 
@@ -182,4 +242,6 @@ private enum Keys {
     static let claudeMonitoringEnabled = "claudeMonitoringEnabled"
     static let agentCompletionDisplayDuration = "agentCompletionDisplayDuration"
     static let musicNotchEnabled = "musicNotchEnabled"
+    static let inputMethodShortcutsEnabled = "inputMethodShortcutsEnabled"
+    static let inputMethodShortcutRules = "inputMethodShortcutRules"
 }

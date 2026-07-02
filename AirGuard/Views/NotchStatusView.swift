@@ -64,10 +64,7 @@ struct NotchStatusView: View {
     }
 
     private var expandedContentTransition: AnyTransition {
-        .asymmetric(
-            insertion: .opacity.combined(with: .move(edge: .top)),
-            removal: .opacity.combined(with: .move(edge: .top))
-        )
+        .opacity
     }
 
     private func musicWingRow(_ track: NowPlayingTrack) -> some View {

@@ -11,6 +11,7 @@ final class MediaRemoteAdapterClient {
     private var errorHandle: FileHandle?
     private var buffer = Data()
     private var payload: [String: Any] = [:]
+    private var didLogSuppressedClientPropertiesWarning = false
 
     func start() -> Bool {
         guard process == nil,
@@ -42,10 +43,10 @@ final class MediaRemoteAdapterClient {
             self?.queue.async { self?.consume(data) }
         }
         let errorHandle = errorPipe.fileHandleForReading
-        errorHandle.readabilityHandler = { handle in
+        errorHandle.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let message = String(data: data, encoding: .utf8) else { return }
-            NSLog("[AirSentry Media] Adapter stderr: %@", message.trimmingCharacters(in: .whitespacesAndNewlines))
+            self?.queue.async { self?.consumeStderr(message) }
         }
         process.terminationHandler = { [weak self] _ in
             NSLog("[AirSentry Media] Adapter exited with status %d", process.terminationStatus)
@@ -134,6 +135,29 @@ final class MediaRemoteAdapterClient {
             ?? "unknown"
         NSLog("[AirSentry Media] Now playing: \(title) — \(artist) | playing=\(isPlaying) | elapsed=\(elapsed) | duration=\(duration) | bundle=\(bundle)")
         infoHandler?(info)
+    }
+
+    private func consumeStderr(_ message: String) {
+        for line in message.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            if isBenignClientPropertiesPermissionWarning(trimmed) {
+                if !didLogSuppressedClientPropertiesWarning {
+                    didLogSuppressedClientPropertiesWarning = true
+                    NSLog("[AirSentry Media] Suppressing benign MediaRemote clientProperties permission warnings")
+                }
+                continue
+            }
+
+            NSLog("[AirSentry Media] Adapter stderr: %@", trimmed)
+        }
+    }
+
+    private func isBenignClientPropertiesPermissionWarning(_ line: String) -> Bool {
+        line.contains("clientProperties")
+            && line.contains("kMRMediaRemoteFrameworkErrorDomain Code=3")
+            && line.contains("Operation not permitted")
     }
 
     private func copy(_ source: String, to destination: String, into info: inout [AnyHashable: Any]) {

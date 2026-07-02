@@ -139,19 +139,22 @@ final class NotchWindowController {
         presentation.notchHeight = notchHeight
         presentation.notchWidth = notchWidth
         presentation.expandedContentTopInset = expandedTopInset
-        presentation.isExpanded = isExpanded
         presentation.showsMusic = agentSession == nil && musicTrack != nil
 
         panel.level = hasNotch ? .mainMenu + 3 : .statusBar
         if panel.isVisible, animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.26
+                context.duration = 0.24
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 panel.animator().setFrame(frame, display: true)
+            }
+            withAnimation(.easeInOut(duration: 0.18).delay(isExpanded ? 0.04 : 0)) {
+                presentation.isExpanded = isExpanded
             }
         } else {
             panel.setFrame(frame, display: true)
             panel.orderFrontRegardless()
+            presentation.isExpanded = isExpanded
         }
     }
 

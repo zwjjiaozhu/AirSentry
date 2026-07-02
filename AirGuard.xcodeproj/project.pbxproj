@@ -44,6 +44,9 @@
 		A00000000000000000000023 /* StorageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012B /* StorageReader.swift */; };
 		A00000000000000000000024 /* StorageAnalyzerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012C /* StorageAnalyzerStore.swift */; };
 		A00000000000000000000025 /* ToolboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012D /* ToolboxView.swift */; };
+		A00000000000000000000026 /* InputMethodShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012E /* InputMethodShortcut.swift */; };
+		A00000000000000000000027 /* InputMethodSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012F /* InputMethodSwitcher.swift */; };
+		A00000000000000000000028 /* InputMethodShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000130 /* InputMethodShortcutManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -93,6 +96,9 @@
 		A0000000000000000000012B /* StorageReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageReader.swift; sourceTree = "<group>"; };
 		A0000000000000000000012C /* StorageAnalyzerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageAnalyzerStore.swift; sourceTree = "<group>"; };
 		A0000000000000000000012D /* ToolboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolboxView.swift; sourceTree = "<group>"; };
+		A0000000000000000000012E /* InputMethodShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMethodShortcut.swift; sourceTree = "<group>"; };
+		A0000000000000000000012F /* InputMethodSwitcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMethodSwitcher.swift; sourceTree = "<group>"; };
+		A00000000000000000000130 /* InputMethodShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMethodShortcutManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -184,6 +190,9 @@
 				A00000000000000000000127 /* NowPlayingStore.swift */,
 				A00000000000000000000128 /* MediaRemoteAdapterClient.swift */,
 				A0000000000000000000012C /* StorageAnalyzerStore.swift */,
+				A0000000000000000000012E /* InputMethodShortcut.swift */,
+				A0000000000000000000012F /* InputMethodSwitcher.swift */,
+				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -366,6 +375,9 @@
 				A00000000000000000000023 /* StorageReader.swift in Sources */,
 				A00000000000000000000024 /* StorageAnalyzerStore.swift in Sources */,
 				A00000000000000000000025 /* ToolboxView.swift in Sources */,
+				A00000000000000000000026 /* InputMethodShortcut.swift in Sources */,
+				A00000000000000000000027 /* InputMethodSwitcher.swift in Sources */,
+				A00000000000000000000028 /* InputMethodShortcutManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

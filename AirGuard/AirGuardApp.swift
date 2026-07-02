@@ -7,7 +7,7 @@ struct AirGuardApp: App {
     @StateObject private var alertManager = AlertManager()
     @StateObject private var monitorStore: MonitorStore
     @StateObject private var agentMonitorStore: AgentMonitorStore
-    @StateObject private var storageAnalyzerStore = StorageAnalyzerStore()
+    @StateObject private var inputMethodShortcutController: InputMethodShortcutController
 
     init() {
         let settings = AppSettings()
@@ -16,6 +16,7 @@ struct AirGuardApp: App {
         _alertManager = StateObject(wrappedValue: alertManager)
         _monitorStore = StateObject(wrappedValue: MonitorStore(settings: settings, alertManager: alertManager))
         _agentMonitorStore = StateObject(wrappedValue: AgentMonitorStore(settings: settings))
+        _inputMethodShortcutController = StateObject(wrappedValue: InputMethodShortcutController(settings: settings))
     }
 
     var body: some Scene {
@@ -25,7 +26,6 @@ struct AirGuardApp: App {
                 .environmentObject(alertManager)
                 .environmentObject(monitorStore)
                 .environmentObject(agentMonitorStore)
-                .environmentObject(storageAnalyzerStore)
                 .frame(width: 400)
         } label: {
             MenuBarStatusLabel(settings: settings, monitorStore: monitorStore)
@@ -42,7 +42,7 @@ struct AirGuardApp: App {
 
         Window("工具箱", id: "toolbox") {
             ToolboxView()
-                .environmentObject(storageAnalyzerStore)
+                .environmentObject(settings)
         }
         .defaultSize(width: 900, height: 650)
     }
