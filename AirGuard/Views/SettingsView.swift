@@ -3,6 +3,7 @@ import AppKit
 import UserNotifications
 
 struct SettingsView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var alertManager: AlertManager
     @EnvironmentObject private var agentMonitorStore: AgentMonitorStore
@@ -131,10 +132,10 @@ struct SettingsView: View {
                     .lineSpacing(3)
             }
             .padding(14)
-            .background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(sidebarNoticeBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.primary.opacity(0.06), lineWidth: 1)
+                    .stroke(sidebarNoticeStroke, lineWidth: 1)
             )
             .padding(.horizontal, 22)
             .padding(.bottom, 22)
@@ -454,9 +455,9 @@ struct SettingsView: View {
             Color(nsColor: .windowBackgroundColor)
             LinearGradient(
                 colors: [
-                    .white.opacity(0.88),
+                    sidebarSurfaceColor.opacity(0.88),
                     .blue.opacity(0.035),
-                    .white.opacity(0.76)
+                    sidebarSurfaceColor.opacity(0.76)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -468,7 +469,7 @@ struct SettingsView: View {
         LinearGradient(
             colors: [
                 Color(nsColor: .windowBackgroundColor),
-                .blue.opacity(0.025),
+                .blue.opacity(colorScheme == .dark ? 0.055 : 0.025),
                 Color(nsColor: .windowBackgroundColor)
             ],
             startPoint: .topLeading,
@@ -516,6 +517,18 @@ struct SettingsView: View {
 
     private func dismissThresholdInput() {
         focusedThreshold = nil
+    }
+
+    private var sidebarSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.white
+    }
+
+    private var sidebarNoticeBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.62)
+    }
+
+    private var sidebarNoticeStroke: Color {
+        colorScheme == .dark ? Color.white.opacity(0.09) : Color.primary.opacity(0.06)
     }
 }
 
@@ -661,18 +674,28 @@ private struct SectionTitle: View {
 }
 
 private struct SettingsGroup<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(spacing: 0) {
             content
         }
-        .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(surfaceColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.primary.opacity(0.09), lineWidth: 1)
+                .stroke(strokeColor, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.035), radius: 12, y: 4)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.035), radius: 12, y: 4)
+    }
+
+    private var surfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.72)
+    }
+
+    private var strokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.primary.opacity(0.09)
     }
 }
 
@@ -788,6 +811,8 @@ private struct PreferenceRow: View {
 }
 
 private struct IntervalPreferenceRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let title: String
     let subtitle: String
     let systemImage: String
@@ -841,15 +866,23 @@ private struct IntervalPreferenceRow: View {
                 )
             }
             .frame(height: 34)
-            .background(.white.opacity(0.80), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(controlSurfaceColor, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(.primary.opacity(0.09), lineWidth: 1)
+                    .stroke(controlStrokeColor, lineWidth: 1)
             )
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 15)
         .contentShape(Rectangle())
+    }
+
+    private var controlSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.80)
+    }
+
+    private var controlStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.primary.opacity(0.09)
     }
 }
 
@@ -881,6 +914,8 @@ private struct IntervalStepButton: View {
 }
 
 private struct ThresholdCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let id: TemperatureThresholdID
     let title: String
     let color: Color
@@ -959,10 +994,10 @@ private struct ThresholdCard: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 10)
             .frame(height: 28)
-            .background(.white.opacity(0.80), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(controlSurfaceColor, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .stroke(.primary.opacity(0.09), lineWidth: 1)
+                    .stroke(controlStrokeColor, lineWidth: 1)
             )
 
             Text("\(Int(range.lowerBound))-\(Int(range.upperBound)) °C")
@@ -984,7 +1019,7 @@ private struct ThresholdCard: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(.white.opacity(0.78))
+                .fill(cardSurfaceColor)
         )
         .overlay(alignment: .top) {
             Rectangle()
@@ -994,9 +1029,25 @@ private struct ThresholdCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.primary.opacity(0.08), lineWidth: 1)
+                .stroke(cardStrokeColor, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 5)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.06), radius: 10, y: 5)
+    }
+
+    private var cardSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.78)
+    }
+
+    private var cardStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.primary.opacity(0.08)
+    }
+
+    private var controlSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.80)
+    }
+
+    private var controlStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.primary.opacity(0.09)
     }
 
     private func syncInputText() {

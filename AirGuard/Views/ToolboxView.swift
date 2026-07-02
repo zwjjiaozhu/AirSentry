@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct ToolboxView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var settings: AppSettings
     @StateObject private var storageStore = StorageAnalyzerStore()
     @State private var selectedTool: ToolboxSection = .storage
@@ -71,7 +72,11 @@ struct ToolboxView: View {
         .frame(width: 210)
         .background(
             LinearGradient(
-                colors: [.white.opacity(0.84), .blue.opacity(0.035), .white.opacity(0.72)],
+                colors: [
+                    sidebarSurfaceColor.opacity(0.84),
+                    .blue.opacity(colorScheme == .dark ? 0.06 : 0.035),
+                    sidebarSurfaceColor.opacity(0.72)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -92,7 +97,10 @@ struct ToolboxView: View {
         }
         .background(
             LinearGradient(
-                colors: [Color(nsColor: .windowBackgroundColor), .blue.opacity(0.025)],
+                colors: [
+                    Color(nsColor: .windowBackgroundColor),
+                    .blue.opacity(colorScheme == .dark ? 0.055 : 0.025)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -543,6 +551,10 @@ struct ToolboxView: View {
             otherRule.id != rule.id && otherRule.shortcut == shortcut
         }
     }
+
+    private var sidebarSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.white
+    }
 }
 
 private enum ToolboxSection {
@@ -667,11 +679,28 @@ private final class CaptureNSView: NSView {
 
 private extension View {
     func toolboxCard() -> some View {
-        background(.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        modifier(ToolboxCardModifier())
+    }
+}
+
+private struct ToolboxCardModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(surfaceColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+                    .stroke(strokeColor, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.035), radius: 12, y: 4)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.035), radius: 12, y: 4)
+    }
+
+    private var surfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.74)
+    }
+
+    private var strokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.primary.opacity(0.08)
     }
 }

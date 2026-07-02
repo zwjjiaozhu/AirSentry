@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarPanelView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var monitorStore: MonitorStore
     @EnvironmentObject private var alertManager: AlertManager
@@ -108,8 +109,8 @@ struct MenuBarPanelView: View {
             LinearGradient(
                 colors: [
                     thermalColor.opacity(0.13),
-                    Color.white.opacity(0.72),
-                    Color.white.opacity(0.46)
+                    heroSurfaceColor,
+                    heroSurfaceColor.opacity(0.72)
                 ],
                 startPoint: .leading,
                 endPoint: .trailing
@@ -118,7 +119,7 @@ struct MenuBarPanelView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.68), lineWidth: 1)
+                .stroke(surfaceStrokeColor, lineWidth: 1)
         )
         .shadow(color: thermalColor.opacity(0.08), radius: 16, y: 8)
     }
@@ -202,10 +203,10 @@ struct MenuBarPanelView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.70), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(surfaceColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.62), lineWidth: 1)
+                .stroke(surfaceStrokeColor, lineWidth: 1)
         )
     }
 
@@ -316,9 +317,9 @@ struct MenuBarPanelView: View {
             Color(nsColor: .windowBackgroundColor)
             LinearGradient(
                 colors: [
-                    Color.white.opacity(0.92),
+                    backgroundSurfaceColor.opacity(0.92),
                     Color.blue.opacity(0.08),
-                    Color.white.opacity(0.80)
+                    backgroundSurfaceColor.opacity(0.80)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -441,12 +442,30 @@ struct MenuBarPanelView: View {
         }
     }
 
+    private var backgroundSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.white
+    }
+
+    private var heroSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.72)
+    }
+
+    private var surfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.70)
+    }
+
+    private var surfaceStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.62)
+    }
+
     private func percent(_ value: Double) -> String {
         value.formatted(.percent.precision(.fractionLength(0)))
     }
 }
 
 private struct MetricTile<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let title: String
     let systemImage: String
     let tint: Color
@@ -484,12 +503,20 @@ private struct MetricTile<Content: View>: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 166, maxHeight: 166, alignment: .topLeading)
-        .background(.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(surfaceColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.72), lineWidth: 1)
+                .stroke(surfaceStrokeColor, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.05), radius: 12, y: 5)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 12, y: 5)
+    }
+
+    private var surfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.72)
+    }
+
+    private var surfaceStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.72)
     }
 }
 
@@ -531,20 +558,37 @@ private struct Sparkline: View {
 }
 
 private struct PanelButtonStyle: ButtonStyle {
+    @Environment(\.colorScheme) private var colorScheme
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(.primary)
             .padding(.vertical, 13)
             .background(
-                Color.white.opacity(configuration.isPressed ? 0.58 : 0.72),
+                surfaceColor(isPressed: configuration.isPressed),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(0.72), lineWidth: 1)
+                    .stroke(surfaceStrokeColor, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(configuration.isPressed ? 0.03 : 0.06), radius: 10, y: 4)
+            .shadow(color: .black.opacity(shadowOpacity(isPressed: configuration.isPressed)), radius: 10, y: 4)
+    }
+
+    private var surfaceStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.72)
+    }
+
+    private func surfaceColor(isPressed: Bool) -> Color {
+        if colorScheme == .dark {
+            return Color.white.opacity(isPressed ? 0.06 : 0.09)
+        }
+        return Color.white.opacity(isPressed ? 0.58 : 0.72)
+    }
+
+    private func shadowOpacity(isPressed: Bool) -> Double {
+        colorScheme == .dark ? (isPressed ? 0.16 : 0.24) : (isPressed ? 0.03 : 0.06)
     }
 }
 
