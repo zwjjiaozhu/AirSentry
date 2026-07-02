@@ -5,6 +5,7 @@ struct ToolboxView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var settings: AppSettings
     @StateObject private var storageStore = StorageAnalyzerStore()
+    @StateObject private var uninstallerStore = AppUninstallerStore()
     @State private var selectedTool: ToolboxSection = .storage
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
@@ -19,10 +20,13 @@ struct ToolboxView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             storageStore.refresh()
+            uninstallerStore.refreshApplications()
         }
         .onChange(of: selectedTool) { tool in
             if tool == .inputMethod {
                 refreshInputSources()
+            } else if tool == .uninstaller {
+                uninstallerStore.refreshApplications()
             }
         }
     }
@@ -50,6 +54,14 @@ struct ToolboxView: View {
                     isSelected: selectedTool == .storage
                 ) {
                     selectedTool = .storage
+                }
+
+                ToolboxSidebarItem(
+                    title: "软件卸载助手",
+                    systemImage: "trash",
+                    isSelected: selectedTool == .uninstaller
+                ) {
+                    selectedTool = .uninstaller
                 }
 
                 ToolboxSidebarItem(
@@ -89,6 +101,8 @@ struct ToolboxView: View {
                 switch selectedTool {
                 case .storage:
                     storageContent
+                case .uninstaller:
+                    uninstallerContent
                 case .inputMethod:
                     inputMethodContent
                 }
@@ -133,6 +147,42 @@ struct ToolboxView: View {
         }
         .onAppear {
             refreshInputSources()
+        }
+    }
+
+    private var uninstallerContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            uninstallerHeader
+
+            if !uninstallerStore.hasHomeAccess {
+                uninstallerPermissionCard
+            }
+            if !uninstallerStore.hasApplicationsAccess {
+                uninstallerApplicationsPermissionCard
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                appListSection
+                    .frame(width: 280)
+                uninstallPlanSection
+                    .frame(maxWidth: .infinity)
+            }
+
+            if let summary = uninstallerStore.lastTrashSummary {
+                Label(summary, systemImage: "checkmark.circle")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.green)
+            }
+
+            if let errorMessage = uninstallerStore.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.orange)
+            }
+
+            if !uninstallerStore.trashLogs.isEmpty {
+                uninstallerLogSection
+            }
         }
     }
 
@@ -202,6 +252,368 @@ struct ToolboxView: View {
             }
             .buttonStyle(.bordered)
         }
+    }
+
+    private var uninstallerHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("软件卸载助手")
+                    .font(.system(size: 24, weight: .bold))
+                Text("预览应用本体和常见残留文件，确认后统一移入废纸篓。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+                if let selectedHomePath = uninstallerStore.selectedHomePath {
+                    Label(selectedHomePath, systemImage: "folder")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(selectedHomePath)
+                }
+                if let selectedApplicationsPath = uninstallerStore.selectedApplicationsPath {
+                    Label(selectedApplicationsPath, systemImage: "app.badge")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(selectedApplicationsPath)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                Button {
+                    uninstallerStore.requestApplicationsAccess()
+                } label: {
+                    Label(uninstallerStore.hasApplicationsAccess ? "更换应用目录" : "授权应用目录", systemImage: "app.badge")
+                }
+                .buttonStyle(.bordered)
+                .disabled(uninstallerStore.isTrashing)
+
+                Button {
+                    uninstallerStore.requestHomeAccess()
+                } label: {
+                    Label(uninstallerStore.hasHomeAccess ? "更换目录" : "授权目录", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(uninstallerStore.isTrashing)
+
+                Button {
+                    uninstallerStore.refreshApplications()
+                } label: {
+                    Label(uninstallerStore.isScanningApplications ? "扫描中" : "刷新应用", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(uninstallerStore.isScanningApplications || uninstallerStore.isTrashing)
+            }
+        }
+    }
+
+    private var uninstallerPermissionCard: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                Circle().fill(.orange.opacity(0.13))
+                Image(systemName: "folder.badge.questionmark")
+                    .font(.system(size: 25, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("允许读取个人文件夹")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("用于识别 ~/Library 中的缓存、偏好设置和容器残留；未授权时只能显示应用本体。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Button("选择文件夹") {
+                uninstallerStore.requestHomeAccess()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(20)
+        .toolboxCard()
+    }
+
+    private var uninstallerApplicationsPermissionCard: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                Circle().fill(.red.opacity(0.10))
+                Image(systemName: "app.badge")
+                    .font(.system(size: 25, weight: .medium))
+                    .foregroundStyle(.red)
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("允许管理应用目录")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("用于把 /Applications 或用户应用目录中的应用本体移入废纸篓；未授权时仍可预览残留文件。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Button("选择应用目录") {
+                uninstallerStore.requestApplicationsAccess()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+        }
+        .padding(20)
+        .toolboxCard()
+    }
+
+    private var appListSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("应用")
+                    .font(.system(size: 17, weight: .semibold))
+                Spacer()
+                if uninstallerStore.isScanningApplications {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            TextField("搜索应用或 Bundle ID", text: $uninstallerStore.searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Picker("", selection: $uninstallerStore.sortOption) {
+                ForEach(AppUninstallerStore.SortOption.allCases) { option in
+                    Text(option.rawValue).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if uninstallerStore.filteredApplications.isEmpty {
+                VStack(spacing: 9) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 24))
+                        .foregroundStyle(.secondary)
+                    Text(uninstallerStore.isScanningApplications ? "正在扫描应用…" : "没有找到应用")
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 220)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(uninstallerStore.filteredApplications) { app in
+                        appRow(app)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .toolboxCard()
+    }
+
+    private func appRow(_ app: InstalledAppInfo) -> some View {
+        Button {
+            uninstallerStore.select(app)
+        } label: {
+            HStack(spacing: 10) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path))
+                    .resizable()
+                    .frame(width: 30, height: 30)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.name)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .lineLimit(1)
+                    Text(ByteFormatter.string(from: app.bytes))
+                        .font(.system(size: 11.5).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(
+                Group {
+                    if uninstallerStore.plan?.app.id == app.id {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.blue.opacity(0.10))
+                    }
+                }
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var uninstallPlanSection: some View {
+        if let plan = uninstallerStore.plan {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: plan.app.url.path))
+                        .resizable()
+                        .frame(width: 42, height: 42)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(plan.app.name)
+                            .font(.system(size: 18, weight: .bold))
+                        Text("\(plan.app.displayVersion) · \(plan.app.bundleIdentifier ?? "无 Bundle ID")")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(ByteFormatter.string(from: uninstallerStore.selectedBytes))
+                            .font(.system(size: 19, weight: .bold).monospacedDigit())
+                            .foregroundStyle(.blue)
+                        Text("已选择 \(uninstallerStore.selectedCount) 项")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                if uninstallerStore.isBuildingPlan {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("正在识别残留文件…")
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(plan.artifacts) { artifact in
+                            uninstallArtifactRow(artifact)
+                            if artifact.id != plan.artifacts.last?.id {
+                                Divider().padding(.leading, 34)
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button("建议选择") {
+                        uninstallerStore.selectRecommended()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("清空") {
+                        uninstallerStore.clearSelection()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    Button {
+                        uninstallerStore.trashSelectedItems()
+                    } label: {
+                        Label(uninstallerStore.isTrashing ? "处理中" : "移入废纸篓", systemImage: "trash")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .disabled(uninstallerStore.selectedArtifactIDs.isEmpty || uninstallerStore.isTrashing)
+                }
+            }
+            .padding(18)
+            .toolboxCard()
+        } else {
+            VStack(spacing: 10) {
+                Image(systemName: "app.badge")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.secondary)
+                Text("选择一个应用查看卸载预览")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 300)
+            .toolboxCard()
+        }
+    }
+
+    private func uninstallArtifactRow(_ artifact: AppUninstallArtifact) -> some View {
+        HStack(spacing: 10) {
+            Toggle("", isOn: Binding(
+                get: { uninstallerStore.selectedArtifactIDs.contains(artifact.id) },
+                set: { _ in uninstallerStore.toggleArtifact(artifact) }
+            ))
+            .labelsHidden()
+            .disabled(!artifact.isAccessible)
+
+            Image(systemName: iconName(for: artifact.kind))
+                .foregroundStyle(riskColor(for: artifact.risk))
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(artifact.kind.rawValue)
+                        .font(.system(size: 13.5, weight: .semibold))
+                    Label(artifact.risk.rawValue, systemImage: artifact.risk.systemImage)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(riskColor(for: artifact.risk))
+                }
+                Text(artifact.displayPath)
+                    .font(.system(size: 12).monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(artifact.displayPath)
+            }
+
+            Spacer()
+
+            Text(artifact.isAccessible ? ByteFormatter.string(from: artifact.bytes) : "需手动处理")
+                .font(.system(size: 12.5, weight: .medium).monospacedDigit())
+                .foregroundStyle(artifact.isAccessible ? Color.secondary : Color.orange)
+
+            Button {
+                uninstallerStore.reveal(artifact)
+            } label: {
+                Image(systemName: "arrow.forward.circle")
+            }
+            .buttonStyle(.plain)
+            .help("在访达中显示")
+        }
+        .padding(.vertical, 9)
+    }
+
+    private var uninstallerLogSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("最近卸载日志")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Text("\(uninstallerStore.trashLogs.count) 条")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(uninstallerStore.trashLogs.suffix(40).enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(size: 11.5).monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(12)
+            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(16)
+        .toolboxCard()
     }
 
     private var inputMethodShortcutSection: some View {
@@ -552,6 +964,38 @@ struct ToolboxView: View {
         }
     }
 
+    private func iconName(for kind: AppUninstallArtifactKind) -> String {
+        switch kind {
+        case .application:
+            return "app"
+        case .support:
+            return "folder"
+        case .cache:
+            return "externaldrive"
+        case .preferences:
+            return "slider.horizontal.3"
+        case .logs:
+            return "doc.text"
+        case .savedState:
+            return "macwindow"
+        case .container:
+            return "shippingbox"
+        case .groupContainer:
+            return "square.stack.3d.up"
+        }
+    }
+
+    private func riskColor(for risk: AppUninstallRisk) -> Color {
+        switch risk {
+        case .low:
+            return .green
+        case .medium:
+            return .orange
+        case .high:
+            return .red
+        }
+    }
+
     private var sidebarSurfaceColor: Color {
         colorScheme == .dark ? Color.white.opacity(0.12) : Color.white
     }
@@ -559,6 +1003,7 @@ struct ToolboxView: View {
 
 private enum ToolboxSection {
     case storage
+    case uninstaller
     case inputMethod
 }
 

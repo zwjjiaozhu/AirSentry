@@ -132,10 +132,12 @@ elif [[ -n "$SIGN_IDENTITY" ]]; then
         sign_args=(--timestamp "${sign_args[@]}")
     fi
     codesign "${sign_args[@]}" "$APP_PATH"
+    touch "$APP_PATH"
     codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 else
     echo "Warning: no valid code-signing identity was found; output is unsigned." >&2
     echo "Install a certificate or rerun with --identity \"CERTIFICATE NAME\"." >&2
+    touch "$APP_PATH"
 fi
 
 echo
