@@ -3,8 +3,35 @@ MacBook Air/Neo 温度提醒与\n菜单栏监控
 
 ## 构建 Release
 
+developer: https://developer.apple.com/account
+
+TEAM_ID 获取
+打开 Apple Developer Account
+登录你的开发者账号
+进入 Membership details 或账号首页的会员信息区域
+找到 Team ID
+它通常是一个 10 位左右的字符串，例如：
+ABCD123456
+如果你在 Xcode 里查：
+打开 Xcode
+Xcode > Settings > Accounts
+选中你的 Apple ID
+右侧选中你的 Team
+Team 信息里会显示 Team ID
+BUNDLE_ID 获取或创建
+BUNDLE_ID 是你的 App 唯一标识符，比如：
+com.yourcompany.airsentry
+获取/创建方式：
+打开 Apple Developer - Certificates, Identifiers & Profiles
+进入 Identifiers
+点击 +
+选择 App IDs
+选择 App
+Description 填应用名，例如 AirSentry
+Bundle ID 选择 Explicit
+
 ```bash
-./scripts/build-release.sh
+./build.sh --team-id T8V48KACU8 --bundle-id com.sjzm.airsentry
 ```
 
 产物位于 `build/Release/AirSentry.app`。脚本会自动优先使用
@@ -15,13 +42,13 @@ MacBook Air/Neo 温度提醒与\n菜单栏监控
 
 ```bash
 # 指定签名证书
-./scripts/build-release.sh --identity "Developer ID Application: Your Name (TEAMID)"
+./build.sh --team-id xxx --bundle-id com.sjzm.airsentry --identity "Developer ID Application: Your Name (TEAMID)"
 
 # 明确构建未签名版本
-./scripts/build-release.sh --unsigned
+./build.sh --team-id xxx --bundle-id com.sjzm.airsentry --unsigned
 
 # 清理后重新构建
-./scripts/build-release.sh --clean
+./build.sh --team-id xxx --bundle-id com.sjzm.airsentry --clean
 ```
 
 检查本机已有签名证书：
