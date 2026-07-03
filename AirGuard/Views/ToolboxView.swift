@@ -344,14 +344,6 @@ struct ToolboxView: View {
             }
 
             Spacer()
-
-            Button {
-                appLauncherStore.refreshApplications()
-            } label: {
-                Label(appLauncherStore.isScanning ? "扫描中" : "刷新应用", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(appLauncherStore.isScanning)
         }
     }
 
