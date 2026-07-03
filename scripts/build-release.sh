@@ -9,6 +9,7 @@ DERIVED_DATA="$ROOT_DIR/build/DerivedData"
 OUTPUT_DIR="$ROOT_DIR/build/Release"
 APP_NAME="AirSentry.app"
 APP_PATH="$OUTPUT_DIR/$APP_NAME"
+FINDER_EXTENSION_ENTITLEMENTS="$ROOT_DIR/AirGuardFinderExtension/FinderExtension.entitlements"
 TEAM_ID="${TEAM_ID:-}"
 BUNDLE_ID="${BUNDLE_ID:-}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
@@ -137,7 +138,11 @@ elif [[ -n "$SIGN_IDENTITY" ]]; then
     done < <(find "$APP_PATH/Contents/Frameworks" -name "*.framework" -type d -print0 2>/dev/null)
     while IFS= read -r -d '' extension_path; do
         codesign --remove-signature "$extension_path" 2>/dev/null || true
-        codesign "${sign_args[@]}" "$extension_path"
+        if [[ -f "$FINDER_EXTENSION_ENTITLEMENTS" ]]; then
+            codesign "${sign_args[@]}" --entitlements "$FINDER_EXTENSION_ENTITLEMENTS" "$extension_path"
+        else
+            codesign "${sign_args[@]}" "$extension_path"
+        fi
     done < <(find "$APP_PATH/Contents/PlugIns" -name "*.appex" -type d -print0 2>/dev/null)
     codesign --remove-signature "$APP_PATH" 2>/dev/null || true
     codesign "${sign_args[@]}" "$APP_PATH"

@@ -136,6 +136,7 @@
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00000000000000000000103 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FinderSync.framework; path = System/Library/Frameworks/FinderSync.framework; sourceTree = SDKROOT; };
+		B00000000000000000000104 /* FinderExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -226,6 +227,7 @@
 			children = (
 				B00000000000000000000101 /* FinderSync.swift */,
 				B00000000000000000000102 /* Info.plist */,
+				B00000000000000000000104 /* FinderExtension.entitlements */,
 			);
 			path = AirGuardFinderExtension;
 			sourceTree = "<group>";
@@ -635,6 +637,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_ENTITLEMENTS = AirGuardFinderExtension/FinderExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
@@ -662,6 +665,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				CODE_SIGN_ENTITLEMENTS = AirGuardFinderExtension/FinderExtension.entitlements;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
@@ -702,7 +706,7 @@
 				);
 				MARKETING_VERSION = 1.1.0;
 				AIR_SENTRY_BUNDLE_ID = com.example.AirSentry;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).FinderExtension";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
 				SKIP_INSTALL = YES;
@@ -731,7 +735,7 @@
 				);
 				MARKETING_VERSION = 1.1.0;
 				AIR_SENTRY_BUNDLE_ID = com.example.AirSentry;
-				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).FinderExtension";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
 				SKIP_INSTALL = YES;
