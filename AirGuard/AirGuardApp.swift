@@ -8,15 +8,25 @@ struct AirGuardApp: App {
     @StateObject private var monitorStore: MonitorStore
     @StateObject private var agentMonitorStore: AgentMonitorStore
     @StateObject private var inputMethodShortcutController: InputMethodShortcutController
+    @StateObject private var appLauncherStore: AppLauncherStore
+    @StateObject private var appLauncherShortcutManager: AppLauncherShortcutManager
+    private let appLauncherPanelController: AppLauncherPanelController
 
     init() {
         let settings = AppSettings()
         let alertManager = AlertManager()
+        let appLauncherStore = AppLauncherStore()
+        let appLauncherPanelController = AppLauncherPanelController(store: appLauncherStore)
         _settings = StateObject(wrappedValue: settings)
         _alertManager = StateObject(wrappedValue: alertManager)
         _monitorStore = StateObject(wrappedValue: MonitorStore(settings: settings, alertManager: alertManager))
         _agentMonitorStore = StateObject(wrappedValue: AgentMonitorStore(settings: settings))
         _inputMethodShortcutController = StateObject(wrappedValue: InputMethodShortcutController(settings: settings))
+        _appLauncherStore = StateObject(wrappedValue: appLauncherStore)
+        _appLauncherShortcutManager = StateObject(wrappedValue: AppLauncherShortcutManager(settings: settings) {
+            appLauncherPanelController.toggle()
+        })
+        self.appLauncherPanelController = appLauncherPanelController
     }
 
     var body: some Scene {
@@ -43,6 +53,7 @@ struct AirGuardApp: App {
         Window("工具箱", id: "toolbox") {
             ToolboxView()
                 .environmentObject(settings)
+                .environmentObject(appLauncherStore)
         }
         .defaultSize(width: 900, height: 650)
     }

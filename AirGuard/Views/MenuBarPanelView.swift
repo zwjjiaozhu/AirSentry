@@ -363,16 +363,28 @@ struct MenuBarPanelView: View {
     }
 
     private func openToolboxWindow() {
-        openWindow(id: "toolbox")
         dismiss()
+        openWindow(id: "toolbox")
         NSApp.activate(ignoringOtherApps: true)
 
-        DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows
-                .first { $0.title == "工具箱" }?
-                .makeKeyAndOrderFront(nil)
+        bringToolboxWindowToFront()
+        [0.05, 0.15, 0.35].forEach { delay in
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                bringToolboxWindowToFront()
+            }
         }
+    }
+
+    private func bringToolboxWindowToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        guard let toolboxWindow = NSApp.windows.first(where: { $0.title == "工具箱" }) else {
+            return
+        }
+
+        toolboxWindow.deminiaturize(nil)
+        toolboxWindow.orderFrontRegardless()
+        toolboxWindow.makeKeyAndOrderFront(nil)
     }
 
     private func openActivityMonitor() {

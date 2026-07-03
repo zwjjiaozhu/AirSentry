@@ -4,11 +4,13 @@ import AppKit
 struct ToolboxView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var appLauncherStore: AppLauncherStore
     @StateObject private var storageStore = StorageAnalyzerStore()
     @StateObject private var uninstallerStore = AppUninstallerStore()
     @State private var selectedTool: ToolboxSection = .storage
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
+    @State private var isRecordingAppLauncherShortcut = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -21,12 +23,15 @@ struct ToolboxView: View {
         .task {
             storageStore.refresh()
             uninstallerStore.refreshApplications()
+            appLauncherStore.refreshApplications()
         }
         .onChange(of: selectedTool) { tool in
             if tool == .inputMethod {
                 refreshInputSources()
             } else if tool == .uninstaller {
                 uninstallerStore.refreshApplications()
+            } else if tool == .appLauncher {
+                appLauncherStore.refreshApplications()
             }
         }
     }
@@ -71,6 +76,14 @@ struct ToolboxView: View {
                 ) {
                     selectedTool = .inputMethod
                 }
+
+                ToolboxSidebarItem(
+                    title: "程序收纳",
+                    systemImage: "square.grid.3x3",
+                    isSelected: selectedTool == .appLauncher
+                ) {
+                    selectedTool = .appLauncher
+                }
             }
             .padding(.horizontal, 12)
 
@@ -105,6 +118,8 @@ struct ToolboxView: View {
                     uninstallerContent
                 case .inputMethod:
                     inputMethodContent
+                case .appLauncher:
+                    appLauncherContent
                 }
             }
             .padding(26)
@@ -147,6 +162,14 @@ struct ToolboxView: View {
         }
         .onAppear {
             refreshInputSources()
+        }
+    }
+
+    private var appLauncherContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            appLauncherHeader
+            appLauncherShortcutSection
+            appLauncherPanelEntrySection
         }
     }
 
@@ -307,6 +330,28 @@ struct ToolboxView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(uninstallerStore.isScanningApplications || uninstallerStore.isTrashing)
             }
+        }
+    }
+
+    private var appLauncherHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("程序收纳")
+                    .font(.system(size: 24, weight: .bold))
+                Text("把应用按自己的习惯分组，快捷键弹出轻量面板后直接启动。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                appLauncherStore.refreshApplications()
+            } label: {
+                Label(appLauncherStore.isScanning ? "扫描中" : "刷新应用", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(appLauncherStore.isScanning)
         }
     }
 
@@ -692,13 +737,13 @@ struct ToolboxView: View {
     }
 
     private func inputMethodRuleRow(_ rule: InputMethodShortcutRule) -> some View {
-        let conflict = isShortcutConflicting(rule)
+        let conflictReason = inputMethodShortcutConflictReason(for: rule)
 
         return HStack(spacing: 12) {
             ShortcutRecorderButton(
                 shortcut: rule.shortcut,
                 isRecording: recordingRuleID == rule.id,
-                hasConflict: conflict,
+                conflictReason: conflictReason,
                 startRecording: { recordingRuleID = rule.id },
                 record: { shortcut in
                     var updatedRule = rule
@@ -706,9 +751,17 @@ struct ToolboxView: View {
                     settings.updateInputMethodShortcutRule(updatedRule)
                     recordingRuleID = nil
                 },
-                cancel: { recordingRuleID = nil }
+                cancel: { recordingRuleID = nil },
+                clear: {
+                    var updatedRule = rule
+                    updatedRule.shortcut = nil
+                    settings.updateInputMethodShortcutRule(updatedRule)
+                    if recordingRuleID == rule.id {
+                        recordingRuleID = nil
+                    }
+                }
             )
-            .frame(width: 118)
+            .frame(width: 142)
 
             Picker("", selection: inputSourceBinding(for: rule)) {
                 Text("选择输入法").tag("")
@@ -729,6 +782,102 @@ struct ToolboxView: View {
             .help("删除")
         }
         .padding(.vertical, 4)
+        .overlay(alignment: .bottomLeading) {
+            if let conflictReason {
+                Label(conflictReason, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.orange)
+                    .padding(.leading, 130)
+                    .offset(y: 13)
+            }
+        }
+        .padding(.bottom, conflictReason == nil ? 0 : 14)
+    }
+
+    private var appLauncherShortcutSection: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.purple.opacity(0.12))
+                    Image(systemName: "rectangle.on.rectangle.angled")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.purple)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("快捷键弹出面板")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("弹出的是独立轻量面板，不会打开完整工具箱。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                ShortcutRecorderButton(
+                    shortcut: settings.appLauncherShortcut,
+                    isRecording: isRecordingAppLauncherShortcut,
+                    conflictReason: appLauncherShortcutConflictReason,
+                    startRecording: { isRecordingAppLauncherShortcut = true },
+                    record: { shortcut in
+                        settings.setAppLauncherShortcut(shortcut)
+                        isRecordingAppLauncherShortcut = false
+                    },
+                    cancel: { isRecordingAppLauncherShortcut = false },
+                    clear: {
+                        settings.appLauncherShortcut = nil
+                        isRecordingAppLauncherShortcut = false
+                    }
+                )
+                .frame(width: 142)
+
+                Toggle("", isOn: $settings.appLauncherShortcutEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+
+            if let appLauncherShortcutConflictReason {
+                Label(appLauncherShortcutConflictReason, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var appLauncherPanelEntrySection: some View {
+        HStack(spacing: 18) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(.blue.opacity(0.12))
+                Image(systemName: "square.grid.3x3")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(.blue)
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("程序面板")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("应用分组、拖拽整理和启动都在同一个面板里完成。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                NotificationCenter.default.post(name: .showAppLauncherPanel, object: nil)
+            } label: {
+                Label("打开面板", systemImage: "rectangle.on.rectangle")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(20)
+        .toolboxCard()
     }
 
     private var diskOverview: some View {
@@ -957,11 +1106,25 @@ struct ToolboxView: View {
         )
     }
 
-    private func isShortcutConflicting(_ rule: InputMethodShortcutRule) -> Bool {
-        guard let shortcut = rule.shortcut else { return false }
-        return settings.inputMethodShortcutRules.contains { otherRule in
-            otherRule.id != rule.id && otherRule.shortcut == shortcut
+    private func inputMethodShortcutConflictReason(for rule: InputMethodShortcutRule) -> String? {
+        guard let shortcut = rule.shortcut else { return nil }
+        if let otherRule = settings.inputMethodShortcutRules.first(where: { $0.id != rule.id && $0.shortcut == shortcut }) {
+            let sourceName = inputSources.first { $0.id == otherRule.inputSourceID }?.name ?? "另一个输入法规则"
+            return "已被 \(sourceName) 使用"
         }
+        if settings.appLauncherShortcut == shortcut {
+            return "已被程序面板快捷键使用"
+        }
+        return nil
+    }
+
+    private var appLauncherShortcutConflictReason: String? {
+        guard let shortcut = settings.appLauncherShortcut else { return nil }
+        if let rule = settings.inputMethodShortcutRules.first(where: { $0.shortcut == shortcut }) {
+            let sourceName = inputSources.first { $0.id == rule.inputSourceID }?.name ?? "输入法快捷切换"
+            return "已被 \(sourceName) 使用"
+        }
+        return nil
     }
 
     private func iconName(for kind: AppUninstallArtifactKind) -> String {
@@ -1005,6 +1168,7 @@ private enum ToolboxSection {
     case storage
     case uninstaller
     case inputMethod
+    case appLauncher
 }
 
 private struct ToolboxSidebarItem: View {
@@ -1043,33 +1207,61 @@ private struct ToolboxSidebarItem: View {
 private struct ShortcutRecorderButton: View {
     let shortcut: KeyboardShortcut?
     let isRecording: Bool
-    let hasConflict: Bool
+    let conflictReason: String?
     let startRecording: () -> Void
     let record: (KeyboardShortcut) -> Void
     let cancel: () -> Void
+    let clear: () -> Void
 
     var body: some View {
-        Button(action: startRecording) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold).monospaced())
-                .foregroundStyle(hasConflict ? .red : .primary)
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .background(
-            ShortcutCaptureView(
-                isRecording: isRecording,
-                record: record,
-                cancel: cancel
+        HStack(spacing: 4) {
+            Button {
+                if isRecording {
+                    cancel()
+                } else {
+                    startRecording()
+                }
+            } label: {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold).monospaced())
+                    .foregroundStyle(conflictReason == nil ? Color.primary : Color.orange)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .background(
+                ShortcutCaptureView(
+                    isRecording: isRecording,
+                    record: record,
+                    cancel: cancel
+                )
             )
-        )
-        .help(isRecording ? "按下新的组合键，Esc 取消" : "点击录制快捷键")
+            .help(helpText)
+
+            if shortcut != nil {
+                Button {
+                    clear()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("清除快捷键")
+                .disabled(isRecording)
+            }
+        }
     }
 
     private var title: String {
-        if isRecording { return "录制中" }
+        if isRecording { return "取消" }
         if let shortcut { return shortcut.displayText }
         return "录制"
+    }
+
+    private var helpText: String {
+        if isRecording { return "再次点击或按 Esc 取消录制" }
+        if let conflictReason { return conflictReason }
+        return "点击录制快捷键"
     }
 }
 

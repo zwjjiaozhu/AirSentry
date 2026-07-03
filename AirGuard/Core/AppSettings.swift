@@ -70,6 +70,14 @@ final class AppSettings: ObservableObject {
         didSet { saveInputMethodShortcutRules() }
     }
 
+    @Published var appLauncherShortcutEnabled: Bool {
+        didSet { defaults.set(appLauncherShortcutEnabled, forKey: Keys.appLauncherShortcutEnabled) }
+    }
+
+    @Published var appLauncherShortcut: KeyboardShortcut? {
+        didSet { saveAppLauncherShortcut() }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -97,6 +105,8 @@ final class AppSettings: ObservableObject {
         musicNotchEnabled = defaults.object(forKey: Keys.musicNotchEnabled) as? Bool ?? true
         inputMethodShortcutsEnabled = defaults.object(forKey: Keys.inputMethodShortcutsEnabled) as? Bool ?? false
         inputMethodShortcutRules = Self.loadInputMethodShortcutRules(from: defaults)
+        appLauncherShortcutEnabled = defaults.object(forKey: Keys.appLauncherShortcutEnabled) as? Bool ?? false
+        appLauncherShortcut = Self.loadAppLauncherShortcut(from: defaults)
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
     }
@@ -182,6 +192,10 @@ final class AppSettings: ObservableObject {
         inputMethodShortcutRules.removeAll { $0.id == id }
     }
 
+    func setAppLauncherShortcut(_ shortcut: KeyboardShortcut) {
+        appLauncherShortcut = shortcut
+    }
+
     private func normalizeLoadedTemperatureThresholds() {
         fairTemperatureThreshold = min(max(fairTemperatureThreshold, 30), 123)
         seriousTemperatureThreshold = min(max(seriousTemperatureThreshold, fairTemperatureThreshold + 1), 124)
@@ -200,6 +214,20 @@ final class AppSettings: ObservableObject {
             defaults.set(data, forKey: Keys.inputMethodShortcutRules)
         } catch {
             NSLog("AirSentry input method shortcut rules save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveAppLauncherShortcut() {
+        guard let appLauncherShortcut else {
+            defaults.removeObject(forKey: Keys.appLauncherShortcut)
+            return
+        }
+
+        do {
+            let data = try JSONEncoder().encode(appLauncherShortcut)
+            defaults.set(data, forKey: Keys.appLauncherShortcut)
+        } catch {
+            NSLog("AirSentry app launcher shortcut save failed: \(error.localizedDescription)")
         }
     }
 
@@ -225,6 +253,19 @@ final class AppSettings: ObservableObject {
             return [InputMethodShortcutRule()]
         }
     }
+
+    private static func loadAppLauncherShortcut(from defaults: UserDefaults) -> KeyboardShortcut? {
+        guard let data = defaults.data(forKey: Keys.appLauncherShortcut) else {
+            return KeyboardShortcut(keyCode: 49, modifiers: UInt32(optionKey))
+        }
+
+        do {
+            return try JSONDecoder().decode(KeyboardShortcut.self, from: data)
+        } catch {
+            NSLog("AirSentry app launcher shortcut load failed: \(error.localizedDescription)")
+            return KeyboardShortcut(keyCode: 49, modifiers: UInt32(optionKey))
+        }
+    }
 }
 
 private enum Keys {
@@ -244,4 +285,6 @@ private enum Keys {
     static let musicNotchEnabled = "musicNotchEnabled"
     static let inputMethodShortcutsEnabled = "inputMethodShortcutsEnabled"
     static let inputMethodShortcutRules = "inputMethodShortcutRules"
+    static let appLauncherShortcutEnabled = "appLauncherShortcutEnabled"
+    static let appLauncherShortcut = "appLauncherShortcut"
 }

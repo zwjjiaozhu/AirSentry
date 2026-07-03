@@ -50,6 +50,12 @@
 		A00000000000000000000029 /* AppUninstallerInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000131 /* AppUninstallerInfo.swift */; };
 		A0000000000000000000002A /* AppUninstallerReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000132 /* AppUninstallerReader.swift */; };
 		A0000000000000000000002B /* AppUninstallerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000133 /* AppUninstallerStore.swift */; };
+		A0000000000000000000002C /* AppLauncherInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000134 /* AppLauncherInfo.swift */; };
+		A0000000000000000000002D /* AppLauncherReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000135 /* AppLauncherReader.swift */; };
+		A0000000000000000000002E /* AppLauncherStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000136 /* AppLauncherStore.swift */; };
+		A0000000000000000000002F /* AppLauncherPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000137 /* AppLauncherPanelController.swift */; };
+		A00000000000000000000030 /* AppLauncherShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000138 /* AppLauncherShortcutManager.swift */; };
+		A00000000000000000000031 /* AppLauncherPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000139 /* AppLauncherPanelView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -105,6 +111,12 @@
 		A00000000000000000000131 /* AppUninstallerInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerInfo.swift; sourceTree = "<group>"; };
 		A00000000000000000000132 /* AppUninstallerReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerReader.swift; sourceTree = "<group>"; };
 		A00000000000000000000133 /* AppUninstallerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUninstallerStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000134 /* AppLauncherInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherInfo.swift; sourceTree = "<group>"; };
+		A00000000000000000000135 /* AppLauncherReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherReader.swift; sourceTree = "<group>"; };
+		A00000000000000000000136 /* AppLauncherStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000137 /* AppLauncherPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherPanelController.swift; sourceTree = "<group>"; };
+		A00000000000000000000138 /* AppLauncherShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherShortcutManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000139 /* AppLauncherPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncherPanelView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -178,6 +190,7 @@
 				A00000000000000000000105 /* AboutView.swift */,
 				A00000000000000000000123 /* NotchStatusView.swift */,
 				A0000000000000000000012D /* ToolboxView.swift */,
+				A00000000000000000000139 /* AppLauncherPanelView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -197,6 +210,9 @@
 				A00000000000000000000128 /* MediaRemoteAdapterClient.swift */,
 				A0000000000000000000012C /* StorageAnalyzerStore.swift */,
 				A00000000000000000000133 /* AppUninstallerStore.swift */,
+				A00000000000000000000136 /* AppLauncherStore.swift */,
+				A00000000000000000000137 /* AppLauncherPanelController.swift */,
+				A00000000000000000000138 /* AppLauncherShortcutManager.swift */,
 				A0000000000000000000012E /* InputMethodShortcut.swift */,
 				A0000000000000000000012F /* InputMethodSwitcher.swift */,
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
@@ -213,6 +229,7 @@
 				A0000000000000000000010D /* NetworkReader.swift */,
 				A0000000000000000000012B /* StorageReader.swift */,
 				A00000000000000000000132 /* AppUninstallerReader.swift */,
+				A00000000000000000000135 /* AppLauncherReader.swift */,
 				A00000000000000000000115 /* HIDTemperatureReader.m */,
 				A00000000000000000000116 /* HIDTemperatureReader.h */,
 				A00000000000000000000124 /* ASMediaRemoteBridge.m */,
@@ -232,6 +249,7 @@
 				A00000000000000000000126 /* NowPlayingTrack.swift */,
 				A0000000000000000000012A /* StorageInfo.swift */,
 				A00000000000000000000131 /* AppUninstallerInfo.swift */,
+				A00000000000000000000134 /* AppLauncherInfo.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -390,6 +408,12 @@
 				A00000000000000000000029 /* AppUninstallerInfo.swift in Sources */,
 				A0000000000000000000002A /* AppUninstallerReader.swift in Sources */,
 				A0000000000000000000002B /* AppUninstallerStore.swift in Sources */,
+				A0000000000000000000002C /* AppLauncherInfo.swift in Sources */,
+				A0000000000000000000002D /* AppLauncherReader.swift in Sources */,
+				A0000000000000000000002E /* AppLauncherStore.swift in Sources */,
+				A0000000000000000000002F /* AppLauncherPanelController.swift in Sources */,
+				A00000000000000000000030 /* AppLauncherShortcutManager.swift in Sources */,
+				A00000000000000000000031 /* AppLauncherPanelView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
