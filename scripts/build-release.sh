@@ -20,7 +20,7 @@ Usage: scripts/build-release.sh [options]
 
 Options:
   --team-id ID                   Apple Developer Team ID.
-  --bundle-id ID                 Override PRODUCT_BUNDLE_IDENTIFIER.
+  --bundle-id ID                 Override the host app bundle identifier.
   --identity "CERTIFICATE NAME"  Sign with a specific certificate.
   --unsigned                     Build without a developer signature.
   --clean                        Remove release build intermediates first.
@@ -108,7 +108,7 @@ if [[ -n "$TEAM_ID" ]]; then
     build_settings+=(DEVELOPMENT_TEAM="$TEAM_ID")
 fi
 if [[ -n "$BUNDLE_ID" ]]; then
-    build_settings+=(PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID")
+    build_settings+=(AIR_SENTRY_BUNDLE_ID="$BUNDLE_ID")
 fi
 
 echo "Building Release..."
@@ -131,6 +131,15 @@ elif [[ -n "$SIGN_IDENTITY" ]]; then
     if [[ "$SIGN_IDENTITY" == Developer\ ID\ Application:* ]]; then
         sign_args=(--timestamp "${sign_args[@]}")
     fi
+    while IFS= read -r -d '' framework_path; do
+        codesign --remove-signature "$framework_path" 2>/dev/null || true
+        codesign "${sign_args[@]}" "$framework_path"
+    done < <(find "$APP_PATH/Contents/Frameworks" -name "*.framework" -type d -print0 2>/dev/null)
+    while IFS= read -r -d '' extension_path; do
+        codesign --remove-signature "$extension_path" 2>/dev/null || true
+        codesign "${sign_args[@]}" "$extension_path"
+    done < <(find "$APP_PATH/Contents/PlugIns" -name "*.appex" -type d -print0 2>/dev/null)
+    codesign --remove-signature "$APP_PATH" 2>/dev/null || true
     codesign "${sign_args[@]}" "$APP_PATH"
     touch "$APP_PATH"
     codesign --verify --deep --strict --verbose=2 "$APP_PATH"

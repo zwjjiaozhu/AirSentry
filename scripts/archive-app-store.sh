@@ -94,7 +94,7 @@ xcodebuild \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
     DEVELOPMENT_TEAM="$TEAM_ID" \
-    PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+    AIR_SENTRY_BUNDLE_ID="$BUNDLE_ID" \
     CODE_SIGN_STYLE=Automatic \
     CODE_SIGN_ENTITLEMENTS="$ENTITLEMENTS" \
     ENABLE_APP_SANDBOX=YES \

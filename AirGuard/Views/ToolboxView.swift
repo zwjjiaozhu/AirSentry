@@ -7,10 +7,14 @@ struct ToolboxView: View {
     @EnvironmentObject private var appLauncherStore: AppLauncherStore
     @StateObject private var storageStore = StorageAnalyzerStore()
     @StateObject private var uninstallerStore = AppUninstallerStore()
+    @StateObject private var superRightClickStore = SuperRightClickStore()
     @State private var selectedTool: ToolboxSection = .storage
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
     @State private var isRecordingAppLauncherShortcut = false
+    @State private var selectedSuperRightClickMenuItemID: String = SuperRightClickStore.defaultSelectedMenuItemID
+    @State private var draggedSuperRightClickMenuItemID: String?
+    @State private var draggedSuperRightClickTemplateID: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -84,6 +88,14 @@ struct ToolboxView: View {
                 ) {
                     selectedTool = .appLauncher
                 }
+
+                ToolboxSidebarItem(
+                    title: "超级右键",
+                    systemImage: "filemenu.and.selection",
+                    isSelected: selectedTool == .superRightClick
+                ) {
+                    selectedTool = .superRightClick
+                }
             }
             .padding(.horizontal, 12)
 
@@ -120,6 +132,8 @@ struct ToolboxView: View {
                     inputMethodContent
                 case .appLauncher:
                     appLauncherContent
+                case .superRightClick:
+                    superRightClickContent
                 }
             }
             .padding(26)
@@ -170,6 +184,14 @@ struct ToolboxView: View {
             appLauncherHeader
             appLauncherShortcutSection
             appLauncherPanelEntrySection
+        }
+    }
+
+    private var superRightClickContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            superRightClickHeader
+            superRightClickStatusSection
+            superRightClickTemplatesSection
         }
     }
 
@@ -344,6 +366,27 @@ struct ToolboxView: View {
             }
 
             Spacer()
+        }
+    }
+
+    private var superRightClickHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("超级右键")
+                    .font(.system(size: 24, weight: .bold))
+                Text("配置 Finder 右键菜单里的功能项和子菜单。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                superRightClickStore.resetTemplates()
+            } label: {
+                Label("恢复默认", systemImage: "arrow.counterclockwise")
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -872,6 +915,397 @@ struct ToolboxView: View {
         .toolboxCard()
     }
 
+    private var superRightClickStatusSection: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 18) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.blue.opacity(0.12))
+                    Image(systemName: "filemenu.and.selection")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 54, height: 54)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Finder 右键菜单")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("已启用 \(superRightClickStore.enabledMenuItems.count) 个功能项，其中“新建文件”包含 \(superRightClickStore.enabledTemplates.count) 种格式。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $superRightClickStore.isEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            .padding(20)
+
+            Divider()
+
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.orange)
+                    .frame(width: 24)
+
+                Text("请前往「系统设置 - 通用 - 登录项与扩展 - Finder 扩展」，打开「AirSentry Finder Extension」以启用 Finder 右键菜单。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 10)
+
+                Button {
+                    openSuperRightClickExtensionSettings()
+                } label: {
+                    Text("去设置")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                superRightClickOptionRow(
+                    title: "显示 Finder 右键菜单图标",
+                    systemImage: "menubar.rectangle",
+                    isOn: $superRightClickStore.showsFinderIcon
+                )
+                Divider().padding(.leading, 50)
+                superRightClickOptionRow(
+                    title: "隐藏桌面",
+                    systemImage: "desktopcomputer",
+                    isOn: $superRightClickStore.hidesDesktop
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+        }
+        .toolboxCard()
+    }
+
+    private var superRightClickTemplatesSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("自定义菜单项")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("配置 Finder 右键菜单的一级功能，以及带子菜单的格式选项。")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("菜单项")
+                            .font(.system(size: 13.5, weight: .semibold))
+                    Spacer()
+                    Text("拖拽排序")
+                            .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(superRightClickStore.menuItems.enumerated()), id: \.element.id) { index, menuItem in
+                        superRightClickMenuItemRow(menuItem)
+                            .onDrag {
+                                draggedSuperRightClickMenuItemID = menuItem.id
+                                return NSItemProvider(object: superRightClickMenuItemDragPayload(menuItem.id) as NSString)
+                            }
+                            .onDrop(
+                                of: [.plainText],
+                                delegate: SuperRightClickMenuItemDropDelegate(
+                                    store: superRightClickStore,
+                                    targetMenuItemID: menuItem.id,
+                                    draggedMenuItemID: $draggedSuperRightClickMenuItemID
+                                )
+                            )
+
+                        if index < superRightClickStore.menuItems.count - 1 {
+                            Divider().padding(.leading, 54)
+                        }
+                    }
+                }
+            }
+                .frame(width: 360)
+
+                Divider()
+                    .frame(maxHeight: .infinity)
+
+                VStack(alignment: .leading, spacing: 0) {
+            superRightClickDetailSection
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .clipped()
+            }
+        }
+        .toolboxCard()
+    }
+
+    private func superRightClickOptionRow(
+        title: String,
+        systemImage: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+            Text(title)
+                .font(.system(size: 13.5, weight: .medium))
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .frame(height: 44)
+    }
+
+    @ViewBuilder
+    private var superRightClickDetailSection: some View {
+        if selectedSuperRightClickMenuItemID == SuperRightClickStore.newFileMenuItemID {
+            superRightClickNewFileDetailSection
+        } else if let menuItem = superRightClickStore.menuItem(withID: selectedSuperRightClickMenuItemID) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("功能详情")
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(superRightClickColor(for: menuItem.accent).opacity(0.12))
+                        Image(systemName: menuItem.systemImage)
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(superRightClickColor(for: menuItem.accent))
+                    }
+                    .frame(width: 46, height: 46)
+
+                    Text(menuItem.title)
+                        .font(.system(size: 16, weight: .semibold))
+                    Text(menuItem.detail)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Toggle("启用此菜单项", isOn: superRightClickMenuItemEnabledBinding(for: menuItem))
+                        .font(.system(size: 13.5, weight: .medium))
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            Text("请选择一个菜单项")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 180)
+        }
+    }
+
+    private var superRightClickNewFileDetailSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("新建文件")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Spacer()
+                Text("格式排序")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                ForEach(Array(superRightClickStore.templates.enumerated()), id: \.element.id) { index, template in
+                    superRightClickTemplateRow(template)
+                        .onDrag {
+                            draggedSuperRightClickTemplateID = template.id
+                            return NSItemProvider(object: superRightClickTemplateDragPayload(template.id) as NSString)
+                        }
+                        .onDrop(
+                            of: [.plainText],
+                            delegate: SuperRightClickTemplateDropDelegate(
+                                store: superRightClickStore,
+                                targetTemplateID: template.id,
+                                draggedTemplateID: $draggedSuperRightClickTemplateID
+                            )
+                        )
+
+                    if index < superRightClickStore.templates.count - 1 {
+                        Divider().padding(.leading, 44)
+                    }
+                }
+            }
+
+            Divider()
+                .padding(.top, 2)
+
+            superRightClickPreviewSection
+        }
+    }
+
+    private var superRightClickPreviewSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("右键预览")
+                .font(.system(size: 13.5, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(superRightClickStore.enabledMenuItems) { menuItem in
+                    HStack(spacing: 9) {
+                        Image(systemName: menuItem.systemImage)
+                            .foregroundStyle(superRightClickColor(for: menuItem.accent))
+                            .frame(width: 18)
+                        Text(menuItem.title)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if menuItem.hasChildren {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+
+                if superRightClickStore.enabledMenuItems.isEmpty {
+                    Text("未启用任何菜单项")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 74)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func superRightClickMenuItemRow(_ menuItem: SuperRightClickMenuItem) -> some View {
+        Button {
+            selectedSuperRightClickMenuItemID = menuItem.id
+        } label: {
+            HStack(spacing: 12) {
+                Toggle("", isOn: superRightClickMenuItemEnabledBinding(for: menuItem))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+
+                Image(systemName: menuItem.systemImage)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(superRightClickColor(for: menuItem.accent))
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(menuItem.title)
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(menuItem.subtitle)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: menuItem.hasChildren ? "chevron.right" : "line.3.horizontal")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 54)
+            .background(
+                Group {
+                    if selectedSuperRightClickMenuItemID == menuItem.id {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.blue.opacity(0.09))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                    } else if draggedSuperRightClickMenuItemID == menuItem.id {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.blue.opacity(0.06))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                    }
+                }
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func superRightClickTemplateRow(_ template: SuperRightClickTemplate) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.tertiary)
+                .frame(width: 16)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(superRightClickColor(for: template.accent).opacity(0.12))
+                Image(systemName: template.systemImage)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(superRightClickColor(for: template.accent))
+            }
+            .frame(width: 34, height: 34)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(template.name)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .lineLimit(1)
+                Text(template.fileExtension.uppercased())
+                    .font(.system(size: 11.5).monospaced())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            Toggle("", isOn: superRightClickTemplateEnabledBinding(for: template))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 52)
+        .background(
+            Group {
+                if draggedSuperRightClickTemplateID == template.id {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.blue.opacity(0.07))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 5)
+                }
+            }
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     private var diskOverview: some View {
         HStack(spacing: 22) {
             ZStack {
@@ -1119,6 +1553,60 @@ struct ToolboxView: View {
         return nil
     }
 
+    private func superRightClickMenuItemEnabledBinding(for menuItem: SuperRightClickMenuItem) -> Binding<Bool> {
+        Binding(
+            get: { menuItem.isEnabled },
+            set: { isEnabled in
+                superRightClickStore.setMenuItem(menuItem.id, isEnabled: isEnabled)
+            }
+        )
+    }
+
+    private func superRightClickTemplateEnabledBinding(for template: SuperRightClickTemplate) -> Binding<Bool> {
+        Binding(
+            get: { template.isEnabled },
+            set: { isEnabled in
+                superRightClickStore.setTemplate(template.id, isEnabled: isEnabled)
+            }
+        )
+    }
+
+    private func superRightClickColor(for accent: SuperRightClickTemplate.Accent) -> Color {
+        switch accent {
+        case .blue:
+            return .blue
+        case .green:
+            return .green
+        case .orange:
+            return .orange
+        case .purple:
+            return .purple
+        case .red:
+            return .red
+        case .teal:
+            return .teal
+        case .gray:
+            return .secondary
+        }
+    }
+
+    private func openSuperRightClickExtensionSettings() {
+        let preferenceURLs = [
+            "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
+            "x-apple.systempreferences:com.apple.ExtensionsPreferences"
+        ]
+
+        for preferenceURL in preferenceURLs {
+            guard let url = URL(string: preferenceURL) else { continue }
+            if NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+
+        let settingsURL = URL(fileURLWithPath: "/System/Applications/System Settings.app")
+        NSWorkspace.shared.open(settingsURL)
+    }
+
     private func iconName(for kind: AppUninstallArtifactKind) -> String {
         switch kind {
         case .application:
@@ -1161,6 +1649,354 @@ private enum ToolboxSection {
     case uninstaller
     case inputMethod
     case appLauncher
+    case superRightClick
+}
+
+private struct SuperRightClickMenuItem: Identifiable, Codable, Equatable, Hashable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let detail: String
+    let systemImage: String
+    let accent: SuperRightClickTemplate.Accent
+    let hasChildren: Bool
+    var isEnabled: Bool
+}
+
+private struct SuperRightClickTemplate: Identifiable, Codable, Equatable, Hashable {
+    enum Accent: String, Codable {
+        case blue
+        case green
+        case orange
+        case purple
+        case red
+        case teal
+        case gray
+    }
+
+    let id: String
+    let name: String
+    let fileExtension: String
+    let systemImage: String
+    let accent: Accent
+    var isEnabled: Bool
+
+    var menuTitle: String {
+        "\(name) 文件"
+    }
+}
+
+@MainActor
+private final class SuperRightClickStore: ObservableObject {
+    static let newFileMenuItemID = "newFile"
+    static let defaultSelectedMenuItemID = newFileMenuItemID
+
+    @Published var isEnabled: Bool {
+        didSet { defaults.set(isEnabled, forKey: Keys.isEnabled) }
+    }
+
+    @Published var showsFinderIcon: Bool {
+        didSet { defaults.set(showsFinderIcon, forKey: Keys.showsFinderIcon) }
+    }
+
+    @Published var hidesDesktop: Bool {
+        didSet { defaults.set(hidesDesktop, forKey: Keys.hidesDesktop) }
+    }
+
+    @Published var menuItems: [SuperRightClickMenuItem] {
+        didSet { saveMenuItems() }
+    }
+
+    @Published var templates: [SuperRightClickTemplate] {
+        didSet { saveTemplates() }
+    }
+
+    var enabledMenuItems: [SuperRightClickMenuItem] {
+        menuItems.filter(\.isEnabled)
+    }
+
+    var enabledTemplates: [SuperRightClickTemplate] {
+        templates.filter(\.isEnabled)
+    }
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        isEnabled = defaults.object(forKey: Keys.isEnabled) as? Bool ?? true
+        showsFinderIcon = defaults.object(forKey: Keys.showsFinderIcon) as? Bool ?? true
+        hidesDesktop = defaults.object(forKey: Keys.hidesDesktop) as? Bool ?? false
+        menuItems = Self.loadMenuItems(from: defaults)
+        templates = Self.loadTemplates(from: defaults)
+    }
+
+    func menuItem(withID menuItemID: String) -> SuperRightClickMenuItem? {
+        menuItems.first { $0.id == menuItemID }
+    }
+
+    func setMenuItem(_ menuItemID: String, isEnabled: Bool) {
+        guard let index = menuItems.firstIndex(where: { $0.id == menuItemID }) else { return }
+        menuItems[index].isEnabled = isEnabled
+    }
+
+    func setTemplate(_ templateID: String, isEnabled: Bool) {
+        guard let index = templates.firstIndex(where: { $0.id == templateID }) else { return }
+        templates[index].isEnabled = isEnabled
+    }
+
+    func moveMenuItem(id: String, near targetID: String) {
+        guard id != targetID,
+              let sourceIndex = menuItems.firstIndex(where: { $0.id == id }),
+              let targetIndex = menuItems.firstIndex(where: { $0.id == targetID }) else { return }
+
+        let menuItem = menuItems.remove(at: sourceIndex)
+        menuItems.insert(menuItem, at: targetIndex)
+    }
+
+    func moveTemplate(id: String, near targetID: String) {
+        guard id != targetID,
+              let sourceIndex = templates.firstIndex(where: { $0.id == id }),
+              let targetIndex = templates.firstIndex(where: { $0.id == targetID }) else { return }
+
+        let template = templates.remove(at: sourceIndex)
+        templates.insert(template, at: targetIndex)
+    }
+
+    func resetTemplates() {
+        menuItems = Self.defaultMenuItems
+        templates = Self.defaultTemplates
+    }
+
+    private func saveMenuItems() {
+        do {
+            let data = try JSONEncoder().encode(menuItems)
+            defaults.set(data, forKey: Keys.menuItems)
+        } catch {
+            NSLog("AirSentry super right click menu items save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveTemplates() {
+        do {
+            let data = try JSONEncoder().encode(templates)
+            defaults.set(data, forKey: Keys.templates)
+        } catch {
+            NSLog("AirSentry super right click templates save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private static func loadMenuItems(from defaults: UserDefaults) -> [SuperRightClickMenuItem] {
+        guard let data = defaults.data(forKey: Keys.menuItems),
+              let decoded = try? JSONDecoder().decode([SuperRightClickMenuItem].self, from: data),
+              !decoded.isEmpty else {
+            return defaultMenuItems
+        }
+
+        return mergedMenuItems(decoded)
+    }
+
+    private static func loadTemplates(from defaults: UserDefaults) -> [SuperRightClickTemplate] {
+        guard let data = defaults.data(forKey: Keys.templates),
+              let decoded = try? JSONDecoder().decode([SuperRightClickTemplate].self, from: data),
+              !decoded.isEmpty else {
+            return defaultTemplates
+        }
+
+        return mergedTemplates(decoded)
+    }
+
+    private static func mergedMenuItems(_ decoded: [SuperRightClickMenuItem]) -> [SuperRightClickMenuItem] {
+        let knownItems = Dictionary(uniqueKeysWithValues: defaultMenuItems.map { ($0.id, $0) })
+        let decodedIDs = Set(decoded.map(\.id))
+        let preserved = decoded.compactMap { savedItem -> SuperRightClickMenuItem? in
+            guard var currentItem = knownItems[savedItem.id] else { return nil }
+            currentItem.isEnabled = savedItem.isEnabled
+            return currentItem
+        }
+        let missing = defaultMenuItems.filter { !decodedIDs.contains($0.id) }
+        return preserved + missing
+    }
+
+    private static func mergedTemplates(_ decoded: [SuperRightClickTemplate]) -> [SuperRightClickTemplate] {
+        let knownTemplates = Dictionary(uniqueKeysWithValues: defaultTemplates.map { ($0.id, $0) })
+        let decodedIDs = Set(decoded.map(\.id))
+        let preserved = decoded.map { savedTemplate in
+            guard let currentTemplate = knownTemplates[savedTemplate.id] else { return savedTemplate }
+            var mergedTemplate = currentTemplate
+            mergedTemplate.isEnabled = savedTemplate.isEnabled
+            return mergedTemplate
+        }
+        let missing = defaultTemplates.filter { !decodedIDs.contains($0.id) }
+        return preserved + missing
+    }
+
+    private static let defaultMenuItems: [SuperRightClickMenuItem] = [
+        SuperRightClickMenuItem(id: newFileMenuItemID, title: "新建文件", subtitle: "Excel、PPT、Word 等格式", detail: "在 Finder 右键菜单中展开常用文件模板，格式顺序可单独拖拽调整。", systemImage: "doc.badge.plus", accent: .blue, hasChildren: true, isEnabled: true),
+        SuperRightClickMenuItem(id: "openWith", title: "其他应用打开", subtitle: "快速选择指定应用", detail: "为文件或目录提供快捷打开方式，后续可在这里维护应用列表。", systemImage: "app.badge", accent: .purple, hasChildren: true, isEnabled: true),
+        SuperRightClickMenuItem(id: "favoriteFolders", title: "常用目录", subtitle: "复制或跳转常用路径", detail: "把高频目录放进右键菜单，便于快速复制路径或在 Finder 中打开。", systemImage: "folder.badge.gearshape", accent: .orange, hasChildren: true, isEnabled: true),
+        SuperRightClickMenuItem(id: "shareLan", title: "共享到局域网", subtitle: "临时分享所选项目", detail: "面向局域网文件分享的入口，适合后续接入临时 HTTP 分享或局域网发现。", systemImage: "point.3.connected.trianglepath.dotted", accent: .green, hasChildren: false, isEnabled: true),
+        SuperRightClickMenuItem(id: "airdrop", title: "隔空投送", subtitle: "调用系统 AirDrop", detail: "把系统隔空投送动作放到统一菜单中，减少在 Finder 分享菜单里的查找成本。", systemImage: "antenna.radiowaves.left.and.right", accent: .teal, hasChildren: false, isEnabled: true),
+        SuperRightClickMenuItem(id: "copyPath", title: "拷贝路径", subtitle: "复制完整文件路径", detail: "复制所选文件或目录的完整路径，方便在终端、编辑器和脚本中使用。", systemImage: "doc.on.clipboard", accent: .gray, hasChildren: false, isEnabled: true),
+        SuperRightClickMenuItem(id: "copyName", title: "拷贝名称", subtitle: "复制文件名", detail: "仅复制所选项目名称，不包含父级目录路径。", systemImage: "textformat.abc", accent: .gray, hasChildren: false, isEnabled: true),
+        SuperRightClickMenuItem(id: "showHidden", title: "显示隐藏", subtitle: "切换隐藏文件可见性", detail: "一键切换 Finder 中隐藏文件的显示状态。", systemImage: "eye", accent: .orange, hasChildren: false, isEnabled: false),
+        SuperRightClickMenuItem(id: "hideDesktop", title: "隐藏桌面", subtitle: "切换桌面图标显示", detail: "在演示、录屏或专注时快速隐藏桌面图标。", systemImage: "desktopcomputer", accent: .blue, hasChildren: false, isEnabled: true)
+    ]
+
+    private static let defaultTemplates: [SuperRightClickTemplate] = [
+        SuperRightClickTemplate(id: "xlsx", name: "Excel 表格", fileExtension: "xlsx", systemImage: "tablecells", accent: .green, isEnabled: true),
+        SuperRightClickTemplate(id: "pptx", name: "PowerPoint 演示", fileExtension: "pptx", systemImage: "play.rectangle", accent: .orange, isEnabled: true),
+        SuperRightClickTemplate(id: "docx", name: "Word 文档", fileExtension: "docx", systemImage: "doc.richtext", accent: .blue, isEnabled: true),
+        SuperRightClickTemplate(id: "txt", name: "纯文本", fileExtension: "txt", systemImage: "doc.plaintext", accent: .gray, isEnabled: true),
+        SuperRightClickTemplate(id: "md", name: "Markdown", fileExtension: "md", systemImage: "number.square", accent: .purple, isEnabled: true),
+        SuperRightClickTemplate(id: "csv", name: "CSV 表格", fileExtension: "csv", systemImage: "list.bullet.rectangle", accent: .teal, isEnabled: true),
+        SuperRightClickTemplate(id: "json", name: "JSON 配置", fileExtension: "json", systemImage: "curlybraces.square", accent: .red, isEnabled: false),
+        SuperRightClickTemplate(id: "rtf", name: "富文本", fileExtension: "rtf", systemImage: "textformat", accent: .blue, isEnabled: false),
+        SuperRightClickTemplate(id: "html", name: "HTML 页面", fileExtension: "html", systemImage: "chevron.left.forwardslash.chevron.right", accent: .orange, isEnabled: false)
+    ]
+
+    private enum Keys {
+        static let isEnabled = "superRightClickEnabled"
+        static let showsFinderIcon = "superRightClickShowsFinderIcon"
+        static let hidesDesktop = "superRightClickHidesDesktop"
+        static let menuItems = "superRightClickMenuItems"
+        static let templates = "superRightClickTemplates"
+    }
+}
+
+private func superRightClickMenuItemDragPayload(_ menuItemID: String) -> String {
+    "airsentry-super-right-click:menu-item:\(menuItemID)"
+}
+
+private func parseSuperRightClickMenuItemDragPayload(_ payload: String) -> String? {
+    let parts = payload.split(separator: ":", maxSplits: 2).map(String.init)
+    guard parts.count == 3,
+          parts[0] == "airsentry-super-right-click",
+          parts[1] == "menu-item" else {
+        return nil
+    }
+
+    return parts[2]
+}
+
+private func superRightClickTemplateDragPayload(_ templateID: String) -> String {
+    "airsentry-super-right-click:template:\(templateID)"
+}
+
+private func parseSuperRightClickTemplateDragPayload(_ payload: String) -> String? {
+    let parts = payload.split(separator: ":", maxSplits: 2).map(String.init)
+    guard parts.count == 3,
+          parts[0] == "airsentry-super-right-click",
+          parts[1] == "template" else {
+        return nil
+    }
+
+    return parts[2]
+}
+
+private func loadSuperRightClickMenuItemDragPayload(from providers: [NSItemProvider], completion: @escaping (String) -> Void) {
+    loadSuperRightClickDragPayload(from: providers, completion: completion)
+}
+
+private func loadSuperRightClickTemplateDragPayload(from providers: [NSItemProvider], completion: @escaping (String) -> Void) {
+    loadSuperRightClickDragPayload(from: providers, completion: completion)
+}
+
+private func loadSuperRightClickDragPayload(from providers: [NSItemProvider], completion: @escaping (String) -> Void) {
+    for provider in providers where provider.canLoadObject(ofClass: NSString.self) {
+        _ = provider.loadObject(ofClass: NSString.self) { item, _ in
+            guard let value = (item as? String) ?? (item as? NSString).map(String.init) else { return }
+            Task { @MainActor in
+                completion(value)
+            }
+        }
+        return
+    }
+}
+
+private struct SuperRightClickMenuItemDropDelegate: DropDelegate {
+    let store: SuperRightClickStore
+    let targetMenuItemID: String
+    @Binding var draggedMenuItemID: String?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.plainText])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedMenuItemID,
+              draggedMenuItemID != targetMenuItemID else { return }
+
+        store.moveMenuItem(id: draggedMenuItemID, near: targetMenuItemID)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if draggedMenuItemID != nil {
+            draggedMenuItemID = nil
+            return true
+        }
+
+        loadSuperRightClickMenuItemDragPayload(from: info.itemProviders(for: [.plainText])) { payload in
+            guard let menuItemID = parseSuperRightClickMenuItemDragPayload(payload) else { return }
+            Task { @MainActor in
+                store.moveMenuItem(id: menuItemID, near: targetMenuItemID)
+            }
+        }
+
+        return true
+    }
+
+    func dropExited(info: DropInfo) {
+        if draggedMenuItemID == targetMenuItemID {
+            draggedMenuItemID = nil
+        }
+    }
+}
+
+private struct SuperRightClickTemplateDropDelegate: DropDelegate {
+    let store: SuperRightClickStore
+    let targetTemplateID: String
+    @Binding var draggedTemplateID: String?
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.plainText])
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedTemplateID,
+              draggedTemplateID != targetTemplateID else { return }
+
+        store.moveTemplate(id: draggedTemplateID, near: targetTemplateID)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if draggedTemplateID != nil {
+            draggedTemplateID = nil
+            return true
+        }
+
+        loadSuperRightClickTemplateDragPayload(from: info.itemProviders(for: [.plainText])) { payload in
+            guard let templateID = parseSuperRightClickTemplateDragPayload(payload) else { return }
+            Task { @MainActor in
+                store.moveTemplate(id: templateID, near: targetTemplateID)
+            }
+        }
+
+        return true
+    }
+
+    func dropExited(info: DropInfo) {
+        if draggedTemplateID == targetTemplateID {
+            draggedTemplateID = nil
+        }
+    }
 }
 
 private struct ToolboxSidebarItem: View {
