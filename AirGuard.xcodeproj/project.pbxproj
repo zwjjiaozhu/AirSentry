@@ -653,7 +653,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1.2;
 				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
@@ -681,7 +681,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1.2;
 				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
@@ -709,7 +709,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.1;
+				MARKETING_VERSION = 1.1.2;
 				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
@@ -739,7 +739,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.1;
+				MARKETING_VERSION = 1.1.2;
 				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
