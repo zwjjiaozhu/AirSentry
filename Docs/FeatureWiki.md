@@ -426,7 +426,103 @@ AirSentryFinderExtension target:  $(AIR_SENTRY_BUNDLE_ID).finderextension
 
    然后按顺序签名 framework、`.appex`、宿主 App。
 
+5. Finder 扩展回退唤起宿主 App 时不能指定 App 路径。
+
+   曾在右键“新建文件”时看到扩展已启动，但系统日志出现：
+
+   ```text
+   kTCCServiceAppleEvents requires entitlement com.apple.security.automation.apple-events
+   ```
+
+   根因是 Finder 扩展使用 `NSWorkspace.open(..., withApplicationAt: ...)` 指定宿主 App 打开 `airsentry://finder/new-file` URL。hardened runtime 会把这种调用视为 AppleEvents 自动化访问，而 Finder 扩展没有、也不应该为了这个路径申请 `com.apple.security.automation.apple-events`。
+
+   当前兜底做法是只调用：
+
+   ```text
+   NSWorkspace.shared.open(url)
+   ```
+
+   让 LaunchServices 根据 URL scheme 把请求交给宿主 App 的 URL handler。这样右键扩展不再触发 AppleEvents TCC 拦截。
+
+6. 右键“新建文件”真正写入由宿主 App 完成。
+
+   Finder 扩展处于 sandbox 内，直接写入目标目录可能失败。当前扩展会把新建文件请求转发给宿主 App，宿主 App 再通过 `FinderNewFileAuthorizationStore` 检查用户授权过的 security-scoped bookmark。
+
+   如果目标目录未授权或授权后仍写入失败，宿主 App 会弹出提示，并提供“打开授权设置”按钮，引导用户进入“工具箱 > 超级右键 > 文件夹授权”添加目标目录或上级目录。
+
+7. Finder 菜单生成阶段和点击阶段不能只依赖扩展实例状态。
+
+   曾出现菜单生成日志已经识别到目标目录，例如 `/Users/zwj/Downloads`，但点击“新建文件”后只蜂鸣，日志显示：
+
+   ```text
+   AirSentry Finder extension could not resolve target directory
+   ```
+
+   后续细化日志又看到菜单生成时每个子项都成功绑定了 `representedObject`，但点击时 Finder/AppKit 传回来的 `sender.representedObject` 可能变成 `nil`：
+
+   ```text
+   AirSentry Finder extension could not read new file menu request object: nil
+   ```
+
+   因此 FinderSync 右键菜单不能只依赖 `representedObject` 保存上下文。当前修复是：模板优先从 `representedObject` 读取，取不到时用菜单标题反查；目录优先用点击时的 Finder 状态，取不到时回退到菜单生成阶段保存的目标目录。同时 `.app` 等 package 虽然底层是目录，但右键时按文件处理，目标目录应为其父目录，避免尝试写入 App 包内部。
+
+### Menuist / RightMenu Master 参考结论
+
+`jaywcjlove/rightmenu-master` 仓库不是源码仓库，README 明确说明它只是官网和反馈页，因此不能直接参考内部实现代码。公开文档里能确认的产品策略如下：
+
+- 它也是 Finder 右键菜单增强工具，核心能力包括创建新文件。
+- 创建文件依赖“文件夹授权”，并建议在设置里的 `Folder Authorization` 添加目录。
+- 文档明确说明 `Full Disk Access` 不能解决 Finder 扩展写文件权限问题，仍需要用户手动选择目录并授予权限。
+- 为减少频繁授权，文档建议按需添加根目录。
+
+### RClick 参考结论
+
+`wflixu/RClick` 是 GPL-3.0 开源项目，README 描述的架构是双进程：
+
+- 主 App 管理设置、状态和文件操作。
+- FinderSync Extension 只负责渲染菜单项。
+- 两个进程通过 `DistributedNotificationCenter` 通信。
+- 菜单配置通过共享容器持久化。
+
+RClick 的“新建文件”路径是瘦扩展模式：扩展拿到菜单项点击和 Finder 当前选中项后，发一个 `.newFile` 点击事件给主 App；主 App 收到事件后再根据文件类型、目标目录和模板创建文件。这样可以避免 Finder 扩展自己承担复杂文件写入、模板处理和权限判断。
+
+AirSentry 已按这个思路调整：Finder 扩展不再直接写文件，而是优先通过 `DistributedNotificationCenter` 发送 `AirSentry.Finder.NewFileRequest` 给宿主 App。宿主 App 收到后仍走 `FinderNewFileService`，也就是只在用户授权过的目录下创建文件。如果宿主 App 未运行，扩展再通过 `airsentry://finder/new-file` URL scheme 唤起宿主 App 作为兜底。
+
 ### 验证步骤
+
+日常本地验证优先使用脚本构建、安装并刷新 Finder 扩展：
+
+```text
+./build.sh --install
+```
+
+如果只想刷新当前已安装的 Finder 扩展，不重新构建：
+
+```text
+./build.sh --reload-finder-extension
+```
+
+如果需要清理 FinderSync 扩展注册残留，使用独立注销脚本：
+
+```text
+scripts/unregister-finder-extension.sh
+```
+
+只查看会执行哪些注销动作，不实际修改系统注册：
+
+```text
+scripts/unregister-finder-extension.sh --dry-run --no-restart-finder
+```
+
+这个脚本会注销 `/Applications/AirSentry.app` 内嵌的 `.appex`，并扫描 `pluginkit -m -v -p com.apple.FinderSync` 里同 bundle id 的残留路径，例如 Xcode `DerivedData` 里的 Debug 扩展注册。
+
+脚本会执行以下动作：
+
+- 重新构建 Release 产物。
+- 将 App 复制到 `/Applications/AirSentry.app`。
+- 注销旧的 Finder 扩展注册。
+- 重新注册并启用新的 Finder 扩展。
+- 重启 Finder 让右键菜单重新加载。
 
 构建并安装后，可以用以下命令检查系统是否收录 Finder 扩展：
 
@@ -440,13 +536,13 @@ AirSentryFinderExtension target:  $(AIR_SENTRY_BUNDLE_ID).finderextension
 +    com.sjzm.airsentry.finderextension(1.1.0)    ...    /Applications/AirSentry.app/Contents/PlugIns/AirSentryFinderExtension.appex
 ```
 
-启用扩展：
+如需手工排查，也可以单独启用扩展：
 
 ```text
 /usr/bin/pluginkit -e use -i com.sjzm.airsentry.finderextension
 ```
 
-重启 Finder 让右键菜单重新加载：
+手工重启 Finder 让右键菜单重新加载：
 
 ```text
 killall Finder
@@ -459,6 +555,19 @@ killall Finder
 ```
 
 如果日志里出现 `AirSentryFinderExtension` launched，说明系统注册、启用、加载链路已经打通。
+
+右键“新建文件”蜂鸣时，优先看更窄的链路日志：
+
+```text
+/usr/bin/log show --info --style compact --last 5m --predicate "subsystem == 'com.sjzm.airsentry.finderextension' OR eventMessage CONTAINS 'AirSentry Finder extension' OR eventMessage CONTAINS 'AirSentry handling Finder new file request' OR eventMessage CONTAINS 'AirSentry Finder new file' OR eventMessage CONTAINS 'AirSentry failed to create Finder file' OR eventMessage CONTAINS 'AirSentry received malformed Finder new file notification'"
+```
+
+典型判断：
+
+- 只有 `requested menu` / `menu target directory`，没有 `create requested`：点击 action 没拿到目标目录或菜单项状态。
+- 有 `create requested`，没有 `AirSentry handling Finder new file request`：扩展到宿主 App 的通信失败。
+- 有 `target is not authorized`：目标目录没有在工具箱里授权，主 App 应弹窗引导打开“超级右键 > 文件夹授权”。
+- 有 `authorization matched` 但仍失败：检查目标路径是否可写、文件名是否非法或目标卷是否只读，主 App 应提示重新授权或检查目录写权限。
 
 ### 后续待办
 

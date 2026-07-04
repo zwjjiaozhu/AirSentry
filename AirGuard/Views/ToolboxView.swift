@@ -8,6 +8,7 @@ struct ToolboxView: View {
     @StateObject private var storageStore = StorageAnalyzerStore()
     @StateObject private var uninstallerStore = AppUninstallerStore()
     @StateObject private var superRightClickStore = SuperRightClickStore()
+    @StateObject private var finderAuthorizationStore = FinderNewFileAuthorizationStore()
     @State private var selectedTool: ToolboxSection = .storage
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
@@ -37,6 +38,9 @@ struct ToolboxView: View {
             } else if tool == .appLauncher {
                 appLauncherStore.refreshApplications()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AirSentry.SelectSuperRightClickToolboxSection"))) { _ in
+            selectedTool = .superRightClick
         }
     }
 
@@ -191,6 +195,7 @@ struct ToolboxView: View {
         VStack(alignment: .leading, spacing: 18) {
             superRightClickHeader
             superRightClickStatusSection
+            superRightClickFolderAuthorizationSection
             superRightClickTemplatesSection
         }
     }
@@ -1077,6 +1082,100 @@ struct ToolboxView: View {
                 .controlSize(.small)
         }
         .frame(height: 44)
+    }
+
+    private var superRightClickFolderAuthorizationSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.orange.opacity(0.12))
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 21, weight: .medium))
+                        .foregroundStyle(.orange)
+                }
+                .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("文件夹授权")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("新建文件需要先授权目标目录。建议添加桌面、下载、文稿，或按需添加根目录。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Button {
+                        finderAuthorizationStore.addFolder(startingAt: URL(fileURLWithPath: "/"))
+                    } label: {
+                        Label("授权根目录", systemImage: "externaldrive.badge.plus")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        finderAuthorizationStore.addFolder()
+                    } label: {
+                        Label("添加文件夹", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(16)
+
+            if finderAuthorizationStore.folders.isEmpty {
+                Divider()
+                HStack(spacing: 10) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                    Text("未授权任何文件夹时，Finder 右键里的“新建文件”不会写入文件。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            } else {
+                Divider()
+                VStack(spacing: 0) {
+                    ForEach(finderAuthorizationStore.folders) { folder in
+                        HStack(spacing: 10) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.orange)
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(folder.displayName)
+                                    .font(.system(size: 13.5, weight: .medium))
+                                Text(folder.path)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                            Button {
+                                finderAuthorizationStore.removeFolder(folder)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.red)
+                            .help("移除授权")
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+
+                        if folder.id != finderAuthorizationStore.folders.last?.id {
+                            Divider().padding(.leading, 48)
+                        }
+                    }
+                }
+            }
+        }
+        .toolboxCard()
     }
 
     @ViewBuilder
