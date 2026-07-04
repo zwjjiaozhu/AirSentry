@@ -32,7 +32,7 @@ final class NowPlayingStore: ObservableObject {
         )
         if !adapterAvailable && bridgeAvailable {
             refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                self?.bridge.refresh()
+                Task { @MainActor in self?.bridge.refresh() }
             }
         }
 #endif

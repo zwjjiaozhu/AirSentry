@@ -63,53 +63,53 @@ struct ToolboxView: View {
             .padding(.bottom, 26)
 
             VStack(spacing: 7) {
-                ToolboxSidebarItem(
-                    title: "AI 存储分析",
-                    systemImage: "internaldrive",
-                    isSelected: selectedTool == .storage
-                ) {
-                    selectedTool = .storage
-                }
+              ToolboxSidebarItem(
+                title: "程序收纳台",
+                systemImage: "square.grid.3x3",
+                isSelected: selectedTool == .appLauncher
+              ) {
+                selectedTool = .appLauncher
+              }
 
-                ToolboxSidebarItem(
-                    title: "软件卸载助手",
-                    systemImage: "trash",
-                    isSelected: selectedTool == .uninstaller
-                ) {
-                    selectedTool = .uninstaller
-                }
+              ToolboxSidebarItem(
+                title: "截图钉图",
+                systemImage: "pin.square",
+                isSelected: selectedTool == .screenshot
+              ) {
+                selectedTool = .screenshot
+              }
 
-                ToolboxSidebarItem(
-                    title: "输入法快捷切换",
-                    systemImage: "keyboard",
-                    isSelected: selectedTool == .inputMethod
-                ) {
-                    selectedTool = .inputMethod
-                }
+              ToolboxSidebarItem(
+                title: "超级右键",
+                systemImage: "filemenu.and.selection",
+                isSelected: selectedTool == .superRightClick
+              ) {
+                selectedTool = .superRightClick
+              }
 
-                ToolboxSidebarItem(
-                    title: "程序收纳台",
-                    systemImage: "square.grid.3x3",
-                    isSelected: selectedTool == .appLauncher
-                ) {
-                    selectedTool = .appLauncher
-                }
+              ToolboxSidebarItem(
+                title: "AI 存储分析",
+                systemImage: "internaldrive",
+                isSelected: selectedTool == .storage
+              ) {
+                selectedTool = .storage
+              }
 
-                ToolboxSidebarItem(
-                    title: "截图钉图",
-                    systemImage: "pin.square",
-                    isSelected: selectedTool == .screenshot
-                ) {
-                    selectedTool = .screenshot
-                }
+              ToolboxSidebarItem(
+                title: "软件卸载助手",
+                systemImage: "trash",
+                isSelected: selectedTool == .uninstaller
+              ) {
+                selectedTool = .uninstaller
+              }
 
-                ToolboxSidebarItem(
-                    title: "超级右键",
-                    systemImage: "filemenu.and.selection",
-                    isSelected: selectedTool == .superRightClick
-                ) {
-                    selectedTool = .superRightClick
-                }
+              ToolboxSidebarItem(
+                title: "输入法快捷切换",
+                systemImage: "keyboard",
+                isSelected: selectedTool == .inputMethod
+              ) {
+                selectedTool = .inputMethod
+              }
             }
             .padding(.horizontal, 12)
 

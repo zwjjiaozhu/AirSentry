@@ -7,19 +7,24 @@ final class PinnedImageController {
 
     func pin(_ image: NSImage, near sourceRect: CGRect? = nil) {
         let initialSize = fittedSize(for: image.size)
+        let focusState = PinnedImageFocusState()
         let window = PinnedImageWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
-
-        let view = PinnedImageView(image: image) { [weak self, weak window] in
-            guard let window else { return }
-            self?.close(window)
-        }
-
-        window.contentView = NSHostingView(rootView: view)
+        window.focusState = focusState
+        window.originalImageSize = image.size
+        window.contentView = PinnedImageHostingView(
+            rootView: pinnedImageView(for: image, in: window, focusState: focusState),
+            onScroll: { [weak window] event in
+                window?.resizeByScroll(event)
+            },
+            onMagnify: { [weak window] event in
+                window?.resizeByMagnify(event)
+            }
+        )
         window.minSize = NSSize(width: 120, height: 80)
         window.aspectRatio = image.size
         window.setFrameOrigin(origin(for: initialSize, near: sourceRect))
@@ -34,7 +39,92 @@ final class PinnedImageController {
         window.makeKeyAndOrderFront(nil)
     }
 
+    private func replace(_ window: PinnedImageWindow, with image: NSImage) {
+        let size = fittedSize(for: image.size)
+        let oldFrame = window.frame
+        let focusState = window.focusState ?? PinnedImageFocusState()
+        window.focusState = focusState
+        window.originalImageSize = image.size
+        window.aspectRatio = image.size
+        window.contentView = PinnedImageHostingView(
+            rootView: pinnedImageView(for: image, in: window, focusState: focusState),
+            onScroll: { [weak window] event in
+                window?.resizeByScroll(event)
+            },
+            onMagnify: { [weak window] event in
+                window?.resizeByMagnify(event)
+            }
+        )
+        window.minSize = NSSize(width: 120, height: 80)
+        window.setFrame(
+            CGRect(x: oldFrame.midX - size.width / 2, y: oldFrame.midY - size.height / 2, width: size.width, height: size.height),
+            display: true,
+            animate: false
+        )
+    }
+
+    private func pinnedImageView(
+        for image: NSImage,
+        in window: PinnedImageWindow,
+        focusState: PinnedImageFocusState
+    ) -> PinnedImageView {
+        PinnedImageView(
+            image: image,
+            focusState: focusState,
+            close: { [weak self, weak window] in
+                guard let window else { return }
+                self?.close(window)
+            },
+            copyImage: {
+                ScreenshotImageWriter.copyToPasteboard(image)
+            },
+            saveImage: { [weak self, weak window] in
+                guard let window else { return }
+                self?.savePinnedImage(image, from: window)
+            },
+            pasteImage: { [weak self, weak window] in
+                guard let window,
+                      let pastedImage = NSPasteboard.general.readObjects(forClasses: [NSImage.self])?.first as? NSImage else {
+                    NSSound.beep()
+                    return
+                }
+                self?.replace(window, with: pastedImage)
+            },
+            resetSize: { [weak window] in
+                window?.resetToOriginalSize()
+            },
+            scale: { [weak window] factor in
+                window?.scale(by: factor)
+            },
+            toggleShadow: { [weak window] in
+                window?.hasShadow.toggle()
+            },
+            shadowEnabled: { [weak window] in
+                window?.hasShadow ?? false
+            },
+            toggleAlwaysOnTop: { [weak window] in
+                window?.setAlwaysOnTop(!(window?.isAlwaysOnTop ?? true))
+            },
+            alwaysOnTopEnabled: { [weak window] in
+                window?.isAlwaysOnTop ?? true
+            }
+        )
+    }
+
+    private func savePinnedImage(_ image: NSImage, from window: PinnedImageWindow) {
+        window.orderOut(nil)
+        let didSave = ScreenshotImageWriter.saveWithPanel(image)
+        if didSave {
+            close(window)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
     private func close(_ window: PinnedImageWindow) {
+        window.focusState?.isFocused = false
         window.orderOut(nil)
         windows.removeAll { $0 === window }
     }
@@ -68,8 +158,22 @@ final class PinnedImageController {
     }
 }
 
+@MainActor
+fileprivate final class PinnedImageFocusState: ObservableObject {
+    @Published var isFocused = false
+}
+
 final class PinnedImageWindow: NSPanel {
     var onClose: (() -> Void)?
+    fileprivate var focusState: PinnedImageFocusState? {
+        didSet {
+            focusState?.isFocused = isKeyWindow
+        }
+    }
+    var originalImageSize: CGSize = .zero
+    private(set) var isAlwaysOnTop = true
+    private let minimumPinnedSize = CGSize(width: 120, height: 80)
+    private let maximumPinnedSize = CGSize(width: 1600, height: 1200)
 
     override init(
         contentRect: NSRect,
@@ -83,57 +187,261 @@ final class PinnedImageWindow: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        level = .statusBar
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isMovableByWindowBackground = true
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    override func becomeKey() {
+        super.becomeKey()
+        focusState?.isFocused = true
+    }
+
+    override func resignKey() {
+        super.resignKey()
+        focusState?.isFocused = false
+    }
+
     override func cancelOperation(_ sender: Any?) {
         onClose?()
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        resizeByScroll(event)
+    }
+
+    override func magnify(with event: NSEvent) {
+        resizeByMagnify(event)
+    }
+
+    func resetToOriginalSize() {
+        guard originalImageSize.width > 0, originalImageSize.height > 0 else { return }
+        let targetSize = CGSize(
+            width: originalImageSize.width.clamped(to: minimumPinnedSize.width...maximumPinnedSize.width),
+            height: originalImageSize.height.clamped(to: minimumPinnedSize.height...maximumPinnedSize.height)
+        )
+        resizeAroundCenter(to: targetSize)
+    }
+
+    func scale(by factor: CGFloat) {
+        let currentSize = frame.size
+        let minimumScale = max(
+            minimumPinnedSize.width / currentSize.width,
+            minimumPinnedSize.height / currentSize.height
+        )
+        let maximumScale = min(
+            maximumPinnedSize.width / currentSize.width,
+            maximumPinnedSize.height / currentSize.height
+        )
+        resizeByScale(min(max(factor, minimumScale), maximumScale))
+    }
+
+    func setAlwaysOnTop(_ enabled: Bool) {
+        isAlwaysOnTop = enabled
+        level = enabled ? .statusBar : .floating
+        if enabled {
+            orderFrontRegardless()
+        }
+    }
+
+    func resizeByScroll(_ event: NSEvent) {
+        let scrollDelta = event.scrollingDeltaY == 0 ? -event.scrollingDeltaX : event.scrollingDeltaY
+        guard scrollDelta != 0 else { return }
+
+        let factor = scrollDelta > 0 ? 1.08 : 0.92
+        scale(by: factor)
+    }
+
+    func resizeByMagnify(_ event: NSEvent) {
+        let factor = 1 + event.magnification
+        guard factor > 0 else { return }
+        scale(by: factor)
+    }
+
+    private func resizeByScale(_ scale: CGFloat) {
+        let currentFrame = frame
+        let currentSize = currentFrame.size
+        let newSize = CGSize(
+            width: currentSize.width * scale,
+            height: currentSize.height * scale
+        )
+        guard abs(newSize.width - currentSize.width) > 0.5,
+              abs(newSize.height - currentSize.height) > 0.5 else { return }
+
+        resizeAroundCenter(to: newSize)
+    }
+
+    private func resizeAroundCenter(to newSize: CGSize) {
+        let currentFrame = frame
+        let center = CGPoint(x: currentFrame.midX, y: currentFrame.midY)
+        let newFrame = CGRect(
+            x: center.x - newSize.width / 2,
+            y: center.y - newSize.height / 2,
+            width: newSize.width,
+            height: newSize.height
+        )
+        setFrame(newFrame, display: true, animate: false)
+    }
+}
+
+private final class PinnedImageHostingView<Content: View>: NSHostingView<Content> {
+    private let onScroll: ((NSEvent) -> Void)?
+    private let onMagnify: ((NSEvent) -> Void)?
+
+    init(
+        rootView: Content,
+        onScroll: @escaping (NSEvent) -> Void,
+        onMagnify: @escaping (NSEvent) -> Void
+    ) {
+        self.onScroll = onScroll
+        self.onMagnify = onMagnify
+        super.init(rootView: rootView)
+    }
+
+    required init(rootView: Content) {
+        self.onScroll = nil
+        self.onMagnify = nil
+        super.init(rootView: rootView)
+    }
+
+    @MainActor @preconcurrency required dynamic init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if let onScroll {
+            onScroll(event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+    }
+
+    override func magnify(with event: NSEvent) {
+        if let onMagnify {
+            onMagnify(event)
+        } else {
+            super.magnify(with: event)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeKeyAndOrderFront(nil)
+        super.mouseDown(with: event)
     }
 }
 
 private struct PinnedImageView: View {
     let image: NSImage
+    @ObservedObject var focusState: PinnedImageFocusState
     let close: () -> Void
+    let copyImage: () -> Void
+    let saveImage: () -> Void
+    let pasteImage: () -> Void
+    let resetSize: () -> Void
+    let scale: (CGFloat) -> Void
+    let toggleShadow: () -> Void
+    let shadowEnabled: () -> Bool
+    let toggleAlwaysOnTop: () -> Void
+    let alwaysOnTopEnabled: () -> Bool
 
     @State private var opacity = 1.0
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-                .opacity(opacity)
-                .background(.black.opacity(0.001))
+        Image(nsImage: image)
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .opacity(opacity)
+            .background(.black.opacity(0.001))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(focusState.isFocused ? Color.blue.opacity(0.95) : Color.white.opacity(0.24),
+                            lineWidth: focusState.isFocused ? 2 : 1)
+            )
+            .shadow(color: focusState.isFocused ? Color.blue.opacity(0.60) : Color.black.opacity(0.18),
+                    radius: focusState.isFocused ? 16 : 8,
+                    x: 0,
+                    y: focusState.isFocused ? 0 : 4)
+            .shadow(color: focusState.isFocused ? Color.blue.opacity(0.34) : Color.clear,
+                    radius: 34,
+                    x: 0,
+                    y: 0)
+            .shadow(color: focusState.isFocused ? Color.blue.opacity(0.18) : Color.clear,
+                    radius: 58,
+                    x: 0,
+                    y: 0)
+            .animation(.easeOut(duration: 0.12), value: focusState.isFocused)
+            .contextMenu {
+            Button("复制图像", action: copyImage)
+            Button("复制原始大小图像", action: copyImage)
+            Button("图像另存为...", action: saveImage)
+            Button("原始大小图像另存为...", action: saveImage)
 
-            HStack(spacing: 7) {
-                Slider(value: $opacity, in: 0.25...1)
-                    .frame(width: 82)
-                    .help("透明度")
+            Divider()
 
-                Button(action: close) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.plain)
-                .background(.black.opacity(0.48), in: Circle())
-                .foregroundStyle(.white)
-                .help("关闭")
+            Button(alwaysOnTopEnabled() ? "取消窗口置顶" : "窗口置顶", action: toggleAlwaysOnTop)
+            Button(shadowEnabled() ? "隐藏窗口阴影" : "显示窗口阴影", action: toggleShadow)
+
+            Divider()
+
+            Menu("透明度") {
+                opacityMenuItem(title: "100%", value: 1.0)
+                opacityMenuItem(title: "75%", value: 0.75)
+                opacityMenuItem(title: "50%", value: 0.50)
+                opacityMenuItem(title: "25%", value: 0.25)
             }
-            .padding(8)
-            .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .padding(8)
+
+            Menu("缩放") {
+                Button("放大 10%") { scale(1.1) }
+                Button("缩小 10%") { scale(0.9) }
+                Button("原始大小", action: resetSize)
+            }
+
+            Menu("图像处理") {
+                Button("灰度") { NSSound.beep() }
+                    .disabled(true)
+                Button("反色") { NSSound.beep() }
+                    .disabled(true)
+            }
+
+            Divider()
+
+            Button("粘贴", action: pasteImage)
+            Button("替换为剪贴板图像", action: pasteImage)
+            Button("在文件夹中查看") { NSSound.beep() }
+                .disabled(true)
+
+            Divider()
+
+            Button("关闭", action: close)
+
+            Divider()
+
+            Menu("\(Int(image.size.width)) x \(Int(image.size.height))") {
+                Button("复制尺寸文本") {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    pasteboard.setString("\(Int(image.size.width)) x \(Int(image.size.height))", forType: .string)
+                }
+            }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(.white.opacity(0.24), lineWidth: 1)
-        )
+    }
+
+    private func opacityMenuItem(title: String, value: Double) -> some View {
+        Button(opacity == value ? "✓ \(title)" : title) {
+            opacity = value
+        }
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }

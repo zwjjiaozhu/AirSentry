@@ -141,21 +141,29 @@ enum ScreenshotImageWriter {
         pasteboard.writeObjects([image])
     }
 
-    static func saveWithPanel(_ image: NSImage) {
+    @discardableResult
+    static func saveWithPanel(_ image: NSImage) -> Bool {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "AirSentry Screenshot \(Self.timestamp()).png"
         panel.canCreateDirectories = true
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
 
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK,
-              let url = panel.url else { return }
+              let url = panel.url else { return false }
 
         do {
-            try pngData(from: image)?.write(to: url)
+            guard let data = pngData(from: image) else {
+                NSSound.beep()
+                return false
+            }
+            try data.write(to: url)
+            return true
         } catch {
             NSSound.beep()
             NSLog("AirSentry screenshot save failed: \(error.localizedDescription)")
+            return false
         }
     }
 
@@ -223,6 +231,19 @@ enum ScreenshotAnnotationRenderer {
         path.lineJoinStyle = .round
 
         switch annotation.tool {
+        case .text:
+            guard let origin = annotation.points.first else { return }
+            let point = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: annotation.fontSize * min(scaleX, scaleY), weight: .semibold),
+                .foregroundColor: color
+            ]
+            let text = NSString(string: annotation.text)
+            let textSize = text.size(withAttributes: attributes)
+            text.draw(
+                at: CGPoint(x: point.x, y: point.y - textSize.height),
+                withAttributes: attributes
+            )
         case .pen:
             guard let firstPoint = annotation.points.first else { return }
             path.move(to: transform(firstPoint, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight))

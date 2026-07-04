@@ -26,7 +26,6 @@ final class ScreenshotOverlayController {
             return window
         }
 
-        NSApp.activate(ignoringOtherApps: true)
         windows.forEach { $0.orderFrontRegardless() }
         windows.first?.makeKeyAndOrderFront(nil)
     }
@@ -34,8 +33,12 @@ final class ScreenshotOverlayController {
     private func perform(_ action: ScreenshotResultAction, payload: ScreenshotCapturePayload) {
         guard !didFinish else { return }
         didFinish = true
-        closeWindows()
-        onAction(action, payload)
+        DispatchQueue.main.async { [weak self, onAction] in
+            self?.closeWindows()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                onAction(action, payload)
+            }
+        }
     }
 
     private func cancel() {
@@ -46,7 +49,12 @@ final class ScreenshotOverlayController {
     }
 
     private func closeWindows() {
-        windows.forEach { $0.orderOut(nil) }
+        windows.forEach { window in
+            window.makeFirstResponder(nil)
+            window.contentView = nil
+            window.orderOut(nil)
+            window.close()
+        }
         windows.removeAll()
     }
 }
@@ -88,8 +96,20 @@ private struct ScreenshotOverlayView: View {
     @State private var selectedTool: ScreenshotAnnotationTool = .cursor
     @State private var selectedColor: ScreenshotAnnotationColor = .red
     @State private var selectedLineWidth: CGFloat = 3
+    @State private var selectedFontSize: CGFloat = 18
     @State private var annotations: [ScreenshotAnnotation] = []
+    @State private var redoAnnotations: [ScreenshotAnnotation] = []
+    @State private var selectedAnnotationID: UUID?
     @State private var draftAnnotation: ScreenshotAnnotation?
+    @State private var movingTextAnnotationStartPoint: CGPoint?
+    @State private var resizingTextAnnotationID: UUID?
+    @State private var resizingTextStartPoint: CGPoint?
+    @State private var resizingTextStartSize: CGSize?
+    @State private var scalingTextAnnotationID: UUID?
+    @State private var scalingTextStartSize: CGSize?
+    @State private var scalingTextStartFontSize: CGFloat?
+    @State private var isTextCursorPushed = false
+    @FocusState private var focusedTextAnnotationID: UUID?
 
     var body: some View {
         GeometryReader { proxy in
@@ -116,13 +136,25 @@ private struct ScreenshotOverlayView: View {
                             selectedTool: $selectedTool,
                             selectedColor: $selectedColor,
                             selectedLineWidth: $selectedLineWidth,
-                            canUndo: !annotations.isEmpty
+                            selectedFontSize: $selectedFontSize,
+                            controlMode: toolbarControlMode,
+                            canUndo: !annotations.isEmpty,
+                            canRedo: !redoAnnotations.isEmpty,
+                            setColor: updateSelectedColor,
+                            setLineWidth: updateSelectedLineWidth,
+                            setFontSize: updateSelectedFontSize
                         ) { toolbarAction in
                             handleToolbarAction(toolbarAction, selection: selection)
                         }
                         .position(toolbarPosition(for: selection, in: proxy.size))
                     }
                 }
+
+                ScreenshotShortcutHintPanel()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, 22)
+                    .padding(.bottom, 24)
+                    .allowsHitTesting(false)
             }
             .ignoresSafeArea()
             .contentShape(Rectangle())
@@ -130,12 +162,26 @@ private struct ScreenshotOverlayView: View {
             .onReceive(NotificationCenter.default.publisher(for: .screenshotOverlayCancelRequested)) { _ in
                 cancel()
             }
-            .background(ScreenshotOverlayKeyCatcher(cancel: cancel))
+            .onChange(of: selectedTool) { tool in
+                if tool != .text {
+                    finishTextEditing()
+                    resetTextCursor()
+                }
+            }
+            .onChange(of: focusedTextAnnotationID) { annotationID in
+                syncSelectionWithFocusedText(annotationID)
+            }
+            .onDisappear {
+                resetTextCursor()
+            }
+            .background(ScreenshotOverlayKeyCatcher(isEnabled: focusedTextAnnotationID == nil) { event in
+                handleKeyDown(event, in: proxy.size)
+            })
         }
     }
 
     private func initialSelectionGesture(in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+        DragGesture(minimumDistance: selectedTool == .text ? 0 : 1, coordinateSpace: .local)
             .onChanged { value in
                 guard selectedRect == nil else { return }
                 if startPoint == nil {
@@ -166,14 +212,19 @@ private struct ScreenshotOverlayView: View {
                     .fill(Color.white.opacity(0.001))
                     .frame(width: selection.width, height: selection.height)
                     .position(x: selection.midX, y: selection.midY)
-                    .gesture(moveGesture(in: size))
+                    .gesture(cursorGesture(in: size, selection: selection))
             } else {
                 Rectangle()
                     .fill(Color.white.opacity(0.001))
                     .frame(width: selection.width, height: selection.height)
                     .position(x: selection.midX, y: selection.midY)
+                    .onHover { hovering in
+                        updateTextCursor(hovering && selectedTool == .text)
+                    }
                     .gesture(annotationGesture(in: selection))
             }
+
+            textAnnotationLayer(selection)
 
             Rectangle()
                 .stroke(.white, lineWidth: 1)
@@ -195,7 +246,10 @@ private struct ScreenshotOverlayView: View {
     private func annotationCanvas(_ selection: CGRect) -> some View {
         Canvas { context, _ in
             for annotation in annotations {
-                draw(annotation, in: &context)
+                if annotation.tool != .text {
+                    draw(annotation, in: &context)
+                }
+                drawSelectionOutline(for: annotation, in: &context)
             }
             if let draftAnnotation {
                 draw(draftAnnotation, in: &context)
@@ -211,6 +265,15 @@ private struct ScreenshotOverlayView: View {
         let stroke = StrokeStyle(lineWidth: annotation.lineWidth, lineCap: .round, lineJoin: .round)
 
         switch annotation.tool {
+        case .text:
+            guard let origin = annotation.points.first else { return }
+            context.draw(
+                Text(annotation.text)
+                    .font(.system(size: annotation.fontSize, weight: .semibold))
+                    .foregroundColor(annotation.color.swiftUIColor),
+                at: origin,
+                anchor: .topLeading
+            )
         case .pen:
             guard let firstPoint = annotation.points.first else { return }
             path.move(to: firstPoint)
@@ -244,9 +307,65 @@ private struct ScreenshotOverlayView: View {
         }
     }
 
+    private func drawSelectionOutline(for annotation: ScreenshotAnnotation, in context: inout GraphicsContext) {
+        guard selectedAnnotationID == annotation.id,
+              let rect = annotationBounds(annotation)?.insetBy(dx: -4, dy: -4) else { return }
+        var path = Path()
+        path.addRect(rect)
+        context.stroke(path, with: .color(.white.opacity(0.80)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+    }
+
+    private func textAnnotationLayer(_ selection: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach($annotations) { $annotation in
+                if shouldShowTextAnnotation(annotation), let origin = annotation.points.first {
+                    TextField("文字", text: $annotation.text)
+                        .textFieldStyle(.plain)
+                        .focused($focusedTextAnnotationID, equals: annotation.id)
+                        .font(.system(size: annotation.fontSize, weight: .semibold))
+                        .foregroundStyle(annotation.color.swiftUIColor)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 2)
+                        .frame(
+                            width: textBounds(for: annotation).width,
+                            height: textBounds(for: annotation).height,
+                            alignment: .leading
+                        )
+                        .background(
+                            selectedAnnotationID == annotation.id ? Color.black.opacity(0.14) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(
+                                    selectedAnnotationID == annotation.id ? Color.white.opacity(0.82) : Color.clear,
+                                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                                )
+                        )
+                        .overlay {
+                            if selectedAnnotationID == annotation.id {
+                                textSelectionControls(for: annotation)
+                            }
+                        }
+                        .position(x: origin.x + textBounds(for: annotation).width / 2,
+                                  y: origin.y + textBounds(for: annotation).height / 2)
+                        .onTapGesture {
+                            selectAnnotation(annotation)
+                        }
+                        .simultaneousGesture(textMoveGesture(annotationID: annotation.id, in: selection))
+                }
+            }
+        }
+        .frame(width: selection.width, height: selection.height)
+        .position(x: selection.midX, y: selection.midY)
+    }
+
     private func annotationGesture(in selection: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+        DragGesture(minimumDistance: selectedTool == .text ? 0 : 1, coordinateSpace: .local)
             .onChanged { value in
+                if selectedTool == .text {
+                    return
+                }
                 let localPoint = CGPoint(
                     x: (value.location.x - selection.minX).clamped(to: 0...selection.width),
                     y: (value.location.y - selection.minY).clamped(to: 0...selection.height)
@@ -261,6 +380,7 @@ private struct ScreenshotOverlayView: View {
                         tool: selectedTool.drawableTool,
                         color: selectedColor,
                         lineWidth: selectedLineWidth,
+                        fontSize: selectedFontSize,
                         points: [localStart]
                     )
                 }
@@ -273,17 +393,32 @@ private struct ScreenshotOverlayView: View {
                 }
                 self.draftAnnotation = draftAnnotation
             }
-            .onEnded { _ in
-                if let draftAnnotation, draftAnnotation.points.count >= 2 {
+            .onEnded { value in
+                if selectedTool == .text {
+                    let localPoint = CGPoint(
+                        x: value.location.x - selection.minX,
+                        y: value.location.y - selection.minY
+                    )
+                    if let annotationID = annotationID(at: localPoint),
+                       let annotation = annotations.first(where: { $0.id == annotationID }) {
+                        finishTextEditing(keeping: annotationID)
+                        selectAnnotation(annotation)
+                    } else {
+                        addTextAnnotation(at: value.location, in: selection)
+                    }
+                } else if let draftAnnotation, draftAnnotation.points.count >= 2 {
                     annotations.append(draftAnnotation)
+                    selectedAnnotationID = draftAnnotation.id
+                    redoAnnotations.removeAll()
                 }
                 draftAnnotation = nil
             }
     }
 
-    private func moveGesture(in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+    private func cursorGesture(in size: CGSize, selection: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
+                guard abs(value.translation.width) > 2 || abs(value.translation.height) > 2 else { return }
                 guard let selectedRect else { return }
                 if interactionStartRect == nil {
                     interactionStartRect = selectedRect
@@ -298,7 +433,22 @@ private struct ScreenshotOverlayView: View {
                     height: startRect.height
                 )
             }
-            .onEnded { _ in
+            .onEnded { value in
+                if abs(value.translation.width) <= 2, abs(value.translation.height) <= 2 {
+                    let localPoint = CGPoint(
+                        x: value.location.x - selection.minX,
+                        y: value.location.y - selection.minY
+                    )
+                    selectedAnnotationID = annotationID(at: localPoint)
+                    if let annotation = selectedAnnotation {
+                        selectedColor = annotation.color
+                        selectedLineWidth = annotation.lineWidth
+                        selectedFontSize = annotation.fontSize
+                        focusedTextAnnotationID = annotation.tool == .text ? annotation.id : nil
+                    } else {
+                        focusedTextAnnotationID = nil
+                    }
+                }
                 interactionStartRect = nil
             }
     }
@@ -319,6 +469,147 @@ private struct ScreenshotOverlayView: View {
             }
             .onEnded { _ in
                 interactionStartRect = nil
+            }
+    }
+
+    private func updateTextCursor(_ shouldShow: Bool) {
+        if shouldShow, !isTextCursorPushed {
+            NSCursor.iBeam.push()
+            isTextCursorPushed = true
+        } else if !shouldShow, isTextCursorPushed {
+            NSCursor.pop()
+            isTextCursorPushed = false
+        }
+    }
+
+    private func resetTextCursor() {
+        updateTextCursor(false)
+    }
+
+    private func textSelectionControls(for annotation: ScreenshotAnnotation) -> some View {
+        ZStack {
+            ForEach(TextResizeHandle.allCases) { handle in
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().stroke(.white, lineWidth: 1.2))
+                    .position(handle.point(in: CGRect(origin: .zero, size: textBounds(for: annotation))))
+                    .gesture(textResizeGesture(annotationID: annotation.id, handle: handle))
+            }
+
+            Button {
+                deleteAnnotation(id: annotation.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 18)
+                    .background(Color.blue, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .position(x: textBounds(for: annotation).width + 8, y: -8)
+
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 18)
+                .background(Color.blue, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .position(x: textBounds(for: annotation).width + 8, y: textBounds(for: annotation).height + 8)
+                .gesture(textScaleGesture(annotationID: annotation.id))
+        }
+        .allowsHitTesting(true)
+    }
+
+    private func textResizeGesture(annotationID: UUID, handle: TextResizeHandle) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+            .onChanged { value in
+                guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
+                      annotations[index].tool == .text,
+                      let origin = annotations[index].points.first else { return }
+
+                if resizingTextAnnotationID != annotationID {
+                    resizingTextAnnotationID = annotationID
+                    resizingTextStartPoint = origin
+                    resizingTextStartSize = annotations[index].textBoxSize
+                    selectedAnnotationID = annotationID
+                    focusedTextAnnotationID = annotationID
+                }
+
+                guard let startPoint = resizingTextStartPoint,
+                      let startSize = resizingTextStartSize else { return }
+
+                let resized = handle.resized(
+                    origin: startPoint,
+                    size: startSize,
+                    translation: value.translation
+                )
+                annotations[index].points = [resized.origin]
+                annotations[index].textBoxSize = resized.size
+            }
+            .onEnded { _ in
+                resizingTextAnnotationID = nil
+                resizingTextStartPoint = nil
+                resizingTextStartSize = nil
+            }
+    }
+
+    private func textScaleGesture(annotationID: UUID) -> some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+            .onChanged { value in
+                guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
+                      annotations[index].tool == .text else { return }
+
+                if scalingTextAnnotationID != annotationID {
+                    scalingTextAnnotationID = annotationID
+                    scalingTextStartSize = annotations[index].textBoxSize
+                    scalingTextStartFontSize = annotations[index].fontSize
+                    selectedAnnotationID = annotationID
+                    focusedTextAnnotationID = annotationID
+                }
+
+                guard let startSize = scalingTextStartSize,
+                      let startFontSize = scalingTextStartFontSize else { return }
+
+                let delta = max(value.translation.width, value.translation.height)
+                let scale = max(0.45, min(3.0, 1 + delta / 90))
+                annotations[index].textBoxSize = CGSize(
+                    width: max(72, startSize.width * scale),
+                    height: max(26, startSize.height * scale)
+                )
+                annotations[index].fontSize = max(12, min(72, startFontSize * scale))
+                selectedFontSize = annotations[index].fontSize
+            }
+            .onEnded { _ in
+                scalingTextAnnotationID = nil
+                scalingTextStartSize = nil
+                scalingTextStartFontSize = nil
+            }
+    }
+
+    private func textMoveGesture(annotationID: UUID, in selection: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+            .onChanged { value in
+                guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
+                      annotations[index].tool == .text,
+                      let origin = annotations[index].points.first else { return }
+
+                if movingTextAnnotationStartPoint == nil {
+                    movingTextAnnotationStartPoint = origin
+                    selectedAnnotationID = annotationID
+                    focusedTextAnnotationID = annotationID
+                }
+
+                guard let startPoint = movingTextAnnotationStartPoint else { return }
+                let textSize = textBounds(for: annotations[index])
+                annotations[index].points = [
+                    CGPoint(
+                        x: (startPoint.x + value.translation.width).clamped(to: 0...max(0, selection.width - textSize.width)),
+                        y: (startPoint.y + value.translation.height).clamped(to: 0...max(0, selection.height - textSize.height))
+                    )
+                ]
+            }
+            .onEnded { _ in
+                movingTextAnnotationStartPoint = nil
             }
     }
 
@@ -351,7 +642,7 @@ private struct ScreenshotOverlayView: View {
         return ScreenshotCapturePayload(
             rect: rect,
             canvasSize: selection.size,
-            annotations: annotations
+            annotations: visibleAnnotations
         )
     }
 
@@ -361,7 +652,9 @@ private struct ScreenshotOverlayView: View {
             guard let payload = capturePayload(from: selection) else { return }
             perform(action, payload)
         case .undo:
-            _ = annotations.popLast()
+            undoLastAnnotation()
+        case .redo:
+            redoLastAnnotation()
         case .cancel:
             cancel()
         }
@@ -374,126 +667,505 @@ private struct ScreenshotOverlayView: View {
         let y = preferredY <= size.height - 12 ? preferredY : max(toolbarSize.height / 2 + 12, selection.minY - toolbarSize.height / 2 - 10)
         return CGPoint(x: x, y: y)
     }
+
+    private func handleKeyDown(_ event: NSEvent, in size: CGSize) {
+        if event.keyCode == 53 {
+            cancel()
+            return
+        }
+
+        if event.keyCode == 36 || event.keyCode == 76 {
+            performActiveSelection(.copy, in: size)
+            return
+        }
+
+        if event.keyCode == 51 || event.keyCode == 117 {
+            undoLastAnnotation()
+            return
+        }
+
+        if event.modifierFlags.contains(.command),
+           (event.charactersIgnoringModifiers ?? "").lowercased() == "s" {
+            performActiveSelection(.save, in: size)
+            return
+        }
+
+        switch event.keyCode {
+        case 126:
+            moveSelectionBy(dx: 0, dy: -keyboardStep(for: event), in: size)
+            return
+        case 125:
+            moveSelectionBy(dx: 0, dy: keyboardStep(for: event), in: size)
+            return
+        case 123:
+            moveSelectionBy(dx: -keyboardStep(for: event), dy: 0, in: size)
+            return
+        case 124:
+            moveSelectionBy(dx: keyboardStep(for: event), dy: 0, in: size)
+            return
+        default:
+            break
+        }
+
+        switch (event.charactersIgnoringModifiers ?? "").lowercased() {
+        case "w":
+            moveSelectionBy(dx: 0, dy: -keyboardStep(for: event), in: size)
+        case "a":
+            moveSelectionBy(dx: -keyboardStep(for: event), dy: 0, in: size)
+        case "s":
+            moveSelectionBy(dx: 0, dy: keyboardStep(for: event), in: size)
+        case "d":
+            moveSelectionBy(dx: keyboardStep(for: event), dy: 0, in: size)
+        case "p":
+            performActiveSelection(.pin, in: size)
+        case "c":
+            performActiveSelection(.copy, in: size)
+        default:
+            break
+        }
+    }
+
+    private func performActiveSelection(_ action: ScreenshotResultAction, in size: CGSize) {
+        guard let selection = activeSelectionRect(in: size),
+              let payload = capturePayload(from: selection) else { return }
+        perform(action, payload)
+    }
+
+    private func moveSelectionBy(dx: CGFloat, dy: CGFloat, in size: CGSize) {
+        guard let selectedRect else { return }
+        let maxX = max(0, size.width - selectedRect.width)
+        let maxY = max(0, size.height - selectedRect.height)
+        self.selectedRect = CGRect(
+            x: (selectedRect.minX + dx).clamped(to: 0...maxX),
+            y: (selectedRect.minY + dy).clamped(to: 0...maxY),
+            width: selectedRect.width,
+            height: selectedRect.height
+        )
+    }
+
+    private func keyboardStep(for event: NSEvent) -> CGFloat {
+        event.modifierFlags.contains(.shift) ? 10 : 1
+    }
+
+    private func undoLastAnnotation() {
+        guard let annotation = annotations.popLast() else { return }
+        redoAnnotations.append(annotation)
+    }
+
+    private func redoLastAnnotation() {
+        guard let annotation = redoAnnotations.popLast() else { return }
+        annotations.append(annotation)
+        selectedAnnotationID = annotation.id
+    }
+
+    private var selectedAnnotation: ScreenshotAnnotation? {
+        guard let selectedAnnotationID else { return nil }
+        return annotations.first { $0.id == selectedAnnotationID }
+    }
+
+    private var toolbarControlMode: ScreenshotToolbarControlMode {
+        if selectedAnnotation?.tool == .text || selectedTool == .text {
+            return .text
+        }
+        return .shape
+    }
+
+    private func addTextAnnotation(at point: CGPoint, in selection: CGRect) {
+        finishTextEditing()
+        let localPoint = CGPoint(
+            x: (point.x - selection.minX).clamped(to: 0...selection.width),
+            y: (point.y - selection.minY).clamped(to: 0...selection.height)
+        )
+        let annotation = ScreenshotAnnotation(
+            tool: .text,
+            color: selectedColor,
+            lineWidth: selectedLineWidth,
+            fontSize: selectedFontSize,
+            text: "",
+            textBoxSize: CGSize(width: 128, height: selectedFontSize + 16),
+            points: [localPoint]
+        )
+        annotations.append(annotation)
+        selectedAnnotationID = annotation.id
+        DispatchQueue.main.async {
+            focusedTextAnnotationID = annotation.id
+        }
+        redoAnnotations.removeAll()
+    }
+
+    private func selectAnnotation(_ annotation: ScreenshotAnnotation) {
+        selectedAnnotationID = annotation.id
+        selectedColor = annotation.color
+        selectedLineWidth = annotation.lineWidth
+        selectedFontSize = annotation.fontSize
+        focusedTextAnnotationID = annotation.tool == .text ? annotation.id : nil
+    }
+
+    private func syncSelectionWithFocusedText(_ annotationID: UUID?) {
+        guard let annotationID,
+              let annotation = annotations.first(where: { $0.id == annotationID }),
+              annotation.tool == .text else { return }
+        selectedAnnotationID = annotation.id
+        selectedColor = annotation.color
+        selectedLineWidth = annotation.lineWidth
+        selectedFontSize = annotation.fontSize
+    }
+
+    private func updateSelectedColor(_ color: ScreenshotAnnotationColor) {
+        selectedColor = color
+        updateSelectedAnnotation { $0.color = color }
+    }
+
+    private func updateSelectedLineWidth(_ width: CGFloat) {
+        selectedLineWidth = width
+        updateSelectedAnnotation { $0.lineWidth = width }
+    }
+
+    private func updateSelectedFontSize(_ size: CGFloat) {
+        selectedFontSize = size
+        updateSelectedAnnotation { $0.fontSize = size }
+    }
+
+    private func updateSelectedAnnotation(_ update: (inout ScreenshotAnnotation) -> Void) {
+        guard let selectedAnnotationID,
+              let index = annotations.firstIndex(where: { $0.id == selectedAnnotationID }) else { return }
+        update(&annotations[index])
+    }
+
+    private func deleteAnnotation(id: UUID) {
+        guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+        redoAnnotations.removeAll()
+        annotations.remove(at: index)
+        if selectedAnnotationID == id {
+            selectedAnnotationID = nil
+        }
+        if focusedTextAnnotationID == id {
+            focusedTextAnnotationID = nil
+        }
+    }
+
+    private var visibleAnnotations: [ScreenshotAnnotation] {
+        annotations.filter { annotation in
+            annotation.tool != .text || !annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private func shouldShowTextAnnotation(_ annotation: ScreenshotAnnotation) -> Bool {
+        annotation.tool == .text &&
+        (annotation.id == selectedAnnotationID ||
+         annotation.id == focusedTextAnnotationID ||
+         !annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
+    private func finishTextEditing(keeping annotationID: UUID? = nil) {
+        if focusedTextAnnotationID != annotationID {
+            focusedTextAnnotationID = nil
+        }
+        removeEmptyTextAnnotations(keeping: annotationID)
+    }
+
+    private func removeEmptyTextAnnotations(keeping annotationID: UUID? = nil) {
+        annotations.removeAll { annotation in
+            annotation.tool == .text &&
+            annotation.id != annotationID &&
+            annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        if let selectedAnnotationID,
+           !annotations.contains(where: { $0.id == selectedAnnotationID }) {
+            self.selectedAnnotationID = nil
+        }
+    }
+
+    private func annotationID(at point: CGPoint) -> UUID? {
+        annotations.reversed().first { annotation in
+            annotationBounds(annotation)?.insetBy(dx: -6, dy: -6).contains(point) == true
+        }?.id
+    }
+
+    private func annotationBounds(_ annotation: ScreenshotAnnotation) -> CGRect? {
+        switch annotation.tool {
+        case .text:
+            guard let origin = annotation.points.first else { return nil }
+            let size = textBounds(for: annotation)
+            return CGRect(origin: origin, size: size)
+        case .pen:
+            guard let first = annotation.points.first else { return nil }
+            return annotation.points.dropFirst().reduce(CGRect(origin: first, size: .zero)) { rect, point in
+                rect.union(CGRect(origin: point, size: .zero))
+            }
+        default:
+            return localRect(for: annotation)
+        }
+    }
+
+    private func textBounds(for annotation: ScreenshotAnnotation) -> CGSize {
+        let textWidth = max(72, CGFloat(annotation.text.count) * annotation.fontSize * 0.62 + 16)
+        return CGSize(
+            width: max(annotation.textBoxSize.width, textWidth),
+            height: max(annotation.textBoxSize.height, annotation.fontSize + 14)
+        )
+    }
 }
 
 private struct ScreenshotSelectionToolbar: View {
     @Binding var selectedTool: ScreenshotAnnotationTool
     @Binding var selectedColor: ScreenshotAnnotationColor
     @Binding var selectedLineWidth: CGFloat
+    @Binding var selectedFontSize: CGFloat
+    let controlMode: ScreenshotToolbarControlMode
     let canUndo: Bool
+    let canRedo: Bool
+    let setColor: (ScreenshotAnnotationColor) -> Void
+    let setLineWidth: (CGFloat) -> Void
+    let setFontSize: (CGFloat) -> Void
     let action: (ScreenshotToolbarAction) -> Void
+    @State private var hoveredTooltip: String?
 
     var body: some View {
-        VStack(spacing: 7) {
-            HStack(spacing: 6) {
-                ForEach(ScreenshotAnnotationTool.allCases) { tool in
-                    iconButton(tool.systemImage, tool.title, isSelected: selectedTool == tool) {
-                        selectedTool = tool
+        ZStack(alignment: .top) {
+            VStack(spacing: 7) {
+                HStack(spacing: 6) {
+                    ForEach(ScreenshotAnnotationTool.allCases) { tool in
+                        iconButton(tool.systemImage, tool.title, isSelected: selectedTool == tool) {
+                            selectedTool = tool
+                            hoveredTooltip = nil
+                        }
+                    }
+
+                    Divider()
+                        .frame(height: 22)
+
+                    iconButton("arrow.uturn.backward", "撤销", isSelected: false) {
+                        action(.undo)
+                    }
+                    .disabled(!canUndo)
+                    .opacity(canUndo ? 1 : 0.42)
+
+                    iconButton("arrow.uturn.forward", "恢复", isSelected: false) {
+                        action(.redo)
+                    }
+                    .disabled(!canRedo)
+                    .opacity(canRedo ? 1 : 0.42)
+
+                    iconButton("xmark", "取消本次截图", isSelected: false) {
+                        action(.cancel)
+                    }
+
+                    iconButton("pin", "钉住当前截图", isSelected: false) {
+                        action(.perform(.pin))
+                    }
+
+                    iconButton("square.and.arrow.down", "保存为 PNG", isSelected: false) {
+                        action(.perform(.save))
+                    }
+
+                    iconButton("doc.on.doc", "复制到剪贴板", isSelected: false) {
+                        action(.perform(.copy))
                     }
                 }
 
-                Divider()
-                    .frame(height: 22)
+                HStack(spacing: 8) {
+                    ForEach(ScreenshotAnnotationColor.allCases) { color in
+                        Button {
+                            setColor(color)
+                        } label: {
+                            Circle()
+                                .fill(color.swiftUIColor)
+                                .frame(width: 16, height: 16)
+                                .overlay(
+                                    Circle()
+                                        .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 2)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hovering in
+                            hoveredTooltip = hovering ? "批注颜色：\(color.title)" : nil
+                        }
+                    }
 
-                iconButton("arrow.uturn.backward", "撤销", isSelected: false) {
-                    action(.undo)
-                }
-                .disabled(!canUndo)
-                .opacity(canUndo ? 1 : 0.42)
+                    Divider()
+                        .frame(height: 18)
 
-                iconButton("pin", "钉图", isSelected: false) {
-                    action(.perform(.pin))
-                }
-
-                iconButton("doc.on.doc", "复制", isSelected: false) {
-                    action(.perform(.copy))
-                }
-
-                iconButton("square.and.arrow.down", "保存", isSelected: false) {
-                    action(.perform(.save))
-                }
-
-                iconButton("checkmark", "完成并复制", isSelected: false) {
-                    action(.perform(.copy))
-                }
-
-                iconButton("xmark", "关闭", isSelected: false) {
-                    action(.cancel)
+                    if controlMode == .text {
+                        ForEach([CGFloat(14), CGFloat(18), CGFloat(24)], id: \.self) { size in
+                            Button {
+                                setFontSize(size)
+                            } label: {
+                                Text("A")
+                                    .font(.system(size: min(size, 19), weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 28, height: 22)
+                                    .background(
+                                        selectedFontSize == size ? Color.white.opacity(0.18) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .onHover { hovering in
+                                hoveredTooltip = hovering ? "文字大小：\(Int(size))" : nil
+                            }
+                        }
+                    } else {
+                        ForEach([CGFloat(2), CGFloat(4), CGFloat(7)], id: \.self) { width in
+                            Button {
+                                setLineWidth(width)
+                            } label: {
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: width + 5, height: width + 5)
+                                    .frame(width: 20, height: 20)
+                                    .background(
+                                        selectedLineWidth == width ? Color.white.opacity(0.18) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .onHover { hovering in
+                                hoveredTooltip = hovering ? "批注线宽：\(lineWidthTitle(width))" : nil
+                            }
+                        }
+                    }
                 }
             }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(0.30), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.24), radius: 14, y: 6)
 
-            HStack(spacing: 8) {
-                ForEach(ScreenshotAnnotationColor.allCases) { color in
-                    Button {
-                        selectedColor = color
-                    } label: {
-                        Circle()
-                            .fill(color.swiftUIColor)
-                            .frame(width: 16, height: 16)
-                            .overlay(
-                                Circle()
-                                    .stroke(selectedColor == color ? Color.white : Color.clear, lineWidth: 2)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(color.title)
-                }
-
-                Divider()
-                    .frame(height: 18)
-
-                ForEach([CGFloat(2), CGFloat(4), CGFloat(7)], id: \.self) { width in
-                    Button {
-                        selectedLineWidth = width
-                    } label: {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: width + 5, height: width + 5)
-                            .frame(width: 20, height: 20)
-                            .background(
-                                selectedLineWidth == width ? Color.white.opacity(0.18) : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help("线宽 \(Int(width))")
-                }
+            if let hoveredTooltip {
+                Text(hoveredTooltip)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.black.opacity(0.90), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(.white.opacity(0.24), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.20), radius: 8, y: 3)
+                    .offset(y: 82)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.30), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.24), radius: 14, y: 6)
     }
 
     private func iconButton(_ image: String, _ title: String, isSelected: Bool, perform: @escaping () -> Void) -> some View {
         Button(action: perform) {
-            Image(systemName: image)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 24, height: 24)
-                .foregroundStyle(.white)
-                .background(
-                    isSelected ? Color.blue : Color.black.opacity(0.54),
-                    in: RoundedRectangle(cornerRadius: 4, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .stroke(isSelected ? Color.white.opacity(0.45) : Color.white.opacity(0.34), lineWidth: 1)
-                )
+            Group {
+                if image == ScreenshotAnnotationTool.textGlyphName {
+                    Text("T")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                } else {
+                    Image(systemName: image)
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .frame(width: 24, height: 24)
+            .foregroundStyle(.white)
+            .background(
+                isSelected ? Color.blue : Color.black.opacity(0.54),
+                in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.45) : Color.white.opacity(0.34), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
-        .help(title)
+        .onHover { hovering in
+            hoveredTooltip = hovering ? title : nil
+        }
+        .accessibilityLabel(title)
+    }
+
+    private func lineWidthTitle(_ width: CGFloat) -> String {
+        switch Int(width) {
+        case 2:
+            return "细"
+        case 4:
+            return "中"
+        default:
+            return "粗"
+        }
+    }
+}
+
+private struct ScreenshotShortcutHintPanel: View {
+    private let rows: [(keys: [String], title: String)] = [
+        (["WASD", "↑↓←→"], "移动选区 1 像素"),
+        (["Shift", "WASD/↑↓←→"], "移动选区 10 像素"),
+        (["↩"], "完成并复制"),
+        (["C"], "复制到剪贴板"),
+        (["⌘", "S"], "保存为 PNG"),
+        (["P"], "钉住当前截图"),
+        (["Delete"], "撤销批注"),
+        (["Esc"], "取消截图")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            ForEach(rows.indices, id: \.self) { index in
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        ForEach(rows[index].keys, id: \.self) { key in
+                            ScreenshotShortcutKeyCap(title: key)
+                        }
+                    }
+                    .frame(width: 112, alignment: .trailing)
+
+                    Text(rows[index].title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.28), radius: 16, y: 8)
+    }
+}
+
+private struct ScreenshotShortcutKeyCap: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, title.count > 1 ? 7 : 0)
+            .frame(minWidth: title.count > 1 ? 0 : 22, minHeight: 22)
+            .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(.white.opacity(0.80), lineWidth: 1.2)
+            )
     }
 }
 
 private enum ScreenshotToolbarAction {
     case perform(ScreenshotResultAction)
     case undo
+    case redo
     case cancel
+}
+
+private enum ScreenshotToolbarControlMode {
+    case shape
+    case text
 }
 
 struct ScreenshotCapturePayload {
@@ -505,12 +1177,16 @@ struct ScreenshotCapturePayload {
 struct ScreenshotAnnotation: Identifiable {
     let id = UUID()
     let tool: ScreenshotDrawableTool
-    let color: ScreenshotAnnotationColor
-    let lineWidth: CGFloat
+    var color: ScreenshotAnnotationColor
+    var lineWidth: CGFloat
+    var fontSize: CGFloat = 18
+    var text: String = ""
+    var textBoxSize: CGSize = CGSize(width: 128, height: 34)
     var points: [CGPoint]
 }
 
 enum ScreenshotDrawableTool {
+    case text
     case pen
     case line
     case arrow
@@ -519,7 +1195,10 @@ enum ScreenshotDrawableTool {
 }
 
 enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
+    static let textGlyphName = "airsentry.text.tool"
+
     case cursor
+    case text
     case rectangle
     case ellipse
     case line
@@ -532,6 +1211,8 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
         switch self {
         case .cursor:
             return .pen
+        case .text:
+            return .text
         case .rectangle:
             return .rectangle
         case .ellipse:
@@ -549,6 +1230,8 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
         switch self {
         case .cursor:
             return "cursorarrow"
+        case .text:
+            return Self.textGlyphName
         case .rectangle:
             return "rectangle"
         case .ellipse:
@@ -566,6 +1249,8 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
         switch self {
         case .cursor:
             return "移动选区"
+        case .text:
+            return "文字"
         case .rectangle:
             return "矩形"
         case .ellipse:
@@ -703,6 +1388,65 @@ private enum ResizeHandle: CaseIterable, Identifiable {
     }
 }
 
+private enum TextResizeHandle: CaseIterable, Identifiable {
+    case topLeft
+    case topRight
+    case bottomLeft
+    case bottomRight
+
+    var id: Self { self }
+
+    func point(in rect: CGRect) -> CGPoint {
+        switch self {
+        case .topLeft:
+            return CGPoint(x: rect.minX, y: rect.minY)
+        case .topRight:
+            return CGPoint(x: rect.maxX, y: rect.minY)
+        case .bottomLeft:
+            return CGPoint(x: rect.minX, y: rect.maxY)
+        case .bottomRight:
+            return CGPoint(x: rect.maxX, y: rect.maxY)
+        }
+    }
+
+    func resized(origin: CGPoint, size: CGSize, translation: CGSize) -> TextResizeResult {
+        let minimumWidth: CGFloat = 72
+        let minimumHeight: CGFloat = 26
+        var newOrigin = origin
+        var newSize = size
+
+        switch self {
+        case .topLeft:
+            newOrigin.x = origin.x + min(translation.width, size.width - minimumWidth)
+            newOrigin.y = origin.y + min(translation.height, size.height - minimumHeight)
+            newSize.width = max(minimumWidth, size.width - translation.width)
+            newSize.height = max(minimumHeight, size.height - translation.height)
+        case .topRight:
+            newOrigin.y = origin.y + min(translation.height, size.height - minimumHeight)
+            newSize.width = max(minimumWidth, size.width + translation.width)
+            newSize.height = max(minimumHeight, size.height - translation.height)
+        case .bottomLeft:
+            newOrigin.x = origin.x + min(translation.width, size.width - minimumWidth)
+            newSize.width = max(minimumWidth, size.width - translation.width)
+            newSize.height = max(minimumHeight, size.height + translation.height)
+        case .bottomRight:
+            newSize.width = max(minimumWidth, size.width + translation.width)
+            newSize.height = max(minimumHeight, size.height + translation.height)
+        }
+
+        return TextResizeResult(origin: newOrigin, size: newSize)
+    }
+}
+
+private struct TextResizeResult {
+    let origin: CGPoint
+    let size: CGSize
+
+    func fontSize(current: CGFloat) -> CGFloat {
+        max(12, min(48, max(current, size.height - 16)))
+    }
+}
+
 private struct SelectionShape: Shape {
     let selection: CGRect
 
@@ -715,33 +1459,41 @@ private struct SelectionShape: Shape {
 }
 
 private struct ScreenshotOverlayKeyCatcher: NSViewRepresentable {
-    let cancel: () -> Void
+    let isEnabled: Bool
+    let handleKeyDown: (NSEvent) -> Void
 
     func makeNSView(context: Context) -> KeyCatcherView {
         let view = KeyCatcherView()
-        view.cancel = cancel
-        DispatchQueue.main.async {
-            view.window?.makeFirstResponder(view)
+        view.isEnabled = isEnabled
+        view.handleKeyDown = handleKeyDown
+        if isEnabled {
+            DispatchQueue.main.async {
+                view.window?.makeFirstResponder(view)
+            }
         }
         return view
     }
 
     func updateNSView(_ nsView: KeyCatcherView, context: Context) {
-        nsView.cancel = cancel
-        DispatchQueue.main.async {
-            nsView.window?.makeFirstResponder(nsView)
+        nsView.isEnabled = isEnabled
+        nsView.handleKeyDown = handleKeyDown
+        if isEnabled {
+            DispatchQueue.main.async {
+                nsView.window?.makeFirstResponder(nsView)
+            }
         }
     }
 }
 
 private final class KeyCatcherView: NSView {
-    var cancel: (() -> Void)?
+    var isEnabled = true
+    var handleKeyDown: ((NSEvent) -> Void)?
 
-    override var acceptsFirstResponder: Bool { true }
+    override var acceptsFirstResponder: Bool { isEnabled }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
-            cancel?()
+        if isEnabled {
+            handleKeyDown?(event)
         } else {
             super.keyDown(with: event)
         }
