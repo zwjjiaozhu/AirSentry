@@ -194,7 +194,7 @@ struct ToolboxView: View {
     private var superRightClickContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             superRightClickHeader
-            superRightClickStatusSection
+            superRightClickSetupGuideSection
             superRightClickFolderAuthorizationSection
             superRightClickTemplatesSection
         }
@@ -393,6 +393,87 @@ struct ToolboxView: View {
             }
             .buttonStyle(.bordered)
         }
+    }
+
+    private var superRightClickSetupGuideSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("先完成这两步")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Finder 扩展负责显示右键菜单，文件夹授权负责让“新建文件”真正写入目标目录。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                superRightClickSetupStepRow(
+                    step: "1",
+                    title: "在系统设置里启用 Finder 扩展",
+                    message: "进入「系统设置 - 通用 - 登录项与扩展 - Finder 扩展」，勾选「AirSentry Finder Extension」。",
+                    buttonTitle: "去设置",
+                    systemImage: "gearshape",
+                    action: openSuperRightClickExtensionSettings
+                )
+
+                superRightClickSetupStepRow(
+                    step: "2",
+                    title: "授权常用文件夹",
+                    message: "给桌面、下载、文稿或需要新建文件的目录授权，否则右键里的“新建文件”不会写入。",
+                    buttonTitle: "添加文件夹",
+                    systemImage: "folder.badge.plus",
+                    action: { finderAuthorizationStore.addFolder() }
+                )
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private func superRightClickSetupStepRow(
+        step: String,
+        title: String,
+        message: String,
+        buttonTitle: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(step)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(.blue))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text(message)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Button(action: action) {
+                Label(buttonTitle, systemImage: systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.08))
+        )
     }
 
     private var uninstallerPermissionCard: some View {
@@ -920,81 +1001,6 @@ struct ToolboxView: View {
         .toolboxCard()
     }
 
-    private var superRightClickStatusSection: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 18) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.blue.opacity(0.12))
-                    Image(systemName: "filemenu.and.selection")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(.blue)
-                }
-                .frame(width: 54, height: 54)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Finder 右键菜单")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("已启用 \(superRightClickStore.enabledMenuItems.count) 个功能项，其中“新建文件”包含 \(superRightClickStore.enabledTemplates.count) 种格式。")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: $superRightClickStore.isEnabled)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-            .padding(20)
-
-            Divider()
-
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .frame(width: 24)
-
-                Text("请前往「系统设置 - 通用 - 登录项与扩展 - Finder 扩展」，打开「AirSentry Finder Extension」以启用 Finder 右键菜单。")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer(minLength: 10)
-
-                Button {
-                    openSuperRightClickExtensionSettings()
-                } label: {
-                    Text("去设置")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
-
-            VStack(spacing: 0) {
-                superRightClickOptionRow(
-                    title: "显示 Finder 右键菜单图标",
-                    systemImage: "menubar.rectangle",
-                    isOn: $superRightClickStore.showsFinderIcon
-                )
-                Divider().padding(.leading, 50)
-                superRightClickOptionRow(
-                    title: "隐藏桌面",
-                    systemImage: "desktopcomputer",
-                    isOn: $superRightClickStore.hidesDesktop
-                )
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-        }
-        .toolboxCard()
-    }
-
     private var superRightClickTemplatesSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
@@ -1054,34 +1060,17 @@ struct ToolboxView: View {
                     .frame(maxHeight: .infinity)
 
                 VStack(alignment: .leading, spacing: 0) {
-            superRightClickDetailSection
+                    superRightClickPreviewSection
+
+                    Divider()
+
+                    superRightClickDetailSection
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .clipped()
             }
         }
         .toolboxCard()
-    }
-
-    private func superRightClickOptionRow(
-        title: String,
-        systemImage: String,
-        isOn: Binding<Bool>
-    ) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-            Text(title)
-                .font(.system(size: 13.5, weight: .medium))
-            Spacer()
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-        }
-        .frame(height: 44)
     }
 
     private var superRightClickFolderAuthorizationSection: some View {
@@ -1258,17 +1247,12 @@ struct ToolboxView: View {
                     }
                 }
             }
-
-            Divider()
-                .padding(.top, 2)
-
-            superRightClickPreviewSection
         }
     }
 
     private var superRightClickPreviewSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("右键预览")
+            Text("最终右键预览")
                 .font(.system(size: 13.5, weight: .semibold))
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1790,18 +1774,6 @@ private final class SuperRightClickStore: ObservableObject {
     static let newFileMenuItemID = "newFile"
     static let defaultSelectedMenuItemID = newFileMenuItemID
 
-    @Published var isEnabled: Bool {
-        didSet { defaults.set(isEnabled, forKey: Keys.isEnabled) }
-    }
-
-    @Published var showsFinderIcon: Bool {
-        didSet { defaults.set(showsFinderIcon, forKey: Keys.showsFinderIcon) }
-    }
-
-    @Published var hidesDesktop: Bool {
-        didSet { defaults.set(hidesDesktop, forKey: Keys.hidesDesktop) }
-    }
-
     @Published var menuItems: [SuperRightClickMenuItem] {
         didSet { saveMenuItems() }
     }
@@ -1822,9 +1794,6 @@ private final class SuperRightClickStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        isEnabled = defaults.object(forKey: Keys.isEnabled) as? Bool ?? true
-        showsFinderIcon = defaults.object(forKey: Keys.showsFinderIcon) as? Bool ?? true
-        hidesDesktop = defaults.object(forKey: Keys.hidesDesktop) as? Bool ?? false
         menuItems = Self.loadMenuItems(from: defaults)
         templates = Self.loadTemplates(from: defaults)
     }
@@ -1954,9 +1923,6 @@ private final class SuperRightClickStore: ObservableObject {
     ]
 
     private enum Keys {
-        static let isEnabled = "superRightClickEnabled"
-        static let showsFinderIcon = "superRightClickShowsFinderIcon"
-        static let hidesDesktop = "superRightClickHidesDesktop"
         static let menuItems = "superRightClickMenuItems"
         static let templates = "superRightClickTemplates"
     }
