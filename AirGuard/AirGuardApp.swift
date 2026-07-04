@@ -13,6 +13,8 @@ struct AirGuardApp: App {
     @StateObject private var inputMethodShortcutController: InputMethodShortcutController
     @StateObject private var appLauncherStore: AppLauncherStore
     @StateObject private var appLauncherShortcutManager: AppLauncherShortcutManager
+    @StateObject private var screenshotCaptureController: ScreenshotCaptureController
+    @StateObject private var screenshotShortcutManager: ScreenshotShortcutManager
     private let appLauncherPanelController: AppLauncherPanelController
 
     init() {
@@ -20,6 +22,7 @@ struct AirGuardApp: App {
         let alertManager = AlertManager()
         let appLauncherStore = AppLauncherStore()
         let appLauncherPanelController = AppLauncherPanelController(store: appLauncherStore)
+        let screenshotCaptureController = ScreenshotCaptureController()
         _settings = StateObject(wrappedValue: settings)
         _alertManager = StateObject(wrappedValue: alertManager)
         _monitorStore = StateObject(wrappedValue: MonitorStore(settings: settings, alertManager: alertManager))
@@ -29,6 +32,8 @@ struct AirGuardApp: App {
         _appLauncherShortcutManager = StateObject(wrappedValue: AppLauncherShortcutManager(settings: settings) {
             appLauncherPanelController.toggle()
         })
+        _screenshotCaptureController = StateObject(wrappedValue: screenshotCaptureController)
+        _screenshotShortcutManager = StateObject(wrappedValue: ScreenshotShortcutManager(settings: settings, captureController: screenshotCaptureController))
         self.appLauncherPanelController = appLauncherPanelController
     }
 
@@ -58,6 +63,7 @@ struct AirGuardApp: App {
             ToolboxView()
                 .environmentObject(settings)
                 .environmentObject(appLauncherStore)
+                .environmentObject(screenshotCaptureController)
         }
         .defaultSize(width: 900, height: 650)
     }

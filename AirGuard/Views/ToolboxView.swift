@@ -5,6 +5,7 @@ struct ToolboxView: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appLauncherStore: AppLauncherStore
+    @EnvironmentObject private var screenshotCaptureController: ScreenshotCaptureController
     @StateObject private var storageStore = StorageAnalyzerStore()
     @StateObject private var uninstallerStore = AppUninstallerStore()
     @StateObject private var superRightClickStore = SuperRightClickStore()
@@ -13,6 +14,7 @@ struct ToolboxView: View {
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
     @State private var isRecordingAppLauncherShortcut = false
+    @State private var isRecordingScreenshotShortcut = false
     @State private var selectedSuperRightClickMenuItemID: String = SuperRightClickStore.defaultSelectedMenuItemID
     @State private var draggedSuperRightClickMenuItemID: String?
     @State private var draggedSuperRightClickTemplateID: String?
@@ -86,11 +88,19 @@ struct ToolboxView: View {
                 }
 
                 ToolboxSidebarItem(
-                    title: "程序收纳",
+                    title: "程序收纳台",
                     systemImage: "square.grid.3x3",
                     isSelected: selectedTool == .appLauncher
                 ) {
                     selectedTool = .appLauncher
+                }
+
+                ToolboxSidebarItem(
+                    title: "截图钉图",
+                    systemImage: "pin.square",
+                    isSelected: selectedTool == .screenshot
+                ) {
+                    selectedTool = .screenshot
                 }
 
                 ToolboxSidebarItem(
@@ -136,6 +146,8 @@ struct ToolboxView: View {
                     inputMethodContent
                 case .appLauncher:
                     appLauncherContent
+                case .screenshot:
+                    screenshotContent
                 case .superRightClick:
                     superRightClickContent
                 }
@@ -188,6 +200,14 @@ struct ToolboxView: View {
             appLauncherHeader
             appLauncherShortcutSection
             appLauncherPanelEntrySection
+        }
+    }
+
+    private var screenshotContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            screenshotHeader
+            screenshotShortcutSection
+            screenshotActionSection
         }
     }
 
@@ -363,7 +383,7 @@ struct ToolboxView: View {
     private var appLauncherHeader: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("程序收纳")
+                Text("程序收纳台")
                     .font(.system(size: 24, weight: .bold))
                 Text("把应用按自己的习惯分组，快捷键弹出轻量面板后直接启动。")
                     .font(.system(size: 13.5))
@@ -1001,6 +1021,133 @@ struct ToolboxView: View {
         .toolboxCard()
     }
 
+    private var screenshotHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("截图钉图")
+                    .font(.system(size: 24, weight: .bold))
+                Text("框选屏幕区域后复制、保存，或像 Snipaste 一样钉在屏幕上。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                screenshotCaptureController.startCapture()
+            } label: {
+                Label("立即截图", systemImage: "camera.viewfinder")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var screenshotShortcutSection: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.teal.opacity(0.12))
+                    Image(systemName: "keyboard.badge.eye")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.teal)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("全局截图快捷键")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("按下快捷键后进入框选截图；Esc 可取消。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                ShortcutRecorderButton(
+                    shortcut: settings.screenshotShortcut,
+                    isRecording: isRecordingScreenshotShortcut,
+                    conflictReason: screenshotShortcutConflictReason,
+                    startRecording: { isRecordingScreenshotShortcut = true },
+                    record: { shortcut in
+                        settings.setScreenshotShortcut(shortcut)
+                        isRecordingScreenshotShortcut = false
+                    },
+                    cancel: { isRecordingScreenshotShortcut = false },
+                    clear: {
+                        settings.screenshotShortcut = nil
+                        isRecordingScreenshotShortcut = false
+                    }
+                )
+                .frame(width: 142)
+
+                Toggle("", isOn: $settings.screenshotShortcutEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+
+            if let screenshotShortcutConflictReason {
+                Label(screenshotShortcutConflictReason, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var screenshotActionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 18) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.blue.opacity(0.12))
+                    Image(systemName: "pin")
+                        .font(.system(size: 23, weight: .medium))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 54, height: 54)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("钉图工作流")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("框选完成后会自动复制到剪贴板，并出现复制、保存、钉图操作条。钉图窗口支持拖动、缩放、透明度和关闭。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Button {
+                    screenshotCaptureController.startCapture()
+                } label: {
+                    Label("框选截图", systemImage: "viewfinder")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    screenshotCaptureController.pinClipboardImageIfAvailable()
+                } label: {
+                    Label("钉住剪贴板图片", systemImage: "pin")
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Label("首次使用可能需要屏幕录制权限", systemImage: "lock.shield")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(20)
+        .toolboxCard()
+    }
+
     private var superRightClickTemplatesSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
@@ -1624,6 +1771,9 @@ struct ToolboxView: View {
         if settings.appLauncherShortcut == shortcut {
             return "已被程序面板快捷键使用"
         }
+        if settings.screenshotShortcut == shortcut {
+            return "已被截图钉图快捷键使用"
+        }
         return nil
     }
 
@@ -1632,6 +1782,21 @@ struct ToolboxView: View {
         if let rule = settings.inputMethodShortcutRules.first(where: { $0.shortcut == shortcut }) {
             let sourceName = inputSources.first { $0.id == rule.inputSourceID }?.name ?? "输入法快捷切换"
             return "已被 \(sourceName) 使用"
+        }
+        if settings.screenshotShortcut == shortcut {
+            return "已被截图钉图快捷键使用"
+        }
+        return nil
+    }
+
+    private var screenshotShortcutConflictReason: String? {
+        guard let shortcut = settings.screenshotShortcut else { return nil }
+        if let rule = settings.inputMethodShortcutRules.first(where: { $0.shortcut == shortcut }) {
+            let sourceName = inputSources.first { $0.id == rule.inputSourceID }?.name ?? "输入法快捷切换"
+            return "已被 \(sourceName) 使用"
+        }
+        if settings.appLauncherShortcut == shortcut {
+            return "已被程序面板快捷键使用"
         }
         return nil
     }
@@ -1732,6 +1897,7 @@ private enum ToolboxSection {
     case uninstaller
     case inputMethod
     case appLauncher
+    case screenshot
     case superRightClick
 }
 

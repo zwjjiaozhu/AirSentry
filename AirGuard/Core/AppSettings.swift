@@ -78,6 +78,14 @@ final class AppSettings: ObservableObject {
         didSet { saveAppLauncherShortcut() }
     }
 
+    @Published var screenshotShortcutEnabled: Bool {
+        didSet { defaults.set(screenshotShortcutEnabled, forKey: Keys.screenshotShortcutEnabled) }
+    }
+
+    @Published var screenshotShortcut: KeyboardShortcut? {
+        didSet { saveScreenshotShortcut() }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -107,6 +115,8 @@ final class AppSettings: ObservableObject {
         inputMethodShortcutRules = Self.loadInputMethodShortcutRules(from: defaults)
         appLauncherShortcutEnabled = defaults.object(forKey: Keys.appLauncherShortcutEnabled) as? Bool ?? false
         appLauncherShortcut = Self.loadAppLauncherShortcut(from: defaults)
+        screenshotShortcutEnabled = defaults.object(forKey: Keys.screenshotShortcutEnabled) as? Bool ?? true
+        screenshotShortcut = Self.loadScreenshotShortcut(from: defaults)
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
     }
@@ -196,6 +206,10 @@ final class AppSettings: ObservableObject {
         appLauncherShortcut = shortcut
     }
 
+    func setScreenshotShortcut(_ shortcut: KeyboardShortcut) {
+        screenshotShortcut = shortcut
+    }
+
     private func normalizeLoadedTemperatureThresholds() {
         fairTemperatureThreshold = min(max(fairTemperatureThreshold, 30), 123)
         seriousTemperatureThreshold = min(max(seriousTemperatureThreshold, fairTemperatureThreshold + 1), 124)
@@ -228,6 +242,20 @@ final class AppSettings: ObservableObject {
             defaults.set(data, forKey: Keys.appLauncherShortcut)
         } catch {
             NSLog("AirSentry app launcher shortcut save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveScreenshotShortcut() {
+        guard let screenshotShortcut else {
+            defaults.removeObject(forKey: Keys.screenshotShortcut)
+            return
+        }
+
+        do {
+            let data = try JSONEncoder().encode(screenshotShortcut)
+            defaults.set(data, forKey: Keys.screenshotShortcut)
+        } catch {
+            NSLog("AirSentry screenshot shortcut save failed: \(error.localizedDescription)")
         }
     }
 
@@ -266,6 +294,19 @@ final class AppSettings: ObservableObject {
             return KeyboardShortcut(keyCode: 49, modifiers: UInt32(optionKey))
         }
     }
+
+    private static func loadScreenshotShortcut(from defaults: UserDefaults) -> KeyboardShortcut? {
+        guard let data = defaults.data(forKey: Keys.screenshotShortcut) else {
+            return KeyboardShortcut(keyCode: 0, modifiers: UInt32(controlKey | shiftKey))
+        }
+
+        do {
+            return try JSONDecoder().decode(KeyboardShortcut.self, from: data)
+        } catch {
+            NSLog("AirSentry screenshot shortcut load failed: \(error.localizedDescription)")
+            return KeyboardShortcut(keyCode: 0, modifiers: UInt32(controlKey | shiftKey))
+        }
+    }
 }
 
 private enum Keys {
@@ -287,4 +328,6 @@ private enum Keys {
     static let inputMethodShortcutRules = "inputMethodShortcutRules"
     static let appLauncherShortcutEnabled = "appLauncherShortcutEnabled"
     static let appLauncherShortcut = "appLauncherShortcut"
+    static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
+    static let screenshotShortcut = "screenshotShortcut"
 }
