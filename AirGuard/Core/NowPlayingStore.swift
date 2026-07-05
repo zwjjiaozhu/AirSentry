@@ -56,6 +56,7 @@ final class NowPlayingStore: ObservableObject {
     func togglePlayPause() {
 #if !APP_STORE
         bridge.togglePlayPause()
+        optimisticallyTogglePlaybackState()
 #endif
     }
 
@@ -96,6 +97,23 @@ final class NowPlayingStore: ObservableObject {
     }
 
 #if !APP_STORE
+    private func optimisticallyTogglePlaybackState() {
+        guard let current = track else { return }
+        track = NowPlayingTrack(
+            id: current.id,
+            title: current.title,
+            artist: current.artist,
+            album: current.album,
+            artwork: current.artwork,
+            duration: current.duration,
+            elapsedTime: current.elapsedTime,
+            isPlaying: !current.isPlaying,
+            appBundleIdentifier: current.appBundleIdentifier,
+            appProcessIdentifier: current.appProcessIdentifier
+        )
+        lastProgressTick = Date()
+    }
+
     private func update(with info: [AnyHashable: Any]?) {
         guard let info,
               let title = stringValue(in: info, keys: [
