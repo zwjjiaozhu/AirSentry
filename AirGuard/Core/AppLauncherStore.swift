@@ -11,14 +11,22 @@ final class AppLauncherStore: ObservableObject {
     @Published var searchText = ""
     @Published private(set) var isScanning = false
     @Published var errorMessage: String?
+    @Published private(set) var authorizedDirectories: [URL] = []
 
     private let reader = AppLauncherReader()
     private let defaults: UserDefaults
+    private let authorizedDirectoryBookmarkKey = "appLauncherAuthorizedDirectoryBookmarks"
+    private var accessingSecurityScopedURLs: [URL] = []
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         groups = Self.loadGroups(from: defaults)
         selectedGroupID = nil
+        restoreAuthorizedDirectories()
+    }
+
+    deinit {
+        accessingSecurityScopedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
     }
 
     var selectedGroup: AppLauncherGroup? {
@@ -44,8 +52,9 @@ final class AppLauncherStore: ObservableObject {
         isScanning = true
         errorMessage = nil
 
+        let extraDirectories = authorizedDirectories
         let scanTask = Task.detached(priority: .utility) { [reader] in
-            reader.scanApplications()
+            reader.scanApplications(in: extraDirectories)
         }
 
         Task { [weak self] in
@@ -54,6 +63,70 @@ final class AppLauncherStore: ObservableObject {
             self.pruneMissingApps()
             self.isScanning = false
         }
+    }
+
+    func addAuthorizedDirectory() {
+        let panel = NSOpenPanel()
+        panel.title = "选择应用目录"
+        panel.message = "授权后，程序收纳台会扫描该目录下的应用。可选择“个人 - 应用程序”来纳入 ~/Applications。"
+        panel.prompt = "授权"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let didAccess = url.startAccessingSecurityScopedResource()
+        if didAccess { accessingSecurityScopedURLs.append(url) }
+        authorizedDirectories.append(url)
+        saveAuthorizedDirectoryBookmarks()
+        refreshApplications()
+    }
+
+    func removeAuthorizedDirectory(at index: Int) {
+        guard authorizedDirectories.indices.contains(index) else { return }
+        let url = authorizedDirectories.remove(at: index)
+        url.stopAccessingSecurityScopedResource()
+        accessingSecurityScopedURLs.removeAll { $0 == url }
+        saveAuthorizedDirectoryBookmarks()
+        refreshApplications()
+    }
+
+    private func restoreAuthorizedDirectories() {
+        let bookmarks = defaults.array(forKey: authorizedDirectoryBookmarkKey) as? [Data] ?? []
+        var restored: [URL] = []
+        for data in bookmarks {
+            do {
+                var isStale = false
+                let url = try URL(
+                    resolvingBookmarkData: data,
+                    options: [.withSecurityScope],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+                let didAccess = url.startAccessingSecurityScopedResource()
+                if didAccess { accessingSecurityScopedURLs.append(url) }
+                restored.append(url)
+            } catch {
+                // 忽略失效的授权
+            }
+        }
+        authorizedDirectories = restored
+        if !restored.isEmpty {
+            saveAuthorizedDirectoryBookmarks()
+        }
+    }
+
+    private func saveAuthorizedDirectoryBookmarks() {
+        let bookmarks = authorizedDirectories.compactMap { url -> Data? in
+            try? url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+        }
+        defaults.set(bookmarks, forKey: authorizedDirectoryBookmarkKey)
     }
 
     func launch(_ app: AppLauncherItem) {

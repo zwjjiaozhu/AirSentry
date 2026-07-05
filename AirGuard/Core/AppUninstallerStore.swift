@@ -137,6 +137,35 @@ final class AppUninstallerStore: ObservableObject {
         }
     }
 
+    func clearHomeAccess() {
+        if isAccessingSecurityScopedResource {
+            homeURL?.stopAccessingSecurityScopedResource()
+            isAccessingSecurityScopedResource = false
+        }
+        homeURL = nil
+        selectedHomePath = nil
+        hasHomeAccess = false
+        UserDefaults.standard.removeObject(forKey: bookmarkKey)
+        if let app = plan?.app {
+            select(app)
+        }
+    }
+
+    func clearApplicationsAccess() {
+        if isAccessingApplicationsSecurityScopedResource {
+            applicationsURL?.stopAccessingSecurityScopedResource()
+            isAccessingApplicationsSecurityScopedResource = false
+        }
+        applicationsURL = nil
+        selectedApplicationsPath = nil
+        hasApplicationsAccess = false
+        UserDefaults.standard.removeObject(forKey: applicationsBookmarkKey)
+        refreshApplications()
+        if let app = plan?.app {
+            select(app)
+        }
+    }
+
     func select(_ app: InstalledAppInfo) {
         guard let homeURL else {
             plan = AppUninstallPlan(app: app, artifacts: [

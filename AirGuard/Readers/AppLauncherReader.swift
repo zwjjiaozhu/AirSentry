@@ -4,8 +4,10 @@ import Foundation
 struct AppLauncherReader {
     private let fileManager = FileManager.default
 
-    func scanApplications() -> [AppLauncherItem] {
-        applicationDirectories()
+    func scanApplications(in additionalDirectories: [URL] = []) -> [AppLauncherItem] {
+        let allDirectories = Array(Set(applicationDirectories() + additionalDirectories))
+            .filter { fileManager.fileExists(atPath: $0.path) }
+        return allDirectories
             .flatMap { scanApplications(in: $0) }
             .reduce(into: [String: AppLauncherItem]()) { result, item in
                 result[item.id] = item
@@ -57,8 +59,13 @@ struct AppLauncherReader {
     private func readApplication(at url: URL) -> AppLauncherItem? {
         let bundle = Bundle(url: url)
         let info = bundle?.infoDictionary
-        let displayName = info?["CFBundleDisplayName"] as? String
-        let bundleName = info?["CFBundleName"] as? String
+        // 优先读取本地化名称：系统应用的中文名存储在 *.lproj/InfoPlist.strings 中，
+        // 不在 Info.plist 里，仅读取 infoDictionary 会拿到英文默认名。
+        let localizedInfo = bundle?.localizedInfoDictionary
+        let displayName = localizedInfo?["CFBundleDisplayName"] as? String
+            ?? info?["CFBundleDisplayName"] as? String
+        let bundleName = localizedInfo?["CFBundleName"] as? String
+            ?? info?["CFBundleName"] as? String
         let name = displayName ?? bundleName ?? url.deletingPathExtension().lastPathComponent
         let bundleIdentifier = bundle?.bundleIdentifier
         let id = bundleIdentifier?.isEmpty == false ? bundleIdentifier! : url.path

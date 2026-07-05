@@ -246,6 +246,7 @@ struct ToolboxView: View {
         VStack(alignment: .leading, spacing: 18) {
             appLauncherHeader
             appLauncherShortcutSection
+            appLauncherAuthorizationSection
             appLauncherPanelEntrySection
         }
     }
@@ -400,20 +401,42 @@ struct ToolboxView: View {
                     .font(.system(size: 13.5))
                     .foregroundStyle(.secondary)
                 if let selectedHomePath = uninstallerStore.selectedHomePath {
-                    Label(selectedHomePath, systemImage: "folder")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(selectedHomePath)
+                    HStack(spacing: 4) {
+                        Label(selectedHomePath, systemImage: "folder")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(selectedHomePath)
+                        Button {
+                            uninstallerStore.clearHomeAccess()
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                        .help("移除授权")
+                    }
                 }
                 if let selectedApplicationsPath = uninstallerStore.selectedApplicationsPath {
-                    Label(selectedApplicationsPath, systemImage: "app.badge")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(selectedApplicationsPath)
+                    HStack(spacing: 4) {
+                        Label(selectedApplicationsPath, systemImage: "app.badge")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(selectedApplicationsPath)
+                        Button {
+                            uninstallerStore.clearApplicationsAccess()
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                        .help("移除授权")
+                    }
                 }
             }
 
@@ -1050,6 +1073,66 @@ struct ToolboxView: View {
                 Label(appLauncherShortcutConflictReason, systemImage: "exclamationmark.triangle")
                     .font(.system(size: 12.5))
                     .foregroundStyle(.orange)
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var appLauncherAuthorizationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("授权应用目录")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("沙盒下 ~/Applications 等用户目录需要授权才能扫描，授权后会持续纳入程序收纳台。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button {
+                    appLauncherStore.addAuthorizedDirectory()
+                } label: {
+                    Label("添加目录", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(appLauncherStore.isScanning)
+            }
+
+            if !appLauncherStore.authorizedDirectories.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(appLauncherStore.authorizedDirectories.enumerated()), id: \.offset) { index, url in
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder")
+                                .foregroundStyle(.secondary)
+                            Text(url.path)
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button {
+                                appLauncherStore.removeAuthorizedDirectory(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.red)
+                            .help("移除")
+                        }
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                }
             }
         }
         .padding(18)
