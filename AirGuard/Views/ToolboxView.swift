@@ -46,6 +46,16 @@ struct ToolboxView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AirSentry.SelectSuperRightClickToolboxSection"))) { _ in
             selectedTool = .superRightClick
         }
+        .onReceive(NotificationCenter.default.publisher(for: .selectToolboxSection)) { notification in
+            guard
+                let rawValue = notification.object as? String,
+                let quickTool = MenuBarQuickTool(rawValue: rawValue),
+                let section = ToolboxSection(quickTool: quickTool)
+            else {
+                return
+            }
+            selectedTool = section
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openTranslationSettings)) { _ in
             selectedTool = .translation
         }
@@ -78,7 +88,7 @@ struct ToolboxView: View {
 
               ToolboxSidebarItem(
                 title: "截图钉图",
-                systemImage: "pin.square",
+                systemImage: "camera.viewfinder",
                 isSelected: selectedTool == .screenshot
               ) {
                 selectedTool = .screenshot
@@ -2108,6 +2118,31 @@ private enum ToolboxSection {
     case ocr
     case superRightClick
     case translation
+
+    init?(quickTool: MenuBarQuickTool) {
+        switch quickTool {
+        case .appLauncher:
+            self = .appLauncher
+        case .screenshot:
+            self = .screenshot
+        case .ocr:
+            self = .ocr
+        case .superRightClick:
+            self = .superRightClick
+        case .storage:
+            self = .storage
+        case .uninstaller:
+            self = .uninstaller
+        case .inputMethod:
+            self = .inputMethod
+        case .translation:
+            self = .translation
+        }
+    }
+}
+
+extension Notification.Name {
+    static let selectToolboxSection = Notification.Name("AirSentry.SelectToolboxSection")
 }
 
 private struct SuperRightClickMenuItem: Identifiable, Codable, Equatable, Hashable {

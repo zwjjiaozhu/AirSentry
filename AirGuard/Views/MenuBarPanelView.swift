@@ -8,18 +8,19 @@ struct MenuBarPanelView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var monitorStore: MonitorStore
     @EnvironmentObject private var alertManager: AlertManager
+    @EnvironmentObject private var screenshotCaptureController: ScreenshotCaptureController
 
     private var snapshot: SystemSnapshot { monitorStore.snapshot }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             header
             thermalHero
             metricsGrid
             suggestionCard
             footer
         }
-        .padding(20)
+        .padding(18)
         .background(panelBackground)
         .task {
             alertManager.requestAuthorization()
@@ -27,7 +28,7 @@ struct MenuBarPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 11) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.blue.opacity(0.12))
@@ -36,14 +37,14 @@ struct MenuBarPanelView: View {
                     .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(.blue)
             }
-            .frame(width: 48, height: 48)
+            .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("AirSentry")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 23, weight: .bold))
                     .foregroundStyle(.primary)
 
-                Text("守护你的 MacBook Air/Neo/Pro")
+                Text("六边形哨兵，守护你的Mac")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -73,14 +74,14 @@ struct MenuBarPanelView: View {
             ZStack {
                 Circle()
                     .fill(thermalColor.opacity(0.10))
-                    .frame(width: 92, height: 92)
+                    .frame(width: 80, height: 80)
 
                 Circle()
                     .fill(thermalColor.opacity(0.13))
-                    .frame(width: 60, height: 60)
+                    .frame(width: 52, height: 52)
 
                 Image(systemName: "thermometer.medium")
-                    .font(.system(size: 36, weight: .medium))
+                    .font(.system(size: 32, weight: .medium))
                     .foregroundStyle(thermalColor)
             }
 
@@ -103,8 +104,8 @@ struct MenuBarPanelView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, minHeight: 126, alignment: .leading)
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
         .background(
             LinearGradient(
                 colors: [
@@ -182,26 +183,22 @@ struct MenuBarPanelView: View {
     }
 
     private var suggestionCard: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ZStack {
                 Circle()
                     .fill(Color.yellow.opacity(0.18))
                 Image(systemName: "lightbulb")
-                    .font(.system(size: 25, weight: .medium))
+                    .font(.system(size: 21, weight: .medium))
                     .foregroundStyle(.orange)
             }
-            .frame(width: 48, height: 48)
+            .frame(width: 38, height: 38)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("建议")
-                    .font(.system(size: 16, weight: .semibold))
-
-                suggestionContent
-            }
+            suggestionContent
 
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(surfaceColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
@@ -264,24 +261,73 @@ struct MenuBarPanelView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 14) {
-            Button {
-                openToolboxWindow()
-            } label: {
-                Label("工具箱", systemImage: "wrench.and.screwdriver")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PanelButtonStyle())
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 12) {
+                Button {
+                    openToolboxWindow()
+                } label: {
+                    Label("工具箱", systemImage: "wrench.and.screwdriver")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PanelButtonStyle())
 
-            settingsButton
+                settingsButton
 
-            Button {
-                NSApp.terminate(nil)
-            } label: {
-                Label("退出", systemImage: "rectangle.portrait.and.arrow.right")
-                    .frame(maxWidth: .infinity)
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    Label("退出", systemImage: "rectangle.portrait.and.arrow.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PanelButtonStyle())
             }
-            .buttonStyle(PanelButtonStyle())
+
+            HStack(spacing: 0) {
+                quickToolBar
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 2)
+        }
+    }
+
+    private var quickToolBar: some View {
+        HStack(spacing: 6) {
+            ForEach(displayedQuickTools) { tool in
+                QuickToolIconButton(tool: tool) {
+                    runQuickTool(tool)
+                }
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(surfaceColor.opacity(0.44), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(surfaceStrokeColor.opacity(0.72), lineWidth: 1)
+        )
+    }
+
+    private var displayedQuickTools: [MenuBarQuickTool] {
+        let tools = settings.menuBarQuickTools.isEmpty ? MenuBarQuickTool.defaultTools : settings.menuBarQuickTools
+        return Array(tools.prefix(8))
+    }
+
+    private func runQuickTool(_ tool: MenuBarQuickTool) {
+        switch tool {
+        case .appLauncher:
+            dismiss()
+            NotificationCenter.default.post(name: .showAppLauncherPanel, object: nil)
+        case .screenshot:
+            dismiss()
+            screenshotCaptureController.startCapture()
+        case .ocr:
+            dismiss()
+            OCRPanelController.shared.show()
+        case .translation:
+            dismiss()
+            NotificationCenter.default.post(name: .showTranslationPanel, object: nil)
+        case .superRightClick, .storage, .uninstaller, .inputMethod:
+            openToolboxWindow(selecting: tool)
         }
     }
 
@@ -362,7 +408,7 @@ struct MenuBarPanelView: View {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func openToolboxWindow() {
+    private func openToolboxWindow(selecting quickTool: MenuBarQuickTool? = nil) {
         dismiss()
         openWindow(id: "toolbox")
         NSApp.activate(ignoringOtherApps: true)
@@ -371,6 +417,9 @@ struct MenuBarPanelView: View {
         [0.05, 0.15, 0.35].forEach { delay in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 bringToolboxWindowToFront()
+                if let quickTool {
+                    NotificationCenter.default.post(name: .selectToolboxSection, object: quickTool.rawValue)
+                }
             }
         }
     }
@@ -576,7 +625,7 @@ private struct PanelButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(.primary)
-            .padding(.vertical, 13)
+            .padding(.vertical, 11)
             .background(
                 surfaceColor(isPressed: configuration.isPressed),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -601,6 +650,30 @@ private struct PanelButtonStyle: ButtonStyle {
 
     private func shadowOpacity(isPressed: Bool) -> Double {
         colorScheme == .dark ? (isPressed ? 0.16 : 0.24) : (isPressed ? 0.03 : 0.06)
+    }
+}
+
+private struct QuickToolIconButton: View {
+    let tool: MenuBarQuickTool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: tool.systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isHovering ? Color.blue : Color.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(isHovering ? Color.blue.opacity(0.11) : Color.clear)
+        )
+        .help(tool.helpText)
+        .pointingHandCursor()
+        .onHover { isHovering = $0 }
     }
 }
 

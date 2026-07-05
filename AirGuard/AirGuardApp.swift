@@ -54,6 +54,7 @@ struct AirGuardApp: App {
                 .environmentObject(alertManager)
                 .environmentObject(monitorStore)
                 .environmentObject(agentMonitorStore)
+                .environmentObject(screenshotCaptureController)
                 .frame(width: 400)
         } label: {
             MenuBarStatusLabel(settings: settings, monitorStore: monitorStore)

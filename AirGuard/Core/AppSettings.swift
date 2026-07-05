@@ -2,6 +2,66 @@ import Foundation
 import Combine
 import Carbon.HIToolbox
 
+enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
+    case appLauncher
+    case screenshot
+    case ocr
+    case superRightClick
+    case storage
+    case uninstaller
+    case inputMethod
+    case translation
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .appLauncher: "程序收纳台"
+        case .screenshot: "截图钉图"
+        case .ocr: "文字识别"
+        case .superRightClick: "超级右键"
+        case .storage: "AI 存储分析"
+        case .uninstaller: "软件卸载助手"
+        case .inputMethod: "输入法快捷切换"
+        case .translation: "翻译助手"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .appLauncher: "打开程序收纳台"
+        case .screenshot: "开始截图或钉图"
+        case .ocr: "打开文字识别"
+        case .superRightClick: "打开超级右键设置"
+        case .storage: "打开 AI 存储分析"
+        case .uninstaller: "打开软件卸载助手"
+        case .inputMethod: "打开输入法快捷切换"
+        case .translation: "打开翻译助手"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .appLauncher: "square.grid.3x3"
+        case .screenshot: "camera.viewfinder"
+        case .ocr: "text.viewfinder"
+        case .superRightClick: "computermouse"
+        case .storage: "internaldrive"
+        case .uninstaller: "trash"
+        case .inputMethod: "keyboard"
+        case .translation: "character.book.closed"
+        }
+    }
+
+    static let defaultTools: [MenuBarQuickTool] = [
+        .appLauncher,
+        .screenshot,
+        .ocr,
+        .storage,
+        .translation
+    ]
+}
+
 final class AppSettings: ObservableObject {
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
@@ -60,6 +120,10 @@ final class AppSettings: ObservableObject {
 
     @Published var musicNotchEnabled: Bool {
         didSet { defaults.set(musicNotchEnabled, forKey: Keys.musicNotchEnabled) }
+    }
+
+    @Published var menuBarQuickTools: [MenuBarQuickTool] {
+        didSet { saveMenuBarQuickTools() }
     }
 
     @Published var inputMethodShortcutsEnabled: Bool {
@@ -167,6 +231,7 @@ final class AppSettings: ObservableObject {
         let savedAgentCompletionDuration = defaults.double(forKey: Keys.agentCompletionDisplayDuration)
         agentCompletionDisplayDuration = savedAgentCompletionDuration > 0 ? savedAgentCompletionDuration : 4
         musicNotchEnabled = defaults.object(forKey: Keys.musicNotchEnabled) as? Bool ?? true
+        menuBarQuickTools = Self.loadMenuBarQuickTools(from: defaults)
         inputMethodShortcutsEnabled = defaults.object(forKey: Keys.inputMethodShortcutsEnabled) as? Bool ?? false
         inputMethodShortcutRules = Self.loadInputMethodShortcutRules(from: defaults)
         appLauncherShortcutEnabled = defaults.object(forKey: Keys.appLauncherShortcutEnabled) as? Bool ?? false
@@ -257,6 +322,25 @@ final class AppSettings: ObservableObject {
         agentCompletionDisplayDuration = min(max(value, 2), 15)
     }
 
+    func setMenuBarQuickTool(_ tool: MenuBarQuickTool, enabled: Bool) {
+        if enabled {
+            guard !menuBarQuickTools.contains(tool) else { return }
+            menuBarQuickTools.append(tool)
+            menuBarQuickTools.sort { lhs, rhs in
+                guard
+                    let lhsIndex = MenuBarQuickTool.allCases.firstIndex(of: lhs),
+                    let rhsIndex = MenuBarQuickTool.allCases.firstIndex(of: rhs)
+                else {
+                    return lhs.rawValue < rhs.rawValue
+                }
+                return lhsIndex < rhsIndex
+            }
+        } else {
+            guard menuBarQuickTools.count > 1 else { return }
+            menuBarQuickTools.removeAll { $0 == tool }
+        }
+    }
+
     func setInputMethodShortcutRules(_ rules: [InputMethodShortcutRule]) {
         inputMethodShortcutRules = rules
     }
@@ -320,6 +404,11 @@ final class AppSettings: ObservableObject {
             translationComparisonEngines = [.appleSystem]
         }
         translationQualityPreference = min(max(translationQualityPreference, 0), 1)
+    }
+
+    private func saveMenuBarQuickTools() {
+        let tools = menuBarQuickTools.isEmpty ? MenuBarQuickTool.defaultTools : menuBarQuickTools
+        defaults.set(tools.map(\.rawValue), forKey: Keys.menuBarQuickTools)
     }
 
     private func saveInputMethodShortcutRules() {
@@ -457,6 +546,15 @@ final class AppSettings: ObservableObject {
             return [.appleSystem]
         }
     }
+
+    private static func loadMenuBarQuickTools(from defaults: UserDefaults) -> [MenuBarQuickTool] {
+        guard let rawValues = defaults.stringArray(forKey: Keys.menuBarQuickTools) else {
+            return MenuBarQuickTool.defaultTools
+        }
+
+        let tools = rawValues.compactMap(MenuBarQuickTool.init(rawValue:))
+        return tools.isEmpty ? MenuBarQuickTool.defaultTools : tools
+    }
 }
 
 private enum Keys {
@@ -474,6 +572,7 @@ private enum Keys {
     static let claudeMonitoringEnabled = "claudeMonitoringEnabled"
     static let agentCompletionDisplayDuration = "agentCompletionDisplayDuration"
     static let musicNotchEnabled = "musicNotchEnabled"
+    static let menuBarQuickTools = "menuBarQuickTools"
     static let inputMethodShortcutsEnabled = "inputMethodShortcutsEnabled"
     static let inputMethodShortcutRules = "inputMethodShortcutRules"
     static let appLauncherShortcutEnabled = "appLauncherShortcutEnabled"
