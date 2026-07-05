@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ApplicationServices
 
 struct ToolboxView: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -220,6 +221,7 @@ struct ToolboxView: View {
     private var screenshotContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             screenshotHeader
+            screenshotPermissionGuideSection
             screenshotShortcutSection
             screenshotActionSection
         }
@@ -456,7 +458,7 @@ struct ToolboxView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                superRightClickSetupStepRow(
+                setupGuideStepRow(
                     step: "1",
                     title: "在系统设置里启用 Finder 扩展",
                     message: "进入「系统设置 - 通用 - 登录项与扩展 - Finder 扩展」，勾选「AirSentry Finder Extension」。",
@@ -465,7 +467,7 @@ struct ToolboxView: View {
                     action: openSuperRightClickExtensionSettings
                 )
 
-                superRightClickSetupStepRow(
+                setupGuideStepRow(
                     step: "2",
                     title: "授权常用文件夹",
                     message: "给桌面、下载、文稿或需要新建文件的目录授权，否则右键里的“新建文件”不会写入。",
@@ -479,7 +481,7 @@ struct ToolboxView: View {
         .toolboxCard()
     }
 
-    private func superRightClickSetupStepRow(
+    private func setupGuideStepRow(
         step: String,
         title: String,
         message: String,
@@ -1062,6 +1064,48 @@ struct ToolboxView: View {
             }
             .buttonStyle(.borderedProminent)
         }
+    }
+
+    private var screenshotPermissionGuideSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("先完成这两步")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("截图权限负责读取屏幕内容，辅助功能权限负责识别窗口内控件，让自动高亮和框选更精准。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                setupGuideStepRow(
+                    step: "1",
+                    title: "给截图的权限",
+                    message: "用于读取屏幕画面，才能框选、复制、保存和钉图。请在「系统设置 - 隐私与安全性 - 屏幕与系统音频录制」或「屏幕录制」中允许 AirSentry。",
+                    buttonTitle: "去授权",
+                    systemImage: "camera.viewfinder",
+                    action: openScreenshotScreenCaptureSettings
+                )
+
+                setupGuideStepRow(
+                    step: "2",
+                    title: "给辅助功能的权限",
+                    message: "用于识别鼠标下方的按钮、图标、文本框等控件，让截图高亮更贴合目标；未开启时仍可使用窗口级识别。请在「系统设置 - 隐私与安全性 - 辅助功能」中允许 AirSentry。",
+                    buttonTitle: "去授权",
+                    systemImage: "accessibility",
+                    action: openScreenshotAccessibilitySettings
+                )
+            }
+        }
+        .padding(18)
+        .toolboxCard()
     }
 
     private var screenshotShortcutSection: some View {
@@ -1881,6 +1925,25 @@ struct ToolboxView: View {
             return .teal
         case .gray:
             return .secondary
+        }
+    }
+
+    private func openScreenshotScreenCaptureSettings() {
+        if #available(macOS 10.15, *) {
+            _ = CGRequestScreenCaptureAccess()
+        }
+
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openScreenshotAccessibilitySettings() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
     }
 
