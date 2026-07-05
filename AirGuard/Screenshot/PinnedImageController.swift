@@ -96,12 +96,6 @@ final class PinnedImageController {
             scale: { [weak window] factor in
                 window?.scale(by: factor)
             },
-            toggleShadow: { [weak window] in
-                window?.hasShadow.toggle()
-            },
-            shadowEnabled: { [weak window] in
-                window?.hasShadow ?? false
-            },
             toggleAlwaysOnTop: { [weak window] in
                 window?.setAlwaysOnTop(!(window?.isAlwaysOnTop ?? true))
             },
@@ -186,7 +180,7 @@ final class PinnedImageWindow: NSPanel {
         titlebarAppearsTransparent = true
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false
         level = .statusBar
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
@@ -344,12 +338,11 @@ private struct PinnedImageView: View {
     let pasteImage: () -> Void
     let resetSize: () -> Void
     let scale: (CGFloat) -> Void
-    let toggleShadow: () -> Void
-    let shadowEnabled: () -> Bool
     let toggleAlwaysOnTop: () -> Void
     let alwaysOnTopEnabled: () -> Bool
 
     @State private var opacity = 1.0
+    @State private var shadowOn = true
 
     var body: some View {
         Image(nsImage: image)
@@ -364,18 +357,10 @@ private struct PinnedImageView: View {
                     .stroke(focusState.isFocused ? Color.blue.opacity(0.95) : Color.white.opacity(0.24),
                             lineWidth: focusState.isFocused ? 2 : 1)
             )
-            .shadow(color: focusState.isFocused ? Color.blue.opacity(0.60) : Color.black.opacity(0.18),
-                    radius: focusState.isFocused ? 16 : 8,
+            .shadow(color: shadowOn ? (focusState.isFocused ? Color.blue.opacity(0.50) : Color.black.opacity(0.18)) : .clear,
+                    radius: focusState.isFocused ? 12 : 8,
                     x: 0,
                     y: focusState.isFocused ? 0 : 4)
-            .shadow(color: focusState.isFocused ? Color.blue.opacity(0.34) : Color.clear,
-                    radius: 34,
-                    x: 0,
-                    y: 0)
-            .shadow(color: focusState.isFocused ? Color.blue.opacity(0.18) : Color.clear,
-                    radius: 58,
-                    x: 0,
-                    y: 0)
             .animation(.easeOut(duration: 0.12), value: focusState.isFocused)
             .contextMenu {
             Button("复制图像", action: copyImage)
@@ -386,7 +371,7 @@ private struct PinnedImageView: View {
             Divider()
 
             Button(alwaysOnTopEnabled() ? "取消窗口置顶" : "窗口置顶", action: toggleAlwaysOnTop)
-            Button(shadowEnabled() ? "隐藏窗口阴影" : "显示窗口阴影", action: toggleShadow)
+            Button(shadowOn ? "隐藏窗口阴影" : "显示窗口阴影") { shadowOn.toggle() }
 
             Divider()
 
