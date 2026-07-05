@@ -15,20 +15,55 @@ final class ScreenshotOverlayController {
 
     func show() {
         windows = NSScreen.screens.map { screen in
+            let screenImage = ScreenshotImageCapturer.capture(rect: screen.frame)
+            let windowTargets = ScreenshotWindowTargetDetector.targets(on: screen.frame)
             let view = ScreenshotOverlayView(
                 screenFrame: screen.frame,
-                screenImage: ScreenshotImageCapturer.capture(rect: screen.frame),
+                screenImage: screenImage,
+                captureTargets: windowTargets,
                 perform: { [weak self] action, payload in self?.perform(action, payload: payload) },
                 cancel: { [weak self] in self?.cancel() }
             )
 
             let window = ScreenshotOverlayWindow(screen: screen)
-            window.contentView = NSHostingView(rootView: view)
+
+            // 容器视图：定格背景层(NSImageView) + 交互层(NSHostingView)
+            // NSImageView 直接用 draw 渲染，不经过 SwiftUI 布局系统，无 CALayer 隐式动画
+            let container = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+
+            let backgroundView = NSImageView(frame: container.bounds)
+            backgroundView.image = screenImage
+            backgroundView.imageScaling = .scaleProportionallyUpOrDown
+            backgroundView.imageAlignment = .alignCenter
+            backgroundView.imageFrameStyle = .none
+            backgroundView.autoresizingMask = [.width, .height]
+            container.addSubview(backgroundView)
+
+            let hostingView = NSHostingView(rootView: view)
+            hostingView.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(hostingView)
+            NSLayoutConstraint.activate([
+                hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                hostingView.topAnchor.constraint(equalTo: container.topAnchor),
+                hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+
+            window.contentView = container
             return window
         }
 
-        windows.forEach { $0.orderFrontRegardless() }
-        windows.first?.makeKeyAndOrderFront(nil)
+        // 强制布局完成后再显示，避免 NSHostingView 首次布局的异步过渡
+        windows.forEach { window in
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            windows.forEach { $0.orderFrontRegardless() }
+            windows.first?.makeKey()
+        }
     }
 
     private func perform(_ action: ScreenshotResultAction, payload: ScreenshotCapturePayload) {
@@ -75,6 +110,7 @@ final class ScreenshotOverlayWindow: NSPanel {
         self.hasShadow = false
         self.ignoresMouseEvents = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        self.animationBehavior = .none
     }
 
     override var canBecomeKey: Bool { true }
@@ -88,6 +124,7 @@ final class ScreenshotOverlayWindow: NSPanel {
 private struct ScreenshotOverlayView: View {
     let screenFrame: CGRect
     let screenImage: NSImage?
+    let captureTargets: [ScreenshotCaptureTarget]
     let perform: (ScreenshotResultAction, ScreenshotCapturePayload) -> Void
     let cancel: () -> Void
 
@@ -116,6 +153,9 @@ private struct ScreenshotOverlayView: View {
     @State private var scalingTextStartSize: CGSize?
     @State private var scalingTextStartFontSize: CGFloat?
     @State private var isTextCursorPushed = false
+    @State private var hoveredTargetID: ScreenshotCaptureTarget.ID?
+    @State private var visualCaptureTargets: [ScreenshotCaptureTarget] = []
+    @State private var didRequestVisualTargets = false
     @State private var mosaicSampler: ScreenshotOverlayMosaicSampler?
     @FocusState private var focusedTextAnnotationID: UUID?
 
@@ -166,6 +206,10 @@ private struct ScreenshotOverlayView: View {
                     Color.black.opacity(0.34)
                 }
 
+                if selectedRect == nil {
+                    targetHighlightLayer()
+                }
+
                 ScreenshotShortcutHintPanel()
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, 22)
@@ -198,17 +242,29 @@ private struct ScreenshotOverlayView: View {
                 if mosaicSampler == nil, let screenImage {
                     mosaicSampler = ScreenshotOverlayMosaicSampler(image: screenImage)
                 }
+                startVisualTargetDetection()
             }
             .background(ScreenshotOverlayKeyCatcher(isEnabled: focusedTextAnnotationID == nil) { event in
                 handleKeyDown(event, in: proxy.size)
+            })
+            .background(ScreenshotMouseTracker { point in
+                updateHoveredTarget(at: point)
             })
         }
     }
 
     private func initialSelectionGesture(in size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: selectedTool == .text ? 0 : 1, coordinateSpace: .local)
+        DragGesture(minimumDistance: selectedTool == .text ? 0 : 0, coordinateSpace: .local)
             .onChanged { value in
                 guard selectedRect == nil else { return }
+                if isClickCandidate(value) {
+                    startPoint = nil
+                    currentPoint = nil
+                    updateHoveredTarget(at: value.location)
+                    return
+                }
+
+                hoveredTargetID = nil
                 if startPoint == nil {
                     startPoint = value.startLocation
                 }
@@ -216,6 +272,14 @@ private struct ScreenshotOverlayView: View {
             }
             .onEnded { value in
                 guard selectedRect == nil else { return }
+                if isClickCandidate(value), let target = captureTarget(at: value.location) {
+                    selectedRect = boundedTargetRect(target.screenRect, in: size)
+                    hoveredTargetID = nil
+                    startPoint = nil
+                    currentPoint = nil
+                    return
+                }
+
                 currentPoint = value.location
                 guard let selection = selectionRect(in: size) else {
                     startPoint = nil
@@ -226,6 +290,35 @@ private struct ScreenshotOverlayView: View {
                 startPoint = nil
                 currentPoint = nil
             }
+    }
+
+    private func targetHighlightLayer() -> some View {
+        ZStack(alignment: .topLeading) {
+            if let target = hoveredTarget {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.16))
+                    .frame(width: target.screenRect.width, height: target.screenRect.height)
+                    .position(x: target.screenRect.midX, y: target.screenRect.midY)
+                    .allowsHitTesting(false)
+
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .stroke(Color.white.opacity(0.92), lineWidth: 1.5)
+                    .frame(width: target.screenRect.width, height: target.screenRect.height)
+                    .position(x: target.screenRect.midX, y: target.screenRect.midY)
+                    .shadow(color: Color.accentColor.opacity(0.85), radius: 7)
+                    .allowsHitTesting(false)
+
+                Text(target.actionTitle)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.66), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .position(x: target.screenRect.minX + 48, y: max(18, target.screenRect.minY - 16))
+                    .allowsHitTesting(false)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private func selectionLayer(_ selection: CGRect, in size: CGSize) -> some View {
@@ -702,6 +795,66 @@ private struct ScreenshotOverlayView: View {
 
     private func activeSelectionRect(in size: CGSize) -> CGRect? {
         selectedRect ?? selectionRect(in: size)
+    }
+
+    private var hoveredTarget: ScreenshotCaptureTarget? {
+        guard let hoveredTargetID else { return nil }
+        return mergedCaptureTargets.first { $0.id == hoveredTargetID }
+    }
+
+    private var mergedCaptureTargets: [ScreenshotCaptureTarget] {
+        ScreenshotTargetFusion.merge(windowTargets: captureTargets, visualTargets: visualCaptureTargets)
+    }
+
+    private func startVisualTargetDetection() {
+        guard !didRequestVisualTargets,
+              let screenImage else { return }
+        didRequestVisualTargets = true
+        let screenFrame = screenFrame
+        let existingTargets = captureTargets
+        DispatchQueue.global(qos: .utility).async {
+            let visualTargets = ScreenshotVisualTargetDetector.targets(
+                on: screenFrame,
+                image: screenImage,
+                existingTargets: existingTargets
+            )
+            DispatchQueue.main.async {
+                self.visualCaptureTargets = visualTargets
+            }
+        }
+    }
+
+    private func updateHoveredTarget(at point: CGPoint) {
+        guard selectedRect == nil, startPoint == nil else { return }
+        hoveredTargetID = captureTarget(at: point)?.id
+    }
+
+    private func captureTarget(at point: CGPoint) -> ScreenshotCaptureTarget? {
+        mergedCaptureTargets
+            .filter { $0.hitRect.contains(point) }
+            .sorted { first, second in
+                if first.shouldPreferOver(second) {
+                    return true
+                }
+                if second.shouldPreferOver(first) {
+                    return false
+                }
+                if abs(first.priority - second.priority) > 0.001 {
+                    return first.priority > second.priority
+                }
+                let firstArea = first.screenRect.width * first.screenRect.height
+                let secondArea = second.screenRect.width * second.screenRect.height
+                return firstArea < secondArea
+            }
+            .first
+    }
+
+    private func boundedTargetRect(_ rect: CGRect, in size: CGSize) -> CGRect {
+        rect.intersection(CGRect(origin: .zero, size: size))
+    }
+
+    private func isClickCandidate(_ value: DragGesture.Value) -> Bool {
+        abs(value.translation.width) <= 4 && abs(value.translation.height) <= 4
     }
 
     private func globalRect(from selection: CGRect) -> CGRect? {
@@ -1422,6 +1575,394 @@ private struct ScreenshotShortcutKeyCap: View {
     }
 }
 
+private enum ScreenshotTargetKind {
+    case window
+    case contour
+}
+
+private struct ScreenshotCaptureTarget: Identifiable {
+    let id: Int
+    let kind: ScreenshotTargetKind
+    let globalRect: CGRect
+    let screenRect: CGRect
+    let title: String?
+    let priority: Double
+
+    var hitRect: CGRect {
+        screenRect.insetBy(dx: -6, dy: -6)
+    }
+
+    var actionTitle: String {
+        switch kind {
+        case .window:
+            return "点击选择窗口"
+        case .contour:
+            return "点击选择区域"
+        }
+    }
+
+    func shouldPreferOver(_ other: ScreenshotCaptureTarget) -> Bool {
+        guard kind == .contour, other.kind == .window else { return false }
+        let ownArea = screenRect.width * screenRect.height
+        let otherArea = other.screenRect.width * other.screenRect.height
+        return other.screenRect.insetBy(dx: -4, dy: -4).contains(screenRect) && ownArea < otherArea * 0.72
+    }
+}
+
+private enum ScreenshotWindowTargetDetector {
+    static func targets(on screenFrame: CGRect) -> [ScreenshotCaptureTarget] {
+        guard let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+
+        let currentProcessID = Int(ProcessInfo.processInfo.processIdentifier)
+        let maxScreenY = NSScreen.screens.map(\.frame.maxY).max() ?? screenFrame.maxY
+        var targets: [ScreenshotCaptureTarget] = []
+        var frontWindowRects: [CGRect] = []
+
+        for (index, info) in windowInfoList.enumerated() {
+            guard let layer = intValue(info[kCGWindowLayer as String]),
+                  layer == 0,
+                  let alpha = doubleValue(info[kCGWindowAlpha as String]),
+                  alpha > 0.05,
+                  boolValue(info[kCGWindowIsOnscreen as String]) == true,
+                  let ownerPID = intValue(info[kCGWindowOwnerPID as String]),
+                  let windowNumber = intValue(info[kCGWindowNumber as String]),
+                  let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
+                  let quartzRect = CGRect(dictionaryRepresentation: boundsDictionary) else {
+                continue
+            }
+
+            let globalRect = CGRect(
+                x: quartzRect.minX,
+                y: maxScreenY - quartzRect.maxY,
+                width: quartzRect.width,
+                height: quartzRect.height
+            )
+            guard globalRect.width >= 40,
+                  globalRect.height >= 40,
+                  globalRect.width * globalRect.height >= 2_500 else {
+                continue
+            }
+
+            let clippedGlobalRect = globalRect.intersection(screenFrame)
+            guard !clippedGlobalRect.isNull,
+                  clippedGlobalRect.width >= 30,
+                  clippedGlobalRect.height >= 30 else {
+                continue
+            }
+
+            let visibleRects = visibleRects(for: clippedGlobalRect, occludedBy: frontWindowRects)
+            let visibleArea = visibleRects.reduce(CGFloat.zero) { $0 + $1.width * $1.height }
+            let totalArea = clippedGlobalRect.width * clippedGlobalRect.height
+            frontWindowRects.append(clippedGlobalRect)
+
+            guard ownerPID != currentProcessID,
+                  visibleArea >= max(1_200, totalArea * 0.08) else {
+                continue
+            }
+
+            let screenRect = CGRect(
+                x: clippedGlobalRect.minX - screenFrame.minX,
+                y: screenFrame.maxY - clippedGlobalRect.maxY,
+                width: clippedGlobalRect.width,
+                height: clippedGlobalRect.height
+            )
+            let ownerName = info[kCGWindowOwnerName as String] as? String
+            let windowName = info[kCGWindowName as String] as? String
+            let title = [ownerName, windowName]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " - ")
+
+            targets.append(ScreenshotCaptureTarget(
+                id: windowNumber,
+                kind: .window,
+                globalRect: clippedGlobalRect,
+                screenRect: screenRect,
+                title: title.isEmpty ? nil : title,
+                priority: Double(windowInfoList.count - index)
+            ))
+        }
+
+        return targets
+    }
+
+    private static func visibleRects(for rect: CGRect, occludedBy occluders: [CGRect]) -> [CGRect] {
+        occluders.reduce([rect]) { visibleRects, occluder in
+            visibleRects.flatMap { subtract(occluder, from: $0) }
+        }
+    }
+
+    private static func subtract(_ occluder: CGRect, from rect: CGRect) -> [CGRect] {
+        let intersection = rect.intersection(occluder)
+        guard !intersection.isNull,
+              intersection.width > 0,
+              intersection.height > 0 else {
+            return [rect]
+        }
+
+        var pieces: [CGRect] = []
+        if intersection.minY > rect.minY {
+            pieces.append(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: intersection.minY - rect.minY))
+        }
+        if intersection.maxY < rect.maxY {
+            pieces.append(CGRect(x: rect.minX, y: intersection.maxY, width: rect.width, height: rect.maxY - intersection.maxY))
+        }
+        if intersection.minX > rect.minX {
+            pieces.append(CGRect(x: rect.minX, y: intersection.minY, width: intersection.minX - rect.minX, height: intersection.height))
+        }
+        if intersection.maxX < rect.maxX {
+            pieces.append(CGRect(x: intersection.maxX, y: intersection.minY, width: rect.maxX - intersection.maxX, height: intersection.height))
+        }
+        return pieces.filter { $0.width > 0 && $0.height > 0 }
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let value = value as? Int {
+            return value
+        }
+        return (value as? NSNumber)?.intValue
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double? {
+        if let value = value as? Double {
+            return value
+        }
+        return (value as? NSNumber)?.doubleValue
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        if let value = value as? Bool {
+            return value
+        }
+        return (value as? NSNumber)?.boolValue
+    }
+}
+
+private enum ScreenshotVisualTargetDetector {
+    static func targets(
+        on screenFrame: CGRect,
+        image: NSImage?,
+        existingTargets: [ScreenshotCaptureTarget]
+    ) -> [ScreenshotCaptureTarget] {
+        guard let image,
+              let bitmap = ScreenshotVisualBitmap(image: image) else { return [] }
+        let maximumDimension: CGFloat = 720
+        let scale = min(1, maximumDimension / max(image.size.width, image.size.height))
+        let gridWidth = max(1, Int(image.size.width * scale))
+        let gridHeight = max(1, Int(image.size.height * scale))
+        guard gridWidth >= 120, gridHeight >= 90 else { return [] }
+
+        let gray = grayscaleGrid(bitmap: bitmap, width: gridWidth, height: gridHeight)
+        let horizontalEdges = edgeMap(gray: gray, width: gridWidth, height: gridHeight, axis: .horizontal)
+        let verticalEdges = edgeMap(gray: gray, width: gridWidth, height: gridHeight, axis: .vertical)
+        let minimumWidth = max(80, Int(80 * scale))
+        let minimumHeight = max(56, Int(56 * scale))
+        let horizontalSegments = lineSegments(from: horizontalEdges, width: gridWidth, height: gridHeight, minimumLength: minimumWidth, axis: .horizontal)
+            .sorted { $0.length > $1.length }
+            .prefix(180)
+        var candidates: [ScreenshotVisualCandidate] = []
+
+        for top in horizontalSegments {
+            for bottom in horizontalSegments where bottom.position > top.position + minimumHeight {
+                let height = bottom.position - top.position
+                guard height >= minimumHeight, height <= Int(CGFloat(gridHeight) * 0.92) else { continue }
+                let left = max(top.start, bottom.start)
+                let right = min(top.end, bottom.end)
+                let width = right - left
+                guard width >= minimumWidth else { continue }
+
+                let leftCoverage = verticalCoverage(verticalEdges, width: gridWidth, x: left, y1: top.position, y2: bottom.position)
+                let rightCoverage = verticalCoverage(verticalEdges, width: gridWidth, x: right, y1: top.position, y2: bottom.position)
+                guard min(leftCoverage, rightCoverage) >= 0.26 else { continue }
+
+                let rect = CGRect(
+                    x: CGFloat(left) / scale,
+                    y: CGFloat(top.position) / scale,
+                    width: CGFloat(width) / scale,
+                    height: CGFloat(height) / scale
+                ).integral
+                guard rect.width >= 80,
+                      rect.height >= 56,
+                      rect.width * rect.height >= 8_000,
+                      rect.maxX <= image.size.width + 2,
+                      rect.maxY <= image.size.height + 2 else { continue }
+                let score = Double(width * height) * Double(min(leftCoverage, rightCoverage))
+                candidates.append(ScreenshotVisualCandidate(rect: rect, score: score))
+            }
+        }
+
+        return deduplicated(candidates)
+            .prefix(24)
+            .enumerated()
+            .compactMap { index, candidate in
+                let screenRect = candidate.rect.intersection(CGRect(origin: .zero, size: image.size))
+                guard !screenRect.isNull,
+                      !isDuplicate(screenRect, of: existingTargets) else { return nil }
+                let globalRect = CGRect(
+                    x: screenFrame.minX + screenRect.minX,
+                    y: screenFrame.maxY - screenRect.maxY,
+                    width: screenRect.width,
+                    height: screenRect.height
+                )
+                return ScreenshotCaptureTarget(
+                    id: -10_000 - index,
+                    kind: .contour,
+                    globalRect: globalRect,
+                    screenRect: screenRect,
+                    title: "视觉轮廓",
+                    priority: 10_000 - Double(index)
+                )
+            }
+    }
+
+    private static func grayscaleGrid(bitmap: ScreenshotVisualBitmap, width: Int, height: Int) -> [UInt8] {
+        var gray = Array(repeating: UInt8.zero, count: width * height)
+        for y in 0..<height {
+            for x in 0..<width {
+                gray[y * width + x] = bitmap.gray(atXRatio: CGFloat(x) / CGFloat(width), yRatio: CGFloat(y) / CGFloat(height))
+            }
+        }
+        return gray
+    }
+
+    private static func edgeMap(gray: [UInt8], width: Int, height: Int, axis: ScreenshotVisualEdgeAxis) -> [Bool] {
+        var edges = Array(repeating: false, count: width * height)
+        for y in 1..<height {
+            for x in 1..<width {
+                let current = Int(gray[y * width + x])
+                let previous: Int
+                switch axis {
+                case .horizontal:
+                    previous = Int(gray[(y - 1) * width + x])
+                case .vertical:
+                    previous = Int(gray[y * width + x - 1])
+                }
+                edges[y * width + x] = abs(current - previous) >= 30
+            }
+        }
+        return edges
+    }
+
+    private static func lineSegments(
+        from edges: [Bool],
+        width: Int,
+        height: Int,
+        minimumLength: Int,
+        axis: ScreenshotVisualEdgeAxis
+    ) -> [ScreenshotVisualLineSegment] {
+        let majorCount = axis == .horizontal ? height : width
+        let minorCount = axis == .horizontal ? width : height
+        var segments: [ScreenshotVisualLineSegment] = []
+
+        for major in 0..<majorCount {
+            var start: Int?
+            var lastHit: Int?
+            for minor in 0..<minorCount {
+                let index = axis == .horizontal ? major * width + minor : minor * width + major
+                if edges[index] {
+                    if start == nil { start = minor }
+                    lastHit = minor
+                } else if let currentStart = start, let currentLastHit = lastHit, minor - currentLastHit > 2 {
+                    if currentLastHit - currentStart >= minimumLength {
+                        segments.append(ScreenshotVisualLineSegment(position: major, start: currentStart, end: currentLastHit))
+                    }
+                    start = nil
+                    lastHit = nil
+                }
+            }
+            if let currentStart = start, let currentLastHit = lastHit, currentLastHit - currentStart >= minimumLength {
+                segments.append(ScreenshotVisualLineSegment(position: major, start: currentStart, end: currentLastHit))
+            }
+        }
+        return segments
+    }
+
+    private static func verticalCoverage(_ edges: [Bool], width: Int, x: Int, y1: Int, y2: Int) -> Double {
+        let minX = max(1, x - 3)
+        let maxX = min(width - 1, x + 3)
+        let startY = max(1, y1)
+        let endY = max(startY, y2)
+        var hits = 0
+        for y in startY...endY {
+            if (minX...maxX).contains(where: { edges[y * width + $0] }) {
+                hits += 1
+            }
+        }
+        return Double(hits) / Double(max(1, endY - startY + 1))
+    }
+
+    private static func deduplicated(_ candidates: [ScreenshotVisualCandidate]) -> [ScreenshotVisualCandidate] {
+        candidates
+            .sorted { $0.score > $1.score }
+            .reduce(into: []) { result, candidate in
+                guard !result.contains(where: { intersectionRatio(candidate.rect, $0.rect) > 0.72 }) else { return }
+                result.append(candidate)
+            }
+    }
+
+    private static func isDuplicate(_ rect: CGRect, of existingTargets: [ScreenshotCaptureTarget]) -> Bool {
+        existingTargets.contains { target in
+            intersectionRatio(rect, target.screenRect) > 0.68
+        }
+    }
+
+    private static func intersectionRatio(_ first: CGRect, _ second: CGRect) -> CGFloat {
+        let intersection = first.intersection(second)
+        guard !intersection.isNull else { return 0 }
+        let intersectionArea = intersection.width * intersection.height
+        let smallerArea = min(first.width * first.height, second.width * second.height)
+        return smallerArea > 0 ? intersectionArea / smallerArea : 0
+    }
+}
+
+private enum ScreenshotTargetFusion {
+    static func merge(windowTargets: [ScreenshotCaptureTarget], visualTargets: [ScreenshotCaptureTarget]) -> [ScreenshotCaptureTarget] {
+        (windowTargets + visualTargets).sorted { first, second in
+            if abs(first.priority - second.priority) > 0.001 {
+                return first.priority > second.priority
+            }
+            return first.screenRect.width * first.screenRect.height < second.screenRect.width * second.screenRect.height
+        }
+    }
+}
+
+private struct ScreenshotVisualBitmap {
+    private let bitmap: NSBitmapImageRep
+
+    init?(image: NSImage) {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else { return nil }
+        self.bitmap = bitmap
+    }
+
+    func gray(atXRatio xRatio: CGFloat, yRatio: CGFloat) -> UInt8 {
+        let x = Int((xRatio * CGFloat(bitmap.pixelsWide - 1)).clamped(to: 0...CGFloat(bitmap.pixelsWide - 1)))
+        let y = Int((yRatio * CGFloat(bitmap.pixelsHigh - 1)).clamped(to: 0...CGFloat(bitmap.pixelsHigh - 1)))
+        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { return 0 }
+        return UInt8((color.redComponent * 0.299 + color.greenComponent * 0.587 + color.blueComponent * 0.114) * 255)
+    }
+}
+
+private enum ScreenshotVisualEdgeAxis {
+    case horizontal
+    case vertical
+}
+
+private struct ScreenshotVisualLineSegment {
+    let position: Int
+    let start: Int
+    let end: Int
+
+    var length: Int { end - start }
+}
+
+private struct ScreenshotVisualCandidate {
+    let rect: CGRect
+    let score: Double
+}
+
 private enum ScreenshotToolbarAction {
     case perform(ScreenshotResultAction)
     case undo
@@ -1888,6 +2429,51 @@ private struct TextResizeResult {
     }
 }
 
+private final class FrozenBackgroundView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        if let screen = window?.screen {
+            layer?.contentsScale = screen.backingScaleFactor
+        }
+    }
+}
+
+private struct ScreenshotFrozenBackground: NSViewRepresentable {
+    let image: NSImage
+
+    func makeNSView(context: Context) -> FrozenBackgroundView {
+        let view = FrozenBackgroundView()
+        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            view.layer?.contents = cgImage
+            view.layer?.contentsGravity = .resizeAspectFill
+            view.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
+            view.layer?.actions = [
+                "contents": NSNull(),
+                "bounds": NSNull(),
+                "position": NSNull(),
+                "transform": NSNull(),
+                "opacity": NSNull()
+            ]
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: FrozenBackgroundView, context: Context) {
+        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            nsView.layer?.contents = cgImage
+        }
+    }
+}
+
 private struct SelectionShape: Shape {
     let selection: CGRect
 
@@ -1896,6 +2482,48 @@ private struct SelectionShape: Shape {
         path.addRect(rect)
         path.addRect(selection)
         return path
+    }
+}
+
+private struct ScreenshotMouseTracker: NSViewRepresentable {
+    let onMove: (CGPoint) -> Void
+
+    func makeNSView(context: Context) -> MouseTrackingView {
+        let view = MouseTrackingView()
+        view.onMove = onMove
+        return view
+    }
+
+    func updateNSView(_ nsView: MouseTrackingView, context: Context) {
+        nsView.onMove = onMove
+        DispatchQueue.main.async {
+            nsView.window?.acceptsMouseMovedEvents = true
+        }
+    }
+}
+
+private final class MouseTrackingView: NSView {
+    var onMove: ((CGPoint) -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let options: NSTrackingArea.Options = [.activeInKeyWindow, .mouseMoved, .inVisibleRect]
+        let area = NSTrackingArea(rect: bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.acceptsMouseMovedEvents = true
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        onMove?(convert(event.locationInWindow, from: nil))
     }
 }
 
