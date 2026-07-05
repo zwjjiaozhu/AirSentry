@@ -6,6 +6,25 @@ import Foundation
 final class ScreenshotCaptureController: ObservableObject {
     private var overlayController: ScreenshotOverlayController?
     private let pinnedImageController = PinnedImageController()
+    private var ocrCaptureObserver: NSObjectProtocol?
+
+    init() {
+        ocrCaptureObserver = NotificationCenter.default.addObserver(
+            forName: .ocrCaptureRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.startOCRCapture()
+            }
+        }
+    }
+
+    deinit {
+        if let ocrCaptureObserver {
+            NotificationCenter.default.removeObserver(ocrCaptureObserver)
+        }
+    }
 
     func startCapture() {
         guard overlayController == nil else { return }
@@ -36,6 +55,10 @@ final class ScreenshotCaptureController: ObservableObject {
         pinnedImageController.pin(image)
     }
 
+    func startOCRCapture() {
+        startCapture()
+    }
+
     private func handleSelection(_ payload: ScreenshotCapturePayload, action: ScreenshotResultAction) {
         let rect = payload.rect
         guard rect.width >= 4, rect.height >= 4 else {
@@ -59,6 +82,8 @@ final class ScreenshotCaptureController: ObservableObject {
             pinnedImageController.pin(outputImage, near: rect)
         case .annotate:
             ScreenshotAnnotationPrompter.showComingSoon()
+        case .ocr:
+            OCRPanelController.shared.show(image: outputImage, recognizeImmediately: true)
         case .copy:
             ScreenshotImageWriter.copyToPasteboard(outputImage)
         case .save:
@@ -421,7 +446,12 @@ private struct ScreenshotMosaicSampler {
 enum ScreenshotResultAction {
     case pin
     case annotate
+    case ocr
     case copy
     case save
     case close
+}
+
+extension Notification.Name {
+    static let ocrCaptureRequested = Notification.Name("AirSentry.OCRCaptureRequested")
 }

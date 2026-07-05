@@ -87,6 +87,7 @@ private struct ScreenshotResultPreview: View {
             HStack(spacing: 9) {
                 toolbarButton("pin", "钉图") { action(.pin) }
                 toolbarButton("pencil.and.outline", "批注") { action(.annotate) }
+                toolbarButton("text.viewfinder", "OCR") { action(.ocr) }
                 toolbarButton("doc.on.doc", "复制") { action(.copy) }
                 toolbarButton("square.and.arrow.down", "保存") { action(.save) }
 

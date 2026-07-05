@@ -154,6 +154,7 @@ private struct ScreenshotOverlayView: View {
     @State private var scalingTextStartSize: CGSize?
     @State private var scalingTextStartFontSize: CGFloat?
     @State private var isTextCursorPushed = false
+    @State private var selectionCursorPushed: NSCursor?
     @State private var hoveredTargetID: ScreenshotCaptureTarget.ID?
     @State private var mosaicSampler: ScreenshotOverlayMosaicSampler?
     @FocusState private var focusedTextAnnotationID: UUID?
@@ -240,10 +241,15 @@ private struct ScreenshotOverlayView: View {
             }
             .onDisappear {
                 resetTextCursor()
+                popSelectionCursor()
             }
             .onAppear {
                 if mosaicSampler == nil, let screenImage {
                     mosaicSampler = ScreenshotOverlayMosaicSampler(image: screenImage)
+                }
+                // 进入截图模式时默认高亮最前方窗口（不直接选中）
+                if hoveredTargetID == nil, let frontTarget = captureTargets.first {
+                    hoveredTargetID = frontTarget.id
                 }
             }
             .background(ScreenshotOverlayKeyCatcher(isEnabled: focusedTextAnnotationID == nil) { event in
@@ -251,6 +257,7 @@ private struct ScreenshotOverlayView: View {
             })
             .background(ScreenshotMouseTracker { point in
                 updateHoveredTarget(at: point)
+                updateSelectionCursor(at: point)
             })
         }
     }
@@ -262,7 +269,6 @@ private struct ScreenshotOverlayView: View {
                 if isClickCandidate(value) {
                     startPoint = nil
                     currentPoint = nil
-                    updateHoveredTarget(at: value.location)
                     return
                 }
 
@@ -275,7 +281,6 @@ private struct ScreenshotOverlayView: View {
             .onEnded { value in
                 guard selectedRect == nil else { return }
                 if isClickCandidate(value) {
-                    updateHoveredTarget(at: value.location)
                     if let target = hoveredTarget {
                         selectedRect = boundedTargetRect(target.screenRect, in: size)
                         hoveredTargetID = nil
@@ -302,13 +307,7 @@ private struct ScreenshotOverlayView: View {
         ZStack(alignment: .topLeading) {
             if let target = hoveredTarget {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.16))
-                    .frame(width: target.screenRect.width, height: target.screenRect.height)
-                    .position(x: target.screenRect.midX, y: target.screenRect.midY)
-                    .allowsHitTesting(false)
-
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .stroke(Color.white.opacity(0.92), lineWidth: 1.5)
+                    .stroke(Color.accentColor.opacity(0.92), lineWidth: 2)
                     .frame(width: target.screenRect.width, height: target.screenRect.height)
                     .position(x: target.screenRect.midX, y: target.screenRect.midY)
                     .shadow(color: Color.accentColor.opacity(0.85), radius: 7)
@@ -351,18 +350,30 @@ private struct ScreenshotOverlayView: View {
             textAnnotationLayer(selection)
 
             Rectangle()
-                .stroke(.white, lineWidth: 1)
+                .stroke(Color.accentColor, lineWidth: 2)
                 .frame(width: selection.width, height: selection.height)
                 .position(x: selection.midX, y: selection.midY)
                 .allowsHitTesting(false)
 
             ForEach(ResizeHandle.allCases) { handle in
-                Circle()
-                    .fill(.white)
-                    .frame(width: 10, height: 10)
-                    .overlay(Circle().stroke(.black.opacity(0.35), lineWidth: 1))
-                    .position(handle.point(in: selection))
-                    .gesture(resizeGesture(handle: handle, in: size))
+                Group {
+                    if handle.isCorner {
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(.black.opacity(0.35), lineWidth: 1))
+                    } else {
+                        Capsule()
+                            .fill(.white)
+                            .frame(
+                                width: handle == .top || handle == .bottom ? 22 : 5,
+                                height: handle == .top || handle == .bottom ? 5 : 22
+                            )
+                            .overlay(Capsule().stroke(.black.opacity(0.35), lineWidth: 1))
+                    }
+                }
+                .position(handle.point(in: selection))
+                .gesture(resizeGesture(handle: handle, in: size))
             }
         }
     }
@@ -651,6 +662,59 @@ private struct ScreenshotOverlayView: View {
         updateTextCursor(false)
     }
 
+    private func pushSelectionCursor(_ cursor: NSCursor) {
+        if selectionCursorPushed == cursor { return }
+        if selectionCursorPushed != nil {
+            NSCursor.pop()
+        }
+        cursor.push()
+        selectionCursorPushed = cursor
+    }
+
+    private func popSelectionCursor() {
+        guard selectionCursorPushed != nil else { return }
+        NSCursor.pop()
+        selectionCursorPushed = nil
+    }
+
+    private func updateSelectionCursor(at point: CGPoint) {
+        // 文本模式由 updateTextCursor 管理
+        if selectedTool == .text || focusedTextAnnotationID != nil {
+            popSelectionCursor()
+            return
+        }
+
+        guard let selection = selectedRect else {
+            popSelectionCursor()
+            return
+        }
+
+        // 拖动中不切换光标
+        if interactionStartRect != nil {
+            return
+        }
+
+        // 检查是否靠近拉伸手柄
+        let handleRadius: CGFloat = 14
+        for handle in ResizeHandle.allCases {
+            let hp = handle.point(in: selection)
+            let dx = point.x - hp.x
+            let dy = point.y - hp.y
+            if dx * dx + dy * dy <= handleRadius * handleRadius {
+                pushSelectionCursor(handle.cursor)
+                return
+            }
+        }
+
+        // 选区中间 -> 移动光标
+        if selection.contains(point) {
+            pushSelectionCursor(.openHand)
+            return
+        }
+
+        popSelectionCursor()
+    }
+
     private func textSelectionControls(for annotation: ScreenshotAnnotation) -> some View {
         ZStack {
             ForEach(TextResizeHandle.allCases) { handle in
@@ -820,8 +884,11 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func updateHoveredTarget(at point: CGPoint) {
-        guard selectedRect == nil, startPoint == nil else { return }
         lastMousePoint = point
+        guard selectedRect == nil, startPoint == nil else {
+            controlHoverTarget = nil
+            return
+        }
 
         // 鼠标仍在当前控件矩形内 -> 保持，不重复检测
         if let control = controlHoverTarget, control.hitRect.contains(point) {
@@ -918,7 +985,7 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func toolbarPosition(for selection: CGRect, in size: CGSize) -> CGPoint {
-        let toolbarSize = CGSize(width: 540, height: 80)
+        let toolbarSize = CGSize(width: 580, height: 80)
         let rightEdge = min(max(selection.maxX, toolbarSize.width + 10), size.width - 10)
         let x = rightEdge - toolbarSize.width / 2
         let preferredY = selection.maxY + toolbarSize.height / 2 + 10
@@ -1277,6 +1344,10 @@ private struct ScreenshotSelectionToolbar: View {
 
                     iconButton("pin", "钉住当前截图", isSelected: false) {
                         action(.perform(.pin))
+                    }
+
+                    iconButton("text.viewfinder", "OCR 识别文字", isSelected: false) {
+                        action(.perform(.ocr))
                     }
 
                     iconButton("square.and.arrow.down", "保存为 PNG", isSelected: false) {
@@ -2172,22 +2243,54 @@ private func arrowHeadPoints(from start: CGPoint, to end: CGPoint, lineWidth: CG
 
 private enum ResizeHandle: CaseIterable, Identifiable {
     case topLeft
+    case top
     case topRight
-    case bottomLeft
+    case right
     case bottomRight
+    case bottom
+    case bottomLeft
+    case left
 
     var id: Self { self }
+
+    var isCorner: Bool {
+        switch self {
+        case .topLeft, .topRight, .bottomLeft, .bottomRight:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var cursor: NSCursor {
+        switch self {
+        case .top, .bottom:
+            return .resizeUpDown
+        case .left, .right:
+            return .resizeLeftRight
+        default:
+            return .crosshair
+        }
+    }
 
     func point(in rect: CGRect) -> CGPoint {
         switch self {
         case .topLeft:
             return CGPoint(x: rect.minX, y: rect.minY)
+        case .top:
+            return CGPoint(x: rect.midX, y: rect.minY)
         case .topRight:
             return CGPoint(x: rect.maxX, y: rect.minY)
-        case .bottomLeft:
-            return CGPoint(x: rect.minX, y: rect.maxY)
+        case .right:
+            return CGPoint(x: rect.maxX, y: rect.midY)
         case .bottomRight:
             return CGPoint(x: rect.maxX, y: rect.maxY)
+        case .bottom:
+            return CGPoint(x: rect.midX, y: rect.maxY)
+        case .bottomLeft:
+            return CGPoint(x: rect.minX, y: rect.maxY)
+        case .left:
+            return CGPoint(x: rect.minX, y: rect.midY)
         }
     }
 
@@ -2202,15 +2305,23 @@ private enum ResizeHandle: CaseIterable, Identifiable {
         case .topLeft:
             minX = (rect.minX + translation.width).clamped(to: bounds.minX...(rect.maxX - minimumSize))
             minY = (rect.minY + translation.height).clamped(to: bounds.minY...(rect.maxY - minimumSize))
+        case .top:
+            minY = (rect.minY + translation.height).clamped(to: bounds.minY...(rect.maxY - minimumSize))
         case .topRight:
             maxX = (rect.maxX + translation.width).clamped(to: (rect.minX + minimumSize)...bounds.maxX)
             minY = (rect.minY + translation.height).clamped(to: bounds.minY...(rect.maxY - minimumSize))
-        case .bottomLeft:
-            minX = (rect.minX + translation.width).clamped(to: bounds.minX...(rect.maxX - minimumSize))
-            maxY = (rect.maxY + translation.height).clamped(to: (rect.minY + minimumSize)...bounds.maxY)
+        case .right:
+            maxX = (rect.maxX + translation.width).clamped(to: (rect.minX + minimumSize)...bounds.maxX)
         case .bottomRight:
             maxX = (rect.maxX + translation.width).clamped(to: (rect.minX + minimumSize)...bounds.maxX)
             maxY = (rect.maxY + translation.height).clamped(to: (rect.minY + minimumSize)...bounds.maxY)
+        case .bottom:
+            maxY = (rect.maxY + translation.height).clamped(to: (rect.minY + minimumSize)...bounds.maxY)
+        case .bottomLeft:
+            minX = (rect.minX + translation.width).clamped(to: bounds.minX...(rect.maxX - minimumSize))
+            maxY = (rect.maxY + translation.height).clamped(to: (rect.minY + minimumSize)...bounds.maxY)
+        case .left:
+            minX = (rect.minX + translation.width).clamped(to: bounds.minX...(rect.maxX - minimumSize))
         }
 
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)

@@ -43,7 +43,7 @@ struct MenuBarPanelView: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(.primary)
 
-                Text("守护你的 MacBook Air")
+                Text("守护你的 MacBook Air/Neo/Pro")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
             }

@@ -85,6 +85,14 @@ struct ToolboxView: View {
               }
 
               ToolboxSidebarItem(
+                title: "文字识别",
+                systemImage: "text.viewfinder",
+                isSelected: selectedTool == .ocr
+              ) {
+                selectedTool = .ocr
+              }
+
+              ToolboxSidebarItem(
                 title: "超级右键",
                 systemImage: "computermouse",
                 isSelected: selectedTool == .superRightClick
@@ -161,6 +169,8 @@ struct ToolboxView: View {
                     appLauncherContent
                 case .screenshot:
                     screenshotContent
+                case .ocr:
+                    ocrContent
                 case .superRightClick:
                     superRightClickContent
                 case .translation:
@@ -224,6 +234,13 @@ struct ToolboxView: View {
             screenshotPermissionGuideSection
             screenshotShortcutSection
             screenshotActionSection
+        }
+    }
+
+    private var ocrContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ocrHeader
+            ocrActionSection
         }
     }
 
@@ -1214,6 +1231,87 @@ struct ToolboxView: View {
         .toolboxCard()
     }
 
+    private var ocrHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("文字识别")
+                    .font(.system(size: 24, weight: .bold))
+                Text("调用 macOS 系统 OCR，支持拖入图片、粘贴剪贴板图片和框选截图识别。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                OCRPanelController.shared.show()
+            } label: {
+                Label("打开 OCR", systemImage: "text.viewfinder")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var ocrActionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 18) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.indigo.opacity(0.12))
+                    Image(systemName: "doc.text.viewfinder")
+                        .font(.system(size: 23, weight: .medium))
+                        .foregroundStyle(.indigo)
+                }
+                .frame(width: 54, height: 54)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("OCR 工作台")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("弹窗内可以拖入图片文件、粘贴剪贴板图片，或发起一次框选截图；识别结果可编辑和复制。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Button {
+                    OCRPanelController.shared.show()
+                } label: {
+                    Label("打开 OCR 窗口", systemImage: "rectangle.on.rectangle")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    OCRPanelController.shared.show()
+                    screenshotCaptureController.startOCRCapture()
+                } label: {
+                    Label("截图识别", systemImage: "camera.viewfinder")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    OCRPanelController.shared.pasteFromClipboard()
+                } label: {
+                    Label("粘贴识别", systemImage: "doc.on.clipboard")
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Label("使用系统 Vision 文字识别", systemImage: "sparkle.magnifyingglass")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(20)
+        .toolboxCard()
+    }
+
     private var superRightClickTemplatesSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
@@ -2007,6 +2105,7 @@ private enum ToolboxSection {
     case inputMethod
     case appLauncher
     case screenshot
+    case ocr
     case superRightClick
     case translation
 }
