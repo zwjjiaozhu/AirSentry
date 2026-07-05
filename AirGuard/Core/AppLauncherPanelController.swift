@@ -6,7 +6,7 @@ final class AppLauncherPanelController {
     private let store: AppLauncherStore
     private var panel: AppLauncherPanel?
     private var showObserver: NSObjectProtocol?
-    private var didSetInitialPosition = false
+    private var hostingController: NSHostingController<AppLauncherPanelView>?
 
     init(store: AppLauncherStore) {
         self.store = store
@@ -41,9 +41,22 @@ final class AppLauncherPanelController {
             let contentView = AppLauncherPanelView(store: store) { [weak self] in
                 self?.hide()
             }
-            let hostingController = NSHostingController(rootView: contentView)
+            let hc = NSHostingController(rootView: contentView)
+            self.hostingController = hc
+            // 一开始就以居中坐标创建窗口，避免显示后再移动
+            let panelSize = NSSize(width: 760, height: 540)
+            let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            // 居中并向下偏移，确保窗口顶部与屏幕顶部有足够间距
+            let verticalOffset: CGFloat = -30
+            let originY = screenFrame.midY - panelSize.height / 2 - verticalOffset
+            let centeredRect = NSRect(
+                x: screenFrame.midX - panelSize.width / 2,
+                y: originY,
+                width: panelSize.width,
+                height: panelSize.height
+            )
             let panel = AppLauncherPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
+                contentRect: centeredRect,
                 styleMask: [.titled, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -53,7 +66,8 @@ final class AppLauncherPanelController {
             panel.titlebarAppearsTransparent = true
             panel.level = .normal
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            panel.contentViewController = hostingController
+            // 直接设置 contentView 而非 contentViewController，避免 hosting controller 自动调整窗口位置
+            panel.contentView = hc.view
             self.panel = panel
         }
 
@@ -62,13 +76,9 @@ final class AppLauncherPanelController {
         }
         guard let panel else { return }
         panel.layoutIfNeeded()
-        if !didSetInitialPosition {
-            panel.center()
-            didSetInitialPosition = true
-        }
         NSApp.activate(ignoringOtherApps: true)
         panel.orderFrontRegardless()
-        panel.makeKeyAndOrderFront(nil)
+        panel.makeKey()
     }
 
     func hide() {
