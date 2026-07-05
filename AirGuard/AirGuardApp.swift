@@ -15,7 +15,10 @@ struct AirGuardApp: App {
     @StateObject private var appLauncherShortcutManager: AppLauncherShortcutManager
     @StateObject private var screenshotCaptureController: ScreenshotCaptureController
     @StateObject private var screenshotShortcutManager: ScreenshotShortcutManager
+    @StateObject private var translationStore: TranslationStore
+    @StateObject private var translationShortcutManager: TranslationShortcutManager
     private let appLauncherPanelController: AppLauncherPanelController
+    private let translationPanelController: TranslationPanelController
 
     init() {
         let settings = AppSettings()
@@ -23,6 +26,8 @@ struct AirGuardApp: App {
         let appLauncherStore = AppLauncherStore()
         let appLauncherPanelController = AppLauncherPanelController(store: appLauncherStore)
         let screenshotCaptureController = ScreenshotCaptureController()
+        let translationStore = TranslationStore(settings: settings)
+        let translationPanelController = TranslationPanelController(settings: settings, store: translationStore)
         _settings = StateObject(wrappedValue: settings)
         _alertManager = StateObject(wrappedValue: alertManager)
         _monitorStore = StateObject(wrappedValue: MonitorStore(settings: settings, alertManager: alertManager))
@@ -34,7 +39,12 @@ struct AirGuardApp: App {
         })
         _screenshotCaptureController = StateObject(wrappedValue: screenshotCaptureController)
         _screenshotShortcutManager = StateObject(wrappedValue: ScreenshotShortcutManager(settings: settings, captureController: screenshotCaptureController))
+        _translationStore = StateObject(wrappedValue: translationStore)
+        _translationShortcutManager = StateObject(wrappedValue: TranslationShortcutManager(settings: settings) {
+            translationPanelController.toggle()
+        })
         self.appLauncherPanelController = appLauncherPanelController
+        self.translationPanelController = translationPanelController
     }
 
     var body: some Scene {

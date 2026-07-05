@@ -2,16 +2,17 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppLauncherPanelController {
-    private let store: AppLauncherStore
-    private var panel: AppLauncherPanel?
+final class TranslationPanelController {
+    private let settings: AppSettings
+    private let store: TranslationStore
+    private var panel: TranslationPanel?
     private var showObserver: NSObjectProtocol?
-    private var didSetInitialPosition = false
 
-    init(store: AppLauncherStore) {
+    init(settings: AppSettings, store: TranslationStore) {
+        self.settings = settings
         self.store = store
         showObserver = NotificationCenter.default.addObserver(
-            forName: .showAppLauncherPanel,
+            forName: .showTranslationPanel,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -29,7 +30,7 @@ final class AppLauncherPanelController {
 
     func toggle() {
         if let panel, panel.isVisible, isPanelFrontmost(panel) {
-            panel.orderOut(nil)
+            hide()
         } else {
             show()
         }
@@ -37,35 +38,31 @@ final class AppLauncherPanelController {
 
     func show() {
         if panel == nil {
-            store.selectedGroupID = nil
-            let contentView = AppLauncherPanelView(store: store) { [weak self] in
+            let contentView = TranslationPanelView(store: store, settings: settings) { [weak self] in
                 self?.hide()
             }
             let hostingController = NSHostingController(rootView: contentView)
-            let panel = AppLauncherPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
+            let panel = TranslationPanel(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
                 styleMask: [.titled, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
-            panel.title = "程序面板"
-            panel.titleVisibility = .hidden
+            panel.title = "翻译"
+            panel.titleVisibility = .visible
             panel.titlebarAppearsTransparent = true
-            panel.level = .normal
+            panel.isFloatingPanel = true
+            panel.level = .floating
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.contentViewController = hostingController
             self.panel = panel
         }
 
-        if store.applications.isEmpty {
-            store.refreshApplications()
-        }
         guard let panel else { return }
+        store.prepareForPresentation()
+        panel.level = store.isPinned ? .floating : .normal
         panel.layoutIfNeeded()
-        if !didSetInitialPosition {
-            panel.center()
-            didSetInitialPosition = true
-        }
+        positionPanel(panel)
         NSApp.activate(ignoringOtherApps: true)
         panel.orderFrontRegardless()
         panel.makeKeyAndOrderFront(nil)
@@ -75,16 +72,39 @@ final class AppLauncherPanelController {
         panel?.orderOut(nil)
     }
 
+    private func positionPanel(_ panel: NSPanel) {
+        let screen = screenContainingMouse() ?? NSScreen.main
+        guard let visibleFrame = screen?.visibleFrame else {
+            panel.center()
+            return
+        }
+
+        let panelSize = panel.frame.size
+        let x = visibleFrame.midX - panelSize.width / 2
+        let y = visibleFrame.midY - panelSize.height / 2 + 40
+        panel.setFrameOrigin(
+            NSPoint(
+                x: min(max(visibleFrame.minX + 18, x), visibleFrame.maxX - panelSize.width - 18),
+                y: min(max(visibleFrame.minY + 18, y), visibleFrame.maxY - panelSize.height - 18)
+            )
+        )
+    }
+
+    private func screenContainingMouse() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouseLocation, $0.frame, false) }
+    }
+
     private func isPanelFrontmost(_ panel: NSPanel) -> Bool {
         NSApp.isActive && (panel.isKeyWindow || NSApp.keyWindow === panel || NSApp.mainWindow === panel)
     }
 }
 
 extension Notification.Name {
-    static let showAppLauncherPanel = Notification.Name("AirSentryShowAppLauncherPanel")
+    static let showTranslationPanel = Notification.Name("AirSentryShowTranslationPanel")
 }
 
-private final class AppLauncherPanel: NSPanel {
+private final class TranslationPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 

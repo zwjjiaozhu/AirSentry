@@ -86,6 +86,62 @@ final class AppSettings: ObservableObject {
         didSet { saveScreenshotShortcut() }
     }
 
+    @Published var translationShortcutEnabled: Bool {
+        didSet { defaults.set(translationShortcutEnabled, forKey: Keys.translationShortcutEnabled) }
+    }
+
+    @Published var translationShortcut: KeyboardShortcut? {
+        didSet { saveTranslationShortcut() }
+    }
+
+    @Published var translationDefaultSourceLanguage: TranslationLanguage {
+        didSet { defaults.set(translationDefaultSourceLanguage.rawValue, forKey: Keys.translationDefaultSourceLanguage) }
+    }
+
+    @Published var translationDefaultTargetLanguage: TranslationLanguage {
+        didSet { defaults.set(translationDefaultTargetLanguage.rawValue, forKey: Keys.translationDefaultTargetLanguage) }
+    }
+
+    @Published var translationDefaultEngine: TranslationEngine {
+        didSet { defaults.set(translationDefaultEngine.rawValue, forKey: Keys.translationDefaultEngine) }
+    }
+
+    @Published var translationPanelMode: TranslationPanelMode {
+        didSet { defaults.set(translationPanelMode.rawValue, forKey: Keys.translationPanelMode) }
+    }
+
+    @Published var translationComparisonEngines: [TranslationEngine] {
+        didSet { saveTranslationComparisonEngines() }
+    }
+
+    @Published var translationReadsClipboardText: Bool {
+        didSet { defaults.set(translationReadsClipboardText, forKey: Keys.translationReadsClipboardText) }
+    }
+
+    @Published var translationAutoFocusesInput: Bool {
+        didSet { defaults.set(translationAutoFocusesInput, forKey: Keys.translationAutoFocusesInput) }
+    }
+
+    @Published var translationAutoCopiesResult: Bool {
+        didSet { defaults.set(translationAutoCopiesResult, forKey: Keys.translationAutoCopiesResult) }
+    }
+
+    @Published var translationOpenAIAPIKey: String {
+        didSet { defaults.set(translationOpenAIAPIKey, forKey: Keys.translationOpenAIAPIKey) }
+    }
+
+    @Published var translationOpenAIBaseURL: String {
+        didSet { defaults.set(translationOpenAIBaseURL, forKey: Keys.translationOpenAIBaseURL) }
+    }
+
+    @Published var translationOpenAIModel: String {
+        didSet { defaults.set(translationOpenAIModel, forKey: Keys.translationOpenAIModel) }
+    }
+
+    @Published var translationQualityPreference: Double {
+        didSet { defaults.set(translationQualityPreference, forKey: Keys.translationQualityPreference) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -117,8 +173,24 @@ final class AppSettings: ObservableObject {
         appLauncherShortcut = Self.loadAppLauncherShortcut(from: defaults)
         screenshotShortcutEnabled = defaults.object(forKey: Keys.screenshotShortcutEnabled) as? Bool ?? true
         screenshotShortcut = Self.loadScreenshotShortcut(from: defaults)
+        translationShortcutEnabled = defaults.object(forKey: Keys.translationShortcutEnabled) as? Bool ?? false
+        translationShortcut = Self.loadTranslationShortcut(from: defaults)
+        translationDefaultSourceLanguage = TranslationLanguage(rawValue: defaults.string(forKey: Keys.translationDefaultSourceLanguage) ?? "") ?? .automatic
+        translationDefaultTargetLanguage = TranslationLanguage(rawValue: defaults.string(forKey: Keys.translationDefaultTargetLanguage) ?? "") ?? .simplifiedChinese
+        translationDefaultEngine = TranslationEngine(rawValue: defaults.string(forKey: Keys.translationDefaultEngine) ?? "") ?? .appleSystem
+        translationPanelMode = TranslationPanelMode(rawValue: defaults.string(forKey: Keys.translationPanelMode) ?? "") ?? .comparison
+        translationComparisonEngines = Self.loadTranslationComparisonEngines(from: defaults)
+        translationReadsClipboardText = defaults.object(forKey: Keys.translationReadsClipboardText) as? Bool ?? true
+        translationAutoFocusesInput = defaults.object(forKey: Keys.translationAutoFocusesInput) as? Bool ?? true
+        translationAutoCopiesResult = defaults.object(forKey: Keys.translationAutoCopiesResult) as? Bool ?? false
+        translationOpenAIAPIKey = defaults.string(forKey: Keys.translationOpenAIAPIKey) ?? ""
+        translationOpenAIBaseURL = defaults.string(forKey: Keys.translationOpenAIBaseURL) ?? "https://api.openai.com/v1"
+        translationOpenAIModel = defaults.string(forKey: Keys.translationOpenAIModel) ?? "gpt-4o-mini"
+        let savedTranslationQuality = defaults.double(forKey: Keys.translationQualityPreference)
+        translationQualityPreference = savedTranslationQuality > 0 ? savedTranslationQuality : 0.55
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
+        normalizeTranslationSettings()
     }
 
     func effectiveThermalStatus(from status: ThermalStatus) -> ThermalStatus {
@@ -210,6 +282,24 @@ final class AppSettings: ObservableObject {
         screenshotShortcut = shortcut
     }
 
+    func setTranslationShortcut(_ shortcut: KeyboardShortcut) {
+        translationShortcut = shortcut
+    }
+
+    func setTranslationComparisonEngine(_ engine: TranslationEngine, enabled: Bool) {
+        if enabled {
+            if !translationComparisonEngines.contains(engine) {
+                translationComparisonEngines.append(engine)
+            }
+        } else {
+            translationComparisonEngines.removeAll { $0 == engine }
+        }
+
+        if translationComparisonEngines.isEmpty {
+            translationComparisonEngines = [.appleSystem]
+        }
+    }
+
     private func normalizeLoadedTemperatureThresholds() {
         fairTemperatureThreshold = min(max(fairTemperatureThreshold, 30), 123)
         seriousTemperatureThreshold = min(max(seriousTemperatureThreshold, fairTemperatureThreshold + 1), 124)
@@ -220,6 +310,16 @@ final class AppSettings: ObservableObject {
         refreshInterval = min(max(refreshInterval, 1), 60)
         let clampedCooldown = min(max(notificationCooldown, 0), 60 * 60)
         notificationCooldown = (clampedCooldown / 5).rounded() * 5
+    }
+
+    private func normalizeTranslationSettings() {
+        if translationDefaultSourceLanguage == translationDefaultTargetLanguage {
+            translationDefaultSourceLanguage = .automatic
+        }
+        if translationComparisonEngines.isEmpty {
+            translationComparisonEngines = [.appleSystem]
+        }
+        translationQualityPreference = min(max(translationQualityPreference, 0), 1)
     }
 
     private func saveInputMethodShortcutRules() {
@@ -256,6 +356,29 @@ final class AppSettings: ObservableObject {
             defaults.set(data, forKey: Keys.screenshotShortcut)
         } catch {
             NSLog("AirSentry screenshot shortcut save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveTranslationShortcut() {
+        guard let translationShortcut else {
+            defaults.removeObject(forKey: Keys.translationShortcut)
+            return
+        }
+
+        do {
+            let data = try JSONEncoder().encode(translationShortcut)
+            defaults.set(data, forKey: Keys.translationShortcut)
+        } catch {
+            NSLog("AirSentry translation shortcut save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveTranslationComparisonEngines() {
+        do {
+            let data = try JSONEncoder().encode(translationComparisonEngines)
+            defaults.set(data, forKey: Keys.translationComparisonEngines)
+        } catch {
+            NSLog("AirSentry translation engines save failed: \(error.localizedDescription)")
         }
     }
 
@@ -307,6 +430,33 @@ final class AppSettings: ObservableObject {
             return KeyboardShortcut(keyCode: 0, modifiers: UInt32(controlKey | shiftKey))
         }
     }
+
+    private static func loadTranslationShortcut(from defaults: UserDefaults) -> KeyboardShortcut? {
+        guard let data = defaults.data(forKey: Keys.translationShortcut) else {
+            return KeyboardShortcut(keyCode: 49, modifiers: UInt32(optionKey))
+        }
+
+        do {
+            return try JSONDecoder().decode(KeyboardShortcut.self, from: data)
+        } catch {
+            NSLog("AirSentry translation shortcut load failed: \(error.localizedDescription)")
+            return KeyboardShortcut(keyCode: 49, modifiers: UInt32(optionKey))
+        }
+    }
+
+    private static func loadTranslationComparisonEngines(from defaults: UserDefaults) -> [TranslationEngine] {
+        guard let data = defaults.data(forKey: Keys.translationComparisonEngines) else {
+            return [.appleSystem, .openAI]
+        }
+
+        do {
+            let engines = try JSONDecoder().decode([TranslationEngine].self, from: data)
+            return engines.isEmpty ? [.appleSystem] : engines
+        } catch {
+            NSLog("AirSentry translation engines load failed: \(error.localizedDescription)")
+            return [.appleSystem]
+        }
+    }
 }
 
 private enum Keys {
@@ -330,4 +480,18 @@ private enum Keys {
     static let appLauncherShortcut = "appLauncherShortcut"
     static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
     static let screenshotShortcut = "screenshotShortcut"
+    static let translationShortcutEnabled = "translationShortcutEnabled"
+    static let translationShortcut = "translationShortcut"
+    static let translationDefaultSourceLanguage = "translationDefaultSourceLanguage"
+    static let translationDefaultTargetLanguage = "translationDefaultTargetLanguage"
+    static let translationDefaultEngine = "translationDefaultEngine"
+    static let translationPanelMode = "translationPanelMode"
+    static let translationComparisonEngines = "translationComparisonEngines"
+    static let translationReadsClipboardText = "translationReadsClipboardText"
+    static let translationAutoFocusesInput = "translationAutoFocusesInput"
+    static let translationAutoCopiesResult = "translationAutoCopiesResult"
+    static let translationOpenAIAPIKey = "translationOpenAIAPIKey"
+    static let translationOpenAIBaseURL = "translationOpenAIBaseURL"
+    static let translationOpenAIModel = "translationOpenAIModel"
+    static let translationQualityPreference = "translationQualityPreference"
 }

@@ -63,6 +63,12 @@
 		A00000000000000000000036 /* ScreenshotOverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000013E /* ScreenshotOverlayController.swift */; };
 		A00000000000000000000037 /* ScreenshotResultPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000013F /* ScreenshotResultPanel.swift */; };
 		A00000000000000000000038 /* PinnedImageController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000140 /* PinnedImageController.swift */; };
+		A00000000000000000000039 /* TranslationTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000141 /* TranslationTypes.swift */; };
+		A0000000000000000000003A /* TranslationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000142 /* TranslationStore.swift */; };
+		A0000000000000000000003B /* TranslationPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000143 /* TranslationPanelController.swift */; };
+		A0000000000000000000003C /* TranslationShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000144 /* TranslationShortcutManager.swift */; };
+		A0000000000000000000003D /* TranslationPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000145 /* TranslationPanelView.swift */; };
+		A0000000000000000000003E /* TranslationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000146 /* TranslationSettingsView.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -144,6 +150,12 @@
 		A0000000000000000000013E /* ScreenshotOverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotOverlayController.swift; sourceTree = "<group>"; };
 		A0000000000000000000013F /* ScreenshotResultPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotResultPanel.swift; sourceTree = "<group>"; };
 		A00000000000000000000140 /* PinnedImageController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedImageController.swift; sourceTree = "<group>"; };
+		A00000000000000000000141 /* TranslationTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationTypes.swift; sourceTree = "<group>"; };
+		A00000000000000000000142 /* TranslationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000143 /* TranslationPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationPanelController.swift; sourceTree = "<group>"; };
+		A00000000000000000000144 /* TranslationShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationShortcutManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000145 /* TranslationPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationPanelView.swift; sourceTree = "<group>"; };
+		A00000000000000000000146 /* TranslationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranslationSettingsView.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -222,6 +234,7 @@
 				A00000000000000000000313 /* Models */,
 				A00000000000000000000314 /* Utils */,
 				A00000000000000000000319 /* Screenshot */,
+				A0000000000000000000031A /* Translation */,
 			);
 			path = AirGuard;
 			sourceTree = "<group>";
@@ -339,6 +352,19 @@
 				A00000000000000000000140 /* PinnedImageController.swift */,
 			);
 			path = Screenshot;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000031A /* Translation */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000141 /* TranslationTypes.swift */,
+				A00000000000000000000142 /* TranslationStore.swift */,
+				A00000000000000000000143 /* TranslationPanelController.swift */,
+				A00000000000000000000144 /* TranslationShortcutManager.swift */,
+				A00000000000000000000145 /* TranslationPanelView.swift */,
+				A00000000000000000000146 /* TranslationSettingsView.swift */,
+			);
+			path = Translation;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000315 /* media */ = {
@@ -521,6 +547,12 @@
 				A00000000000000000000036 /* ScreenshotOverlayController.swift in Sources */,
 				A00000000000000000000037 /* ScreenshotResultPanel.swift in Sources */,
 				A00000000000000000000038 /* PinnedImageController.swift in Sources */,
+				A00000000000000000000039 /* TranslationTypes.swift in Sources */,
+				A0000000000000000000003A /* TranslationStore.swift in Sources */,
+				A0000000000000000000003B /* TranslationPanelController.swift in Sources */,
+				A0000000000000000000003C /* TranslationShortcutManager.swift in Sources */,
+				A0000000000000000000003D /* TranslationPanelView.swift in Sources */,
+				A0000000000000000000003E /* TranslationSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -15,6 +15,7 @@ struct ToolboxView: View {
     @State private var recordingRuleID: UUID?
     @State private var isRecordingAppLauncherShortcut = false
     @State private var isRecordingScreenshotShortcut = false
+    @State private var isRecordingTranslationShortcut = false
     @State private var selectedSuperRightClickMenuItemID: String = SuperRightClickStore.defaultSelectedMenuItemID
     @State private var draggedSuperRightClickMenuItemID: String?
     @State private var draggedSuperRightClickTemplateID: String?
@@ -43,6 +44,9 @@ struct ToolboxView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AirSentry.SelectSuperRightClickToolboxSection"))) { _ in
             selectedTool = .superRightClick
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openTranslationSettings)) { _ in
+            selectedTool = .translation
         }
     }
 
@@ -110,6 +114,14 @@ struct ToolboxView: View {
               ) {
                 selectedTool = .inputMethod
               }
+
+              ToolboxSidebarItem(
+                title: "翻译助手",
+                systemImage: "character.book.closed",
+                isSelected: selectedTool == .translation
+              ) {
+                selectedTool = .translation
+              }
             }
             .padding(.horizontal, 12)
 
@@ -150,6 +162,8 @@ struct ToolboxView: View {
                     screenshotContent
                 case .superRightClick:
                     superRightClickContent
+                case .translation:
+                    translationContent
                 }
             }
             .padding(26)
@@ -218,6 +232,14 @@ struct ToolboxView: View {
             superRightClickFolderAuthorizationSection
             superRightClickTemplatesSection
         }
+    }
+
+    private var translationContent: some View {
+        TranslationSettingsView(
+            settings: settings,
+            isRecordingShortcut: $isRecordingTranslationShortcut,
+            conflictReason: translationShortcutConflictReason
+        )
     }
 
     private var uninstallerContent: some View {
@@ -1774,6 +1796,9 @@ struct ToolboxView: View {
         if settings.screenshotShortcut == shortcut {
             return "已被截图钉图快捷键使用"
         }
+        if settings.translationShortcut == shortcut {
+            return "已被翻译助手快捷键使用"
+        }
         return nil
     }
 
@@ -1786,6 +1811,9 @@ struct ToolboxView: View {
         if settings.screenshotShortcut == shortcut {
             return "已被截图钉图快捷键使用"
         }
+        if settings.translationShortcut == shortcut {
+            return "已被翻译助手快捷键使用"
+        }
         return nil
     }
 
@@ -1797,6 +1825,24 @@ struct ToolboxView: View {
         }
         if settings.appLauncherShortcut == shortcut {
             return "已被程序面板快捷键使用"
+        }
+        if settings.translationShortcut == shortcut {
+            return "已被翻译助手快捷键使用"
+        }
+        return nil
+    }
+
+    private var translationShortcutConflictReason: String? {
+        guard let shortcut = settings.translationShortcut else { return nil }
+        if let rule = settings.inputMethodShortcutRules.first(where: { $0.shortcut == shortcut }) {
+            let sourceName = inputSources.first { $0.id == rule.inputSourceID }?.name ?? "输入法快捷切换"
+            return "已被 \(sourceName) 使用"
+        }
+        if settings.appLauncherShortcut == shortcut {
+            return "已被程序面板快捷键使用"
+        }
+        if settings.screenshotShortcut == shortcut {
+            return "已被截图钉图快捷键使用"
         }
         return nil
     }
@@ -1899,6 +1945,7 @@ private enum ToolboxSection {
     case appLauncher
     case screenshot
     case superRightClick
+    case translation
 }
 
 private struct SuperRightClickMenuItem: Identifiable, Codable, Equatable, Hashable {

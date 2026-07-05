@@ -122,8 +122,6 @@ private struct ScreenshotOverlayView: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                Color.black.opacity(0.34)
-
                 if let selection = activeSelectionRect(in: proxy.size) {
                     SelectionShape(selection: selection)
                         .fill(style: FillStyle(eoFill: true))
@@ -164,6 +162,8 @@ private struct ScreenshotOverlayView: View {
                         }
                         .position(toolbarPosition(for: selection, in: proxy.size))
                     }
+                } else {
+                    Color.black.opacity(0.34)
                 }
 
                 ScreenshotShortcutHintPanel()
