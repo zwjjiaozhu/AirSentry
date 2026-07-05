@@ -10,7 +10,7 @@ OUTPUT_DIR="$ROOT_DIR/build/Release"
 APP_NAME="AirSentry.app"
 APP_PATH="$OUTPUT_DIR/$APP_NAME"
 INSTALL_PATH="${INSTALL_PATH:-/Applications/$APP_NAME}"
-HOST_APP_ENTITLEMENTS="$ROOT_DIR/AirGuard/AppStore.entitlements"
+HOST_APP_ENTITLEMENTS="$ROOT_DIR/AirGuard/DirectDistribution.entitlements"
 FINDER_EXTENSION_ENTITLEMENTS="$ROOT_DIR/AirGuardFinderExtension/FinderExtension.entitlements"
 TEAM_ID="${TEAM_ID:-}"
 BUNDLE_ID="${BUNDLE_ID:-}"
@@ -187,6 +187,8 @@ xcodebuild \
     -scheme "$SCHEME" \
     -configuration Release \
     -derivedDataPath "$DERIVED_DATA" \
+    CODE_SIGN_ENTITLEMENTS=AirGuard/DirectDistribution.entitlements \
+    ENABLE_APP_SANDBOX=NO \
     "${build_settings[@]}" \
     build
 

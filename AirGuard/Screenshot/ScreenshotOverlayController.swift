@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 @MainActor
@@ -154,10 +155,12 @@ private struct ScreenshotOverlayView: View {
     @State private var scalingTextStartFontSize: CGFloat?
     @State private var isTextCursorPushed = false
     @State private var hoveredTargetID: ScreenshotCaptureTarget.ID?
-    @State private var visualCaptureTargets: [ScreenshotCaptureTarget] = []
-    @State private var didRequestVisualTargets = false
     @State private var mosaicSampler: ScreenshotOverlayMosaicSampler?
     @FocusState private var focusedTextAnnotationID: UUID?
+
+    // Accessibility 控件检测相关状态
+    @State private var controlHoverTarget: ScreenshotCaptureTarget?
+    @State private var lastMousePoint: CGPoint?
 
     var body: some View {
         GeometryReader { proxy in
@@ -242,7 +245,6 @@ private struct ScreenshotOverlayView: View {
                 if mosaicSampler == nil, let screenImage {
                     mosaicSampler = ScreenshotOverlayMosaicSampler(image: screenImage)
                 }
-                startVisualTargetDetection()
             }
             .background(ScreenshotOverlayKeyCatcher(isEnabled: focusedTextAnnotationID == nil) { event in
                 handleKeyDown(event, in: proxy.size)
@@ -272,12 +274,16 @@ private struct ScreenshotOverlayView: View {
             }
             .onEnded { value in
                 guard selectedRect == nil else { return }
-                if isClickCandidate(value), let target = captureTarget(at: value.location) {
-                    selectedRect = boundedTargetRect(target.screenRect, in: size)
-                    hoveredTargetID = nil
-                    startPoint = nil
-                    currentPoint = nil
-                    return
+                if isClickCandidate(value) {
+                    updateHoveredTarget(at: value.location)
+                    if let target = hoveredTarget {
+                        selectedRect = boundedTargetRect(target.screenRect, in: size)
+                        hoveredTargetID = nil
+                        controlHoverTarget = nil
+                        startPoint = nil
+                        currentPoint = nil
+                        return
+                    }
                 }
 
                 currentPoint = value.location
@@ -798,34 +804,55 @@ private struct ScreenshotOverlayView: View {
     }
 
     private var hoveredTarget: ScreenshotCaptureTarget? {
+        // 只有鼠标仍在控件矩形内时才返回控件级结果
+        if let control = controlHoverTarget,
+           let mouse = lastMousePoint,
+           control.hitRect.contains(mouse) {
+            return control
+        }
         guard let hoveredTargetID else { return nil }
         return mergedCaptureTargets.first { $0.id == hoveredTargetID }
     }
 
     private var mergedCaptureTargets: [ScreenshotCaptureTarget] {
-        ScreenshotTargetFusion.merge(windowTargets: captureTargets, visualTargets: visualCaptureTargets)
-    }
-
-    private func startVisualTargetDetection() {
-        guard !didRequestVisualTargets,
-              let screenImage else { return }
-        didRequestVisualTargets = true
-        let screenFrame = screenFrame
-        let existingTargets = captureTargets
-        DispatchQueue.global(qos: .utility).async {
-            let visualTargets = ScreenshotVisualTargetDetector.targets(
-                on: screenFrame,
-                image: screenImage,
-                existingTargets: existingTargets
-            )
-            DispatchQueue.main.async {
-                self.visualCaptureTargets = visualTargets
-            }
-        }
+        // 仅窗口候选；控件候选由 Accessibility 按需补充
+        captureTargets
     }
 
     private func updateHoveredTarget(at point: CGPoint) {
         guard selectedRect == nil, startPoint == nil else { return }
+        lastMousePoint = point
+
+        // 鼠标仍在当前控件矩形内 -> 保持，不重复检测
+        if let control = controlHoverTarget, control.hitRect.contains(point) {
+            hoveredTargetID = nil
+            return
+        }
+
+        // 同步 Accessibility 检测：直接拿命中元素的 AXFrame
+        // AX 单次调用 1~5ms，同步调不会卡 UI（Snipaste 也是这么做）
+        // point 已由 MouseTrackingView.isFlipped 对齐到 SwiftUI 本地坐标(左上原点,y向下)
+        // AXUIElementCopyElementAtPosition 使用全局屏幕坐标(左上原点,y向下)
+        let maxScreenY = NSScreen.screens.map { $0.frame.maxY }.max() ?? screenFrame.maxY
+        let globalPoint = CGPoint(
+            x: screenFrame.minX + point.x,
+            y: maxScreenY - screenFrame.maxY + point.y
+        )
+        if let windowTarget = captureTarget(at: point) {
+            if let control = ScreenshotAccessibilityDetector.target(
+                at: globalPoint,
+                screenFrame: screenFrame,
+                maxScreenY: maxScreenY,
+                within: windowTarget
+            ) {
+                controlHoverTarget = control
+                hoveredTargetID = nil
+                return
+            }
+        }
+
+        // AX 未命中或未授权 -> 回退到窗口高亮
+        controlHoverTarget = nil
         hoveredTargetID = captureTarget(at: point)?.id
     }
 
@@ -1587,6 +1614,7 @@ private struct ScreenshotCaptureTarget: Identifiable {
     let screenRect: CGRect
     let title: String?
     let priority: Double
+    let pid: pid_t
 
     var hitRect: CGRect {
         screenRect.insetBy(dx: -6, dy: -6)
@@ -1681,7 +1709,8 @@ private enum ScreenshotWindowTargetDetector {
                 globalRect: clippedGlobalRect,
                 screenRect: screenRect,
                 title: title.isEmpty ? nil : title,
-                priority: Double(windowInfoList.count - index)
+                priority: Double(windowInfoList.count - index),
+                pid: pid_t(ownerPID)
             ))
         }
 
@@ -1740,227 +1769,90 @@ private enum ScreenshotWindowTargetDetector {
     }
 }
 
-private enum ScreenshotVisualTargetDetector {
-    static func targets(
-        on screenFrame: CGRect,
-        image: NSImage?,
-        existingTargets: [ScreenshotCaptureTarget]
-    ) -> [ScreenshotCaptureTarget] {
-        guard let image,
-              let bitmap = ScreenshotVisualBitmap(image: image) else { return [] }
-        let maximumDimension: CGFloat = 720
-        let scale = min(1, maximumDimension / max(image.size.width, image.size.height))
-        let gridWidth = max(1, Int(image.size.width * scale))
-        let gridHeight = max(1, Int(image.size.height * scale))
-        guard gridWidth >= 120, gridHeight >= 90 else { return [] }
+private enum ScreenshotAccessibilityDetector {
+    /// 在全局 Quartz 坐标点命中一个 Accessibility 控件，直接返回命中元素的 AXFrame。
+    /// 静默降级：未授权或无控件命中时返回 nil。
+    ///
+    /// 与 Snipaste 同方案：同步调 AXUIElementCopyElementAtPosition，
+    /// 命中的就是最精确的那个控件（按钮、图标、文本框），不走 parent walk。
+    /// 关键：用 AXUIElementCreateApplication(pid) 而非 systemWide，
+    /// 因为 Overlay 窗口在最顶层会拦截 systemWide 的命中。
+    static func target(
+        at globalPoint: CGPoint,
+        screenFrame: CGRect,
+        maxScreenY: CGFloat,
+        within windowTarget: ScreenshotCaptureTarget
+    ) -> ScreenshotCaptureTarget? {
+        guard AXIsProcessTrusted() else { return nil }
 
-        let gray = grayscaleGrid(bitmap: bitmap, width: gridWidth, height: gridHeight)
-        let horizontalEdges = edgeMap(gray: gray, width: gridWidth, height: gridHeight, axis: .horizontal)
-        let verticalEdges = edgeMap(gray: gray, width: gridWidth, height: gridHeight, axis: .vertical)
-        let minimumWidth = max(80, Int(80 * scale))
-        let minimumHeight = max(56, Int(56 * scale))
-        let horizontalSegments = lineSegments(from: horizontalEdges, width: gridWidth, height: gridHeight, minimumLength: minimumWidth, axis: .horizontal)
-            .sorted { $0.length > $1.length }
-            .prefix(180)
-        var candidates: [ScreenshotVisualCandidate] = []
+        let appElement = AXUIElementCreateApplication(windowTarget.pid)
+        var hitElement: AXUIElement?
+        let result = AXUIElementCopyElementAtPosition(
+            appElement,
+            Float(globalPoint.x),
+            Float(globalPoint.y),
+            &hitElement
+        )
+        guard result == .success,
+              let element = hitElement else { return nil }
 
-        for top in horizontalSegments {
-            for bottom in horizontalSegments where bottom.position > top.position + minimumHeight {
-                let height = bottom.position - top.position
-                guard height >= minimumHeight, height <= Int(CGFloat(gridHeight) * 0.92) else { continue }
-                let left = max(top.start, bottom.start)
-                let right = min(top.end, bottom.end)
-                let width = right - left
-                guard width >= minimumWidth else { continue }
+        guard let axRect = axFrame(of: element) else { return nil }
 
-                let leftCoverage = verticalCoverage(verticalEdges, width: gridWidth, x: left, y1: top.position, y2: bottom.position)
-                let rightCoverage = verticalCoverage(verticalEdges, width: gridWidth, x: right, y1: top.position, y2: bottom.position)
-                guard min(leftCoverage, rightCoverage) >= 0.26 else { continue }
+        // AXFrame 与 CGWindowBounds 一样是全局屏幕坐标(左上原点,y向下)。
+        // 这里走和 ScreenshotWindowTargetDetector 完全相同的转换路径：
+        // 先转为 AppKit 全局坐标(globalRect)，再转为 SwiftUI 本地坐标(screenRect)。
+        let globalRect = CGRect(
+            x: axRect.minX,
+            y: maxScreenY - axRect.maxY,
+            width: axRect.width,
+            height: axRect.height
+        )
+        let clippedRect = globalRect.intersection(screenFrame)
+        guard !clippedRect.isNull else { return nil }
+        let screenRect = CGRect(
+            x: clippedRect.minX - screenFrame.minX,
+            y: screenFrame.maxY - clippedRect.maxY,
+            width: clippedRect.width,
+            height: clippedRect.height
+        )
 
-                let rect = CGRect(
-                    x: CGFloat(left) / scale,
-                    y: CGFloat(top.position) / scale,
-                    width: CGFloat(width) / scale,
-                    height: CGFloat(height) / scale
-                ).integral
-                guard rect.width >= 80,
-                      rect.height >= 56,
-                      rect.width * rect.height >= 8_000,
-                      rect.maxX <= image.size.width + 2,
-                      rect.maxY <= image.size.height + 2 else { continue }
-                let score = Double(width * height) * Double(min(leftCoverage, rightCoverage))
-                candidates.append(ScreenshotVisualCandidate(rect: rect, score: score))
-            }
-        }
+        // 控件矩形必须比窗口候选小（否则就是窗口本身，无意义）
+        guard screenRect.width < windowTarget.screenRect.width - 2
+                || screenRect.height < windowTarget.screenRect.height - 2 else { return nil }
 
-        return deduplicated(candidates)
-            .prefix(24)
-            .enumerated()
-            .compactMap { index, candidate in
-                let screenRect = candidate.rect.intersection(CGRect(origin: .zero, size: image.size))
-                guard !screenRect.isNull,
-                      !isDuplicate(screenRect, of: existingTargets) else { return nil }
-                let globalRect = CGRect(
-                    x: screenFrame.minX + screenRect.minX,
-                    y: screenFrame.maxY - screenRect.maxY,
-                    width: screenRect.width,
-                    height: screenRect.height
-                )
-                return ScreenshotCaptureTarget(
-                    id: -10_000 - index,
-                    kind: .contour,
-                    globalRect: globalRect,
-                    screenRect: screenRect,
-                    title: "视觉轮廓",
-                    priority: 10_000 - Double(index)
-                )
-            }
+        // 控件矩形必须在窗口范围内（允许略微超出边界）
+        guard screenRect.width >= 8,
+              screenRect.height >= 8,
+              windowTarget.screenRect.insetBy(dx: -4, dy: -4).intersects(screenRect) else { return nil }
+
+        return ScreenshotCaptureTarget(
+            id: windowTarget.id - 200_000,
+            kind: .contour,
+            globalRect: clippedRect,
+            screenRect: screenRect,
+            title: axTitle(of: element) ?? windowTarget.title,
+            priority: windowTarget.priority + 1.0,
+            pid: windowTarget.pid
+        )
     }
 
-    private static func grayscaleGrid(bitmap: ScreenshotVisualBitmap, width: Int, height: Int) -> [UInt8] {
-        var gray = Array(repeating: UInt8.zero, count: width * height)
-        for y in 0..<height {
-            for x in 0..<width {
-                gray[y * width + x] = bitmap.gray(atXRatio: CGFloat(x) / CGFloat(width), yRatio: CGFloat(y) / CGFloat(height))
-            }
-        }
-        return gray
+    private static func axFrame(of element: AXUIElement) -> CGRect? {
+        var rawValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXFrame" as CFString, &rawValue) == .success,
+              let value = rawValue else { return nil }
+        let axValue = value as! AXValue
+        var rect = CGRect.zero
+        guard AXValueGetValue(axValue, .cgRect, &rect) else { return nil }
+        return rect
     }
 
-    private static func edgeMap(gray: [UInt8], width: Int, height: Int, axis: ScreenshotVisualEdgeAxis) -> [Bool] {
-        var edges = Array(repeating: false, count: width * height)
-        for y in 1..<height {
-            for x in 1..<width {
-                let current = Int(gray[y * width + x])
-                let previous: Int
-                switch axis {
-                case .horizontal:
-                    previous = Int(gray[(y - 1) * width + x])
-                case .vertical:
-                    previous = Int(gray[y * width + x - 1])
-                }
-                edges[y * width + x] = abs(current - previous) >= 30
-            }
-        }
-        return edges
+    private static func axTitle(of element: AXUIElement) -> String? {
+        var rawValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXTitle" as CFString, &rawValue) == .success,
+              let value = rawValue as? String, !value.isEmpty else { return nil }
+        return value
     }
 
-    private static func lineSegments(
-        from edges: [Bool],
-        width: Int,
-        height: Int,
-        minimumLength: Int,
-        axis: ScreenshotVisualEdgeAxis
-    ) -> [ScreenshotVisualLineSegment] {
-        let majorCount = axis == .horizontal ? height : width
-        let minorCount = axis == .horizontal ? width : height
-        var segments: [ScreenshotVisualLineSegment] = []
-
-        for major in 0..<majorCount {
-            var start: Int?
-            var lastHit: Int?
-            for minor in 0..<minorCount {
-                let index = axis == .horizontal ? major * width + minor : minor * width + major
-                if edges[index] {
-                    if start == nil { start = minor }
-                    lastHit = minor
-                } else if let currentStart = start, let currentLastHit = lastHit, minor - currentLastHit > 2 {
-                    if currentLastHit - currentStart >= minimumLength {
-                        segments.append(ScreenshotVisualLineSegment(position: major, start: currentStart, end: currentLastHit))
-                    }
-                    start = nil
-                    lastHit = nil
-                }
-            }
-            if let currentStart = start, let currentLastHit = lastHit, currentLastHit - currentStart >= minimumLength {
-                segments.append(ScreenshotVisualLineSegment(position: major, start: currentStart, end: currentLastHit))
-            }
-        }
-        return segments
-    }
-
-    private static func verticalCoverage(_ edges: [Bool], width: Int, x: Int, y1: Int, y2: Int) -> Double {
-        let minX = max(1, x - 3)
-        let maxX = min(width - 1, x + 3)
-        let startY = max(1, y1)
-        let endY = max(startY, y2)
-        var hits = 0
-        for y in startY...endY {
-            if (minX...maxX).contains(where: { edges[y * width + $0] }) {
-                hits += 1
-            }
-        }
-        return Double(hits) / Double(max(1, endY - startY + 1))
-    }
-
-    private static func deduplicated(_ candidates: [ScreenshotVisualCandidate]) -> [ScreenshotVisualCandidate] {
-        candidates
-            .sorted { $0.score > $1.score }
-            .reduce(into: []) { result, candidate in
-                guard !result.contains(where: { intersectionRatio(candidate.rect, $0.rect) > 0.72 }) else { return }
-                result.append(candidate)
-            }
-    }
-
-    private static func isDuplicate(_ rect: CGRect, of existingTargets: [ScreenshotCaptureTarget]) -> Bool {
-        existingTargets.contains { target in
-            intersectionRatio(rect, target.screenRect) > 0.68
-        }
-    }
-
-    private static func intersectionRatio(_ first: CGRect, _ second: CGRect) -> CGFloat {
-        let intersection = first.intersection(second)
-        guard !intersection.isNull else { return 0 }
-        let intersectionArea = intersection.width * intersection.height
-        let smallerArea = min(first.width * first.height, second.width * second.height)
-        return smallerArea > 0 ? intersectionArea / smallerArea : 0
-    }
-}
-
-private enum ScreenshotTargetFusion {
-    static func merge(windowTargets: [ScreenshotCaptureTarget], visualTargets: [ScreenshotCaptureTarget]) -> [ScreenshotCaptureTarget] {
-        (windowTargets + visualTargets).sorted { first, second in
-            if abs(first.priority - second.priority) > 0.001 {
-                return first.priority > second.priority
-            }
-            return first.screenRect.width * first.screenRect.height < second.screenRect.width * second.screenRect.height
-        }
-    }
-}
-
-private struct ScreenshotVisualBitmap {
-    private let bitmap: NSBitmapImageRep
-
-    init?(image: NSImage) {
-        guard let tiffData = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData) else { return nil }
-        self.bitmap = bitmap
-    }
-
-    func gray(atXRatio xRatio: CGFloat, yRatio: CGFloat) -> UInt8 {
-        let x = Int((xRatio * CGFloat(bitmap.pixelsWide - 1)).clamped(to: 0...CGFloat(bitmap.pixelsWide - 1)))
-        let y = Int((yRatio * CGFloat(bitmap.pixelsHigh - 1)).clamped(to: 0...CGFloat(bitmap.pixelsHigh - 1)))
-        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { return 0 }
-        return UInt8((color.redComponent * 0.299 + color.greenComponent * 0.587 + color.blueComponent * 0.114) * 255)
-    }
-}
-
-private enum ScreenshotVisualEdgeAxis {
-    case horizontal
-    case vertical
-}
-
-private struct ScreenshotVisualLineSegment {
-    let position: Int
-    let start: Int
-    let end: Int
-
-    var length: Int { end - start }
-}
-
-private struct ScreenshotVisualCandidate {
-    let rect: CGRect
-    let score: Double
 }
 
 private enum ScreenshotToolbarAction {
@@ -2505,6 +2397,8 @@ private struct ScreenshotMouseTracker: NSViewRepresentable {
 private final class MouseTrackingView: NSView {
     var onMove: ((CGPoint) -> Void)?
     private var trackingArea: NSTrackingArea?
+
+    override var isFlipped: Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()

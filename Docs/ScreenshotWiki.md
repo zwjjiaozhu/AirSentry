@@ -306,3 +306,9 @@ private struct SelectionShape: Shape {
 - **借鉴点**：ScreenCaptureKit 与 CGWindowListCreateImage fallback 的双通道捕获策略；区域截图 + 窗口截图 + 全屏截图的功能划分。
 - **技术栈**：SwiftUI + AppKit，ScreenCaptureKit (macOS 14+) with CGWindowListCreateImage fallback
 - **协议**：MIT
+
+## snipaste
+
+## pixPin
+
+https://pixpin.cn/
