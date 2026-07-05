@@ -81,7 +81,7 @@ struct ToolboxView: View {
 
               ToolboxSidebarItem(
                 title: "超级右键",
-                systemImage: "filemenu.and.selection",
+                systemImage: "computermouse",
                 isSelected: selectedTool == .superRightClick
               ) {
                 selectedTool = .superRightClick

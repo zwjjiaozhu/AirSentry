@@ -212,16 +212,29 @@ enum ScreenshotAnnotationRenderer {
 
         let scaleX = outputSize.width / canvasSize.width
         let scaleY = outputSize.height / canvasSize.height
+        let mosaicSampler = ScreenshotMosaicSampler(image: baseImage)
         for annotation in annotations {
-            draw(annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputSize.height)
+            draw(
+                annotation,
+                scaleX: scaleX,
+                scaleY: scaleY,
+                outputHeight: outputSize.height,
+                mosaicSampler: mosaicSampler
+            )
         }
 
         image.unlockFocus()
         return image
     }
 
-    private static func draw(_ annotation: ScreenshotAnnotation, scaleX: CGFloat, scaleY: CGFloat, outputHeight: CGFloat) {
-        let color = annotation.color.nsColor
+    private static func draw(
+        _ annotation: ScreenshotAnnotation,
+        scaleX: CGFloat,
+        scaleY: CGFloat,
+        outputHeight: CGFloat,
+        mosaicSampler: ScreenshotMosaicSampler?
+    ) {
+        let color = annotation.effectiveNSColor
         color.setStroke()
         color.setFill()
 
@@ -235,7 +248,7 @@ enum ScreenshotAnnotationRenderer {
             guard let origin = annotation.points.first else { return }
             let point = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: annotation.fontSize * min(scaleX, scaleY), weight: .semibold),
+                .font: annotation.nsFont(scale: min(scaleX, scaleY)),
                 .foregroundColor: color
             ]
             let text = NSString(string: annotation.text)
@@ -251,6 +264,8 @@ enum ScreenshotAnnotationRenderer {
                 path.line(to: transform($0, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight))
             }
             path.stroke()
+        case .mosaic:
+            drawMosaic(annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, sampler: mosaicSampler)
         case .line:
             guard let start = annotation.points.first,
                   let end = annotation.points.last else { return }
@@ -274,6 +289,30 @@ enum ScreenshotAnnotationRenderer {
             guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight) else { return }
             path.appendOval(in: rect)
             path.stroke()
+        }
+    }
+
+    private static func drawMosaic(
+        _ annotation: ScreenshotAnnotation,
+        scaleX: CGFloat,
+        scaleY: CGFloat,
+        outputHeight: CGFloat,
+        sampler: ScreenshotMosaicSampler?
+    ) {
+        let blockSize = max(8, annotation.lineWidth * min(scaleX, scaleY) * 5)
+        let halfBlock = blockSize / 2
+
+        for point in annotation.points {
+            let center = transform(point, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+            let rect = CGRect(
+                x: center.x - halfBlock,
+                y: center.y - halfBlock,
+                width: blockSize,
+                height: blockSize
+            )
+            let color = sampler?.averageColor(in: rect, outputHeight: outputHeight) ?? NSColor.systemGray
+            color.setFill()
+            NSBezierPath(rect: rect).fill()
         }
     }
 
@@ -313,6 +352,69 @@ enum ScreenshotAnnotationRenderer {
 
     private static func transform(_ point: CGPoint, scaleX: CGFloat, scaleY: CGFloat, outputHeight: CGFloat) -> CGPoint {
         CGPoint(x: point.x * scaleX, y: outputHeight - point.y * scaleY)
+    }
+}
+
+private struct ScreenshotMosaicSampler {
+    private let bitmap: NSBitmapImageRep
+    private let imageSize: CGSize
+
+    init?(image: NSImage) {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else { return nil }
+        self.bitmap = bitmap
+        self.imageSize = image.size
+    }
+
+    func color(at point: CGPoint, outputHeight: CGFloat) -> NSColor {
+        let xRatio = imageSize.width > 0 ? point.x / imageSize.width : 0
+        let yRatio = outputHeight > 0 ? point.y / outputHeight : 0
+        let maxX = CGFloat(max(0, bitmap.pixelsWide - 1))
+        let maxY = CGFloat(max(0, bitmap.pixelsHigh - 1))
+        let x = Int(min(max(xRatio * CGFloat(bitmap.pixelsWide), 0), maxX))
+        let y = Int(min(max((1 - yRatio) * CGFloat(bitmap.pixelsHigh), 0), maxY))
+        return bitmap.colorAt(x: x, y: y) ?? .systemGray
+    }
+
+    func averageColor(in rect: CGRect, outputHeight: CGFloat) -> NSColor {
+        let sampleRect = rect.intersection(CGRect(origin: .zero, size: imageSize))
+        guard !sampleRect.isNull, sampleRect.width > 0, sampleRect.height > 0 else {
+            return .systemGray
+        }
+
+        let sampleColumns = 4
+        let sampleRows = 4
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        var count: CGFloat = 0
+
+        for column in 0..<sampleColumns {
+            for row in 0..<sampleRows {
+                let point = CGPoint(
+                    x: sampleRect.minX + (CGFloat(column) + 0.5) * sampleRect.width / CGFloat(sampleColumns),
+                    y: sampleRect.minY + (CGFloat(row) + 0.5) * sampleRect.height / CGFloat(sampleRows)
+                )
+                guard let color = color(at: point, outputHeight: outputHeight).usingColorSpace(.deviceRGB) else { continue }
+                red += color.redComponent
+                green += color.greenComponent
+                blue += color.blueComponent
+                alpha += color.alphaComponent
+                count += 1
+            }
+        }
+
+        guard count > 0 else {
+            return .systemGray
+        }
+
+        return NSColor(
+            deviceRed: red / count,
+            green: green / count,
+            blue: blue / count,
+            alpha: alpha / count
+        )
     }
 }
 
