@@ -206,6 +206,11 @@ private struct ScreenshotOverlayView: View {
                         }
                         .position(toolbarPosition(for: selection, in: proxy.size))
                     }
+                } else if let target = hoveredTarget {
+                    // 悬停窗口时挖出高亮区域，恢复原始亮度
+                    SelectionShape(selection: target.screenRect)
+                        .fill(style: FillStyle(eoFill: true))
+                        .foregroundStyle(Color.black.opacity(0.34))
                 } else {
                     Color.black.opacity(0.34)
                 }
