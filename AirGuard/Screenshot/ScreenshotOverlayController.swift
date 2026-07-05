@@ -794,7 +794,7 @@ private struct ScreenshotOverlayView: View {
 
         // 选区中间
         if selection.contains(point) {
-            // 靠近标注端点手柄 -> 十字光标
+            // 靠近标注手柄 -> 十字光标
             if let id = selectedAnnotationID,
                let index = annotations.firstIndex(where: { $0.id == id }),
                annotations[index].tool != .text,
@@ -802,12 +802,28 @@ private struct ScreenshotOverlayView: View {
                annotations[index].tool != .mosaic {
                 let localPoint = CGPoint(x: point.x - selection.minX, y: point.y - selection.minY)
                 let handleRadius: CGFloat = 12
-                for pt in annotations[index].points {
-                    let dx = localPoint.x - pt.x
-                    let dy = localPoint.y - pt.y
-                    if dx * dx + dy * dy <= handleRadius * handleRadius {
-                        pushSelectionCursor(.crosshair)
-                        return
+                let annotation = annotations[index]
+                if (annotation.tool == .rectangle || annotation.tool == .ellipse),
+                   let bounds = annotationBounds(annotation) {
+                    // 矩形/椭圆: 检查8个手柄
+                    for handle in AnnotationResizeHandle.allCases {
+                        let hp = handle.point(in: bounds)
+                        let dx = localPoint.x - hp.x
+                        let dy = localPoint.y - hp.y
+                        if dx * dx + dy * dy <= handleRadius * handleRadius {
+                            pushSelectionCursor(handle.cursor)
+                            return
+                        }
+                    }
+                } else {
+                    // 线条/箭头: 检查端点
+                    for pt in annotations[index].points {
+                        let dx = localPoint.x - pt.x
+                        let dy = localPoint.y - pt.y
+                        if dx * dx + dy * dy <= handleRadius * handleRadius {
+                            pushSelectionCursor(.crosshair)
+                            return
+                        }
                     }
                 }
             }
@@ -844,19 +860,56 @@ private struct ScreenshotOverlayView: View {
                annotations[index].tool != .pen,
                annotations[index].tool != .mosaic {
                 let annotation = annotations[index]
-                ForEach(Array(annotation.points.enumerated()), id: \.offset) { idx, point in
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(.white, lineWidth: 1.2))
-                        .position(point)
-                        .gesture(annotationResizeGesture(annotationID: id, pointIndex: idx, in: selection))
+                if annotation.tool == .rectangle || annotation.tool == .ellipse,
+                   let bounds = annotationBounds(annotation) {
+                    // 矩形/椭圆: 8个手柄 (4角+4边)
+                    ForEach(AnnotationResizeHandle.allCases) { handle in
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(.white, lineWidth: 1.2))
+                            .position(handle.point(in: bounds))
+                            .gesture(annotationEdgeResizeGesture(annotationID: id, handle: handle, in: selection))
+                    }
+                } else {
+                    // 线条/箭头: 2个端点手柄
+                    ForEach(Array(annotation.points.enumerated()), id: \.offset) { idx, point in
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(.white, lineWidth: 1.2))
+                            .position(point)
+                            .gesture(annotationResizeGesture(annotationID: id, pointIndex: idx, in: selection))
+                    }
                 }
             }
         }
         .frame(width: selection.width, height: selection.height)
         .position(x: selection.midX, y: selection.midY)
         .allowsHitTesting(true)
+    }
+
+    private func annotationEdgeResizeGesture(annotationID: UUID, handle: AnnotationResizeHandle, in selection: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                if resizingAnnotationStartPoints == nil {
+                    if let index = annotations.firstIndex(where: { $0.id == annotationID }) {
+                        resizingAnnotationStartPoints = annotations[index].points
+                    }
+                }
+                guard let startPoints = resizingAnnotationStartPoints,
+                      let index = annotations.firstIndex(where: { $0.id == annotationID }),
+                      startPoints.count >= 2 else { return }
+
+                annotations[index].points = handle.applyResize(
+                    to: startPoints,
+                    translation: value.translation,
+                    bounds: selection
+                )
+            }
+            .onEnded { _ in
+                resizingAnnotationStartPoints = nil
+            }
     }
 
     private func annotationResizeGesture(annotationID: UUID, pointIndex: Int, in selection: CGRect) -> some Gesture {
@@ -2501,6 +2554,72 @@ private enum ResizeHandle: CaseIterable, Identifiable {
         }
 
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+}
+
+private enum AnnotationResizeHandle: CaseIterable, Identifiable {
+    case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+
+    var id: Self { self }
+
+    var cursor: NSCursor {
+        switch self {
+        case .top, .bottom: return .resizeUpDown
+        case .left, .right: return .resizeLeftRight
+        default: return .crosshair
+        }
+    }
+
+    func point(in bounds: CGRect) -> CGPoint {
+        switch self {
+        case .topLeft: return CGPoint(x: bounds.minX, y: bounds.minY)
+        case .top: return CGPoint(x: bounds.midX, y: bounds.minY)
+        case .topRight: return CGPoint(x: bounds.maxX, y: bounds.minY)
+        case .right: return CGPoint(x: bounds.maxX, y: bounds.midY)
+        case .bottomRight: return CGPoint(x: bounds.maxX, y: bounds.maxY)
+        case .bottom: return CGPoint(x: bounds.midX, y: bounds.maxY)
+        case .bottomLeft: return CGPoint(x: bounds.minX, y: bounds.maxY)
+        case .left: return CGPoint(x: bounds.minX, y: bounds.midY)
+        }
+    }
+
+    func applyResize(to points: [CGPoint], translation: CGSize, bounds: CGRect) -> [CGPoint] {
+        guard points.count >= 2 else { return points }
+        let p0 = points[0], p1 = points[1]
+        let minX = min(p0.x, p1.x), maxX = max(p0.x, p1.x)
+        let minY = min(p0.y, p1.y), maxY = max(p0.y, p1.y)
+
+        var newMinX = minX, newMaxX = maxX, newMinY = minY, newMaxY = maxY
+        let minSize: CGFloat = 8
+
+        switch self {
+        case .topLeft:
+            newMinX = (minX + translation.width).clamped(to: 0...(maxX - minSize))
+            newMinY = (minY + translation.height).clamped(to: 0...(maxY - minSize))
+        case .top:
+            newMinY = (minY + translation.height).clamped(to: 0...(maxY - minSize))
+        case .topRight:
+            newMaxX = (maxX + translation.width).clamped(to: (minX + minSize)...bounds.width)
+            newMinY = (minY + translation.height).clamped(to: 0...(maxY - minSize))
+        case .right:
+            newMaxX = (maxX + translation.width).clamped(to: (minX + minSize)...bounds.width)
+        case .bottomRight:
+            newMaxX = (maxX + translation.width).clamped(to: (minX + minSize)...bounds.width)
+            newMaxY = (maxY + translation.height).clamped(to: (minY + minSize)...bounds.height)
+        case .bottom:
+            newMaxY = (maxY + translation.height).clamped(to: (minY + minSize)...bounds.height)
+        case .bottomLeft:
+            newMinX = (minX + translation.width).clamped(to: 0...(maxX - minSize))
+            newMaxY = (maxY + translation.height).clamped(to: (minY + minSize)...bounds.height)
+        case .left:
+            newMinX = (minX + translation.width).clamped(to: 0...(maxX - minSize))
+        }
+
+        // 归一化返回 [topLeft, bottomRight]
+        return [
+            CGPoint(x: newMinX, y: newMinY),
+            CGPoint(x: newMaxX, y: newMaxY)
+        ]
     }
 }
 
