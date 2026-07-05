@@ -6,6 +6,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
     case appLauncher
     case screenshot
     case ocr
+    case imageProcessing
     case superRightClick
     case storage
     case uninstaller
@@ -19,6 +20,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         case .appLauncher: "程序收纳台"
         case .screenshot: "截图钉图"
         case .ocr: "文字识别"
+        case .imageProcessing: "图片处理"
         case .superRightClick: "超级右键"
         case .storage: "AI 存储分析"
         case .uninstaller: "软件卸载助手"
@@ -32,6 +34,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         case .appLauncher: "打开程序收纳台"
         case .screenshot: "开始截图或钉图"
         case .ocr: "打开文字识别"
+        case .imageProcessing: "打开图片处理"
         case .superRightClick: "打开超级右键设置"
         case .storage: "打开 AI 存储分析"
         case .uninstaller: "打开软件卸载助手"
@@ -45,6 +48,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         case .appLauncher: "square.grid.3x3"
         case .screenshot: "camera.viewfinder"
         case .ocr: "text.viewfinder"
+        case .imageProcessing: "photo.on.rectangle.angled"
         case .superRightClick: "computermouse"
         case .storage: "internaldrive"
         case .uninstaller: "trash"
@@ -57,6 +61,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         .appLauncher,
         .screenshot,
         .ocr,
+        .imageProcessing,
         .storage,
         .translation
     ]

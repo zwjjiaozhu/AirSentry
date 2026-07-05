@@ -72,6 +72,8 @@
 		A0000000000000000000003F /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000147 /* OCRService.swift */; };
 		A00000000000000000000040 /* OCRPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000148 /* OCRPanelController.swift */; };
 		A00000000000000000000041 /* OCRPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000149 /* OCRPanelView.swift */; };
+		A00000000000000000000042 /* ImageProcessingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014A /* ImageProcessingStore.swift */; };
+		A00000000000000000000043 /* ImageProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014B /* ImageProcessingView.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -162,6 +164,8 @@
 		A00000000000000000000147 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRService.swift; sourceTree = "<group>"; };
 		A00000000000000000000148 /* OCRPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRPanelController.swift; sourceTree = "<group>"; };
 		A00000000000000000000149 /* OCRPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRPanelView.swift; sourceTree = "<group>"; };
+		A0000000000000000000014A /* ImageProcessingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingStore.swift; sourceTree = "<group>"; };
+		A0000000000000000000014B /* ImageProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingView.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -242,6 +246,7 @@
 				A00000000000000000000319 /* Screenshot */,
 				A0000000000000000000031A /* Translation */,
 				A0000000000000000000031B /* OCR */,
+				A0000000000000000000031C /* ImageProcessing */,
 			);
 			path = AirGuard;
 			sourceTree = "<group>";
@@ -322,6 +327,15 @@
 				A00000000000000000000125 /* ASMediaRemoteBridge.h */,
 			);
 			path = Readers;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000031C /* ImageProcessing */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000014A /* ImageProcessingStore.swift */,
+				A0000000000000000000014B /* ImageProcessingView.swift */,
+			);
+			path = ImageProcessing;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000313 /* Models */ = {
@@ -573,6 +587,8 @@
 				A0000000000000000000003F /* OCRService.swift in Sources */,
 				A00000000000000000000040 /* OCRPanelController.swift in Sources */,
 				A00000000000000000000041 /* OCRPanelView.swift in Sources */,
+				A00000000000000000000042 /* ImageProcessingStore.swift in Sources */,
+				A00000000000000000000043 /* ImageProcessingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -326,7 +326,7 @@ struct MenuBarPanelView: View {
         case .translation:
             dismiss()
             NotificationCenter.default.post(name: .showTranslationPanel, object: nil)
-        case .superRightClick, .storage, .uninstaller, .inputMethod:
+        case .imageProcessing, .superRightClick, .storage, .uninstaller, .inputMethod:
             openToolboxWindow(selecting: tool)
         }
     }

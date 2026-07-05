@@ -70,7 +70,7 @@ struct AirGuardApp: App {
                 .frame(width: 860, height: 600)
         }
 
-        Window("工具箱", id: "toolbox") {
+        Window("六边形工具箱-AirSentry", id: "toolbox") {
             ToolboxView()
                 .environmentObject(settings)
                 .environmentObject(appLauncherStore)

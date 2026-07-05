@@ -11,6 +11,7 @@ struct ToolboxView: View {
     @StateObject private var uninstallerStore = AppUninstallerStore()
     @StateObject private var superRightClickStore = SuperRightClickStore()
     @StateObject private var finderAuthorizationStore = FinderNewFileAuthorizationStore()
+    @StateObject private var imageProcessingStore = ImageProcessingStore()
     @State private var selectedTool: ToolboxSection = .storage
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
@@ -103,6 +104,14 @@ struct ToolboxView: View {
               }
 
               ToolboxSidebarItem(
+                title: "图片处理",
+                systemImage: "photo.on.rectangle.angled",
+                isSelected: selectedTool == .imageProcessing
+              ) {
+                selectedTool = .imageProcessing
+              }
+
+              ToolboxSidebarItem(
                 title: "超级右键",
                 systemImage: "computermouse",
                 isSelected: selectedTool == .superRightClick
@@ -165,6 +174,7 @@ struct ToolboxView: View {
         )
     }
 
+    @ViewBuilder
     private var content: some View {
         ScrollView {
             Group {
@@ -181,6 +191,8 @@ struct ToolboxView: View {
                     screenshotContent
                 case .ocr:
                     ocrContent
+                case .imageProcessing:
+                    imageProcessingContent
                 case .superRightClick:
                     superRightClickContent
                 case .translation:
@@ -252,6 +264,10 @@ struct ToolboxView: View {
             ocrHeader
             ocrActionSection
         }
+    }
+
+    private var imageProcessingContent: some View {
+        ImageProcessingView(store: imageProcessingStore)
     }
 
     private var superRightClickContent: some View {
@@ -2116,6 +2132,7 @@ private enum ToolboxSection {
     case appLauncher
     case screenshot
     case ocr
+    case imageProcessing
     case superRightClick
     case translation
 
@@ -2127,6 +2144,8 @@ private enum ToolboxSection {
             self = .screenshot
         case .ocr:
             self = .ocr
+        case .imageProcessing:
+            self = .imageProcessing
         case .superRightClick:
             self = .superRightClick
         case .storage:

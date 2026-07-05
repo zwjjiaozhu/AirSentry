@@ -146,6 +146,8 @@ private struct ScreenshotOverlayView: View {
     @State private var selectedAnnotationID: UUID?
     @State private var draftAnnotation: ScreenshotAnnotation?
     @State private var movingTextAnnotationStartPoint: CGPoint?
+    @State private var movingAnnotationStartPoints: [CGPoint]?
+    @State private var resizingAnnotationStartPoints: [CGPoint]?
     @State private var resizingTextAnnotationID: UUID?
     @State private var resizingTextStartPoint: CGPoint?
     @State private var resizingTextStartSize: CGSize?
@@ -215,7 +217,7 @@ private struct ScreenshotOverlayView: View {
                     Color.black.opacity(0.34)
                 }
 
-                if selectedRect == nil {
+                if selectedRect == nil && startPoint == nil {
                     targetHighlightLayer()
                 }
 
@@ -247,6 +249,8 @@ private struct ScreenshotOverlayView: View {
             .onDisappear {
                 resetTextCursor()
                 popSelectionCursor()
+                movingAnnotationStartPoints = nil
+                resizingAnnotationStartPoints = nil
             }
             .onAppear {
                 if mosaicSampler == nil, let screenImage {
@@ -278,6 +282,7 @@ private struct ScreenshotOverlayView: View {
                 }
 
                 hoveredTargetID = nil
+                controlHoverTarget = nil
                 if startPoint == nil {
                     startPoint = value.startLocation
                 }
@@ -353,6 +358,8 @@ private struct ScreenshotOverlayView: View {
             }
 
             textAnnotationLayer(selection)
+
+            annotationHandlesLayer(selection)
 
             Rectangle()
                 .stroke(Color.accentColor, lineWidth: 2)
@@ -488,7 +495,7 @@ private struct ScreenshotOverlayView: View {
               let rect = annotationBounds(annotation)?.insetBy(dx: -4, dy: -4) else { return }
         var path = Path()
         path.addRect(rect)
-        context.stroke(path, with: .color(.white.opacity(0.80)), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        context.stroke(path, with: .color(.accentColor.opacity(0.90)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
     }
 
     private func textAnnotationLayer(_ selection: CGRect) -> some View {
@@ -514,8 +521,8 @@ private struct ScreenshotOverlayView: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .stroke(
-                                    selectedAnnotationID == annotation.id ? Color.white.opacity(0.82) : Color.clear,
-                                    style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                                    selectedAnnotationID == annotation.id ? Color.accentColor.opacity(0.90) : Color.clear,
+                                    style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
                                 )
                         )
                         .overlay {
@@ -542,6 +549,35 @@ private struct ScreenshotOverlayView: View {
                 if selectedTool == .text {
                     return
                 }
+
+                // 检查是否拖动选中的标注（非文本）
+                if movingAnnotationStartPoints == nil && draftAnnotation == nil {
+                    let localStart = CGPoint(
+                        x: value.startLocation.x - selection.minX,
+                        y: value.startLocation.y - selection.minY
+                    )
+                    if let id = selectedAnnotationID,
+                       let index = annotations.firstIndex(where: { $0.id == id }),
+                       annotations[index].tool != .text,
+                       let bounds = annotationBounds(annotations[index]),
+                       bounds.insetBy(dx: -6, dy: -6).contains(localStart) {
+                        movingAnnotationStartPoints = annotations[index].points
+                    }
+                }
+
+                // 如果正在拖动标注，更新位置
+                if let startPoints = movingAnnotationStartPoints,
+                   let id = selectedAnnotationID,
+                   let index = annotations.firstIndex(where: { $0.id == id }) {
+                    annotations[index].points = startPoints.map { pt in
+                        CGPoint(
+                            x: pt.x + value.translation.width,
+                            y: pt.y + value.translation.height
+                        )
+                    }
+                    return
+                }
+
                 guard let selectedTool, selectedTool != .cursor else { return }
                 let localPoint = CGPoint(
                     x: (value.location.x - selection.minX).clamped(to: 0...selection.width),
@@ -571,6 +607,12 @@ private struct ScreenshotOverlayView: View {
                 self.draftAnnotation = draftAnnotation
             }
             .onEnded { value in
+                // 如果正在拖动标注，清理状态
+                if movingAnnotationStartPoints != nil {
+                    movingAnnotationStartPoints = nil
+                    return
+                }
+
                 if selectedTool == .text {
                     let localPoint = CGPoint(
                         x: value.location.x - selection.minX,
@@ -596,6 +638,36 @@ private struct ScreenshotOverlayView: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
                 guard abs(value.translation.width) > 2 || abs(value.translation.height) > 2 else { return }
+
+                // 检查是否拖动选中的标注（非文本）
+                if movingAnnotationStartPoints == nil && interactionStartRect == nil {
+                    let localStart = CGPoint(
+                        x: value.startLocation.x - selection.minX,
+                        y: value.startLocation.y - selection.minY
+                    )
+                    if let id = selectedAnnotationID,
+                       let index = annotations.firstIndex(where: { $0.id == id }),
+                       annotations[index].tool != .text,
+                       let bounds = annotationBounds(annotations[index]),
+                       bounds.insetBy(dx: -6, dy: -6).contains(localStart) {
+                        movingAnnotationStartPoints = annotations[index].points
+                    }
+                }
+
+                // 如果正在拖动标注，更新标注位置
+                if let startPoints = movingAnnotationStartPoints,
+                   let id = selectedAnnotationID,
+                   let index = annotations.firstIndex(where: { $0.id == id }) {
+                    annotations[index].points = startPoints.map { pt in
+                        CGPoint(
+                            x: pt.x + value.translation.width,
+                            y: pt.y + value.translation.height
+                        )
+                    }
+                    return
+                }
+
+                // 否则移动选区
                 guard let selectedRect else { return }
                 if interactionStartRect == nil {
                     interactionStartRect = selectedRect
@@ -611,6 +683,12 @@ private struct ScreenshotOverlayView: View {
                 )
             }
             .onEnded { value in
+                // 如果正在拖动标注，清理状态
+                if movingAnnotationStartPoints != nil {
+                    movingAnnotationStartPoints = nil
+                    return
+                }
+
                 if abs(value.translation.width) <= 2, abs(value.translation.height) <= 2 {
                     let localPoint = CGPoint(
                         x: value.location.x - selection.minX,
@@ -695,7 +773,10 @@ private struct ScreenshotOverlayView: View {
         }
 
         // 拖动中不切换光标
-        if interactionStartRect != nil {
+        if interactionStartRect != nil || movingAnnotationStartPoints != nil || resizingAnnotationStartPoints != nil {
+            if movingAnnotationStartPoints != nil {
+                pushSelectionCursor(.openHand)
+            }
             return
         }
 
@@ -711,13 +792,94 @@ private struct ScreenshotOverlayView: View {
             }
         }
 
-        // 选区中间 -> 移动光标
+        // 选区中间
         if selection.contains(point) {
-            pushSelectionCursor(.openHand)
+            // 靠近标注端点手柄 -> 十字光标
+            if let id = selectedAnnotationID,
+               let index = annotations.firstIndex(where: { $0.id == id }),
+               annotations[index].tool != .text,
+               annotations[index].tool != .pen,
+               annotations[index].tool != .mosaic {
+                let localPoint = CGPoint(x: point.x - selection.minX, y: point.y - selection.minY)
+                let handleRadius: CGFloat = 12
+                for pt in annotations[index].points {
+                    let dx = localPoint.x - pt.x
+                    let dy = localPoint.y - pt.y
+                    if dx * dx + dy * dy <= handleRadius * handleRadius {
+                        pushSelectionCursor(.crosshair)
+                        return
+                    }
+                }
+            }
+
+            // 任何工具下，靠近选中的标注 -> 拖动光标
+            if let id = selectedAnnotationID,
+               let index = annotations.firstIndex(where: { $0.id == id }),
+               annotations[index].tool != .text,
+               let bounds = annotationBounds(annotations[index]) {
+                let localPoint = CGPoint(x: point.x - selection.minX, y: point.y - selection.minY)
+                if bounds.insetBy(dx: -6, dy: -6).contains(localPoint) {
+                    pushSelectionCursor(.openHand)
+                    return
+                }
+            }
+
+            if selectedTool != nil && selectedTool != .cursor {
+                // 绘制工具 -> 十字光标
+                pushSelectionCursor(.crosshair)
+            } else {
+                popSelectionCursor()
+            }
             return
         }
 
         popSelectionCursor()
+    }
+
+    private func annotationHandlesLayer(_ selection: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            if let id = selectedAnnotationID,
+               let index = annotations.firstIndex(where: { $0.id == id }),
+               annotations[index].tool != .text,
+               annotations[index].tool != .pen,
+               annotations[index].tool != .mosaic {
+                let annotation = annotations[index]
+                ForEach(Array(annotation.points.enumerated()), id: \.offset) { idx, point in
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(.white, lineWidth: 1.2))
+                        .position(point)
+                        .gesture(annotationResizeGesture(annotationID: id, pointIndex: idx, in: selection))
+                }
+            }
+        }
+        .frame(width: selection.width, height: selection.height)
+        .position(x: selection.midX, y: selection.midY)
+        .allowsHitTesting(true)
+    }
+
+    private func annotationResizeGesture(annotationID: UUID, pointIndex: Int, in selection: CGRect) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                if resizingAnnotationStartPoints == nil {
+                    if let index = annotations.firstIndex(where: { $0.id == annotationID }) {
+                        resizingAnnotationStartPoints = annotations[index].points
+                    }
+                }
+                guard let startPoints = resizingAnnotationStartPoints,
+                      let index = annotations.firstIndex(where: { $0.id == annotationID }),
+                      pointIndex < startPoints.count else { return }
+
+                let newPoint = CGPoint(
+                    x: (startPoints[pointIndex].x + value.translation.width).clamped(to: 0...selection.width),
+                    y: (startPoints[pointIndex].y + value.translation.height).clamped(to: 0...selection.height)
+                )
+                annotations[index].points[pointIndex] = newPoint
+            }
+            .onEnded { _ in
+                resizingAnnotationStartPoints = nil
+            }
     }
 
     private func textSelectionControls(for annotation: ScreenshotAnnotation) -> some View {
@@ -1010,7 +1172,12 @@ private struct ScreenshotOverlayView: View {
         }
 
         if event.keyCode == 51 || event.keyCode == 117 {
-            undoLastAnnotation()
+            // 有选中的标注时删除选中的，否则撤销最后一个
+            if let id = selectedAnnotationID {
+                deleteAnnotation(id: id)
+            } else {
+                undoLastAnnotation()
+            }
             return
         }
 
@@ -1213,14 +1380,18 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func deleteAnnotation(id: UUID) {
-        guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        redoAnnotations.removeAll()
-        annotations.remove(at: index)
+        // 先清除焦点和选中状态，避免 ForEach 重入导致卡死
+        if focusedTextAnnotationID == id {
+            focusedTextAnnotationID = nil
+        }
         if selectedAnnotationID == id {
             selectedAnnotationID = nil
         }
-        if focusedTextAnnotationID == id {
-            focusedTextAnnotationID = nil
+        // 延迟到下一个 runloop 再从数组中移除
+        DispatchQueue.main.async {
+            guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+            redoAnnotations.removeAll()
+            annotations.remove(at: index)
         }
     }
 
