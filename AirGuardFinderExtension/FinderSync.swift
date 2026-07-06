@@ -36,6 +36,13 @@ final class FinderSync: FIFinderSync {
     private var lastConfigLoadTime: Date = .distantPast
     private let configCacheDuration: TimeInterval = 2.0
     
+    // MARK: - 真实主目录（绕过沙盒容器路径）
+    
+    private static var realHomeDirectory: URL? {
+        guard let pw = getpwuid(getuid()) else { return nil }
+        return URL(fileURLWithFileSystemRepresentation: pw.pointee.pw_dir, isDirectory: true, relativeTo: nil)
+    }
+    
     // MARK: - 初始化
     
     override init() {
@@ -161,40 +168,27 @@ final class FinderSync: FIFinderSync {
             submenu.addItem(foldersItem)
         }
         
-        // --- 分组分隔线 ---
-        if submenu.numberOfItems > 0 { submenu.addItem(NSMenuItem.separator()) }
-        
-        // 4. 共享到局域网
-        if enabledIDs.contains("shareLan") {
-            submenu.addItem(menuItem("共享到局域网", systemImage: "point.3.connected.trianglepath.dotted", action: #selector(shareToLan)))
-        }
-        
-        // 5. 隔空投送
+        // 4. 隔空投送
         if enabledIDs.contains("airdrop") {
-            submenu.addItem(menuItem("隔空投送", systemImage: "antenna.radiowaves.left.and.right", action: #selector(airdropAction)))
+            submenu.addItem(menuItem("隔空投送", systemImage: "airplayaudio", action: #selector(airdropAction)))
         }
         
-        // --- 分组分隔线 ---
-        if submenu.numberOfItems > 0 && !submenu.items.last!.isSeparatorItem {
-            submenu.addItem(NSMenuItem.separator())
-        }
-        
-        // 6. 拷贝路径
+        // 5. 拷贝路径
         if enabledIDs.contains("copyPath") {
             submenu.addItem(menuItem("拷贝路径", systemImage: "doc.on.clipboard", action: #selector(copySelectedPath)))
         }
         
-        // 7. 拷贝名称
+        // 6. 拷贝名称
         if enabledIDs.contains("copyName") {
-            submenu.addItem(menuItem("拷贝名称", systemImage: "textformat.abc", action: #selector(copySelectedName)))
+            submenu.addItem(menuItem("拷贝名称", systemImage: "tag", action: #selector(copySelectedName)))
         }
         
-        // 8. 显示隐藏
+        // 7. 显示隐藏
         if enabledIDs.contains("showHidden") {
             submenu.addItem(menuItem("显示隐藏", systemImage: "eye", action: #selector(toggleShowHidden)))
         }
         
-        // 9. 隐藏桌面
+        // 8. 隐藏桌面
         if enabledIDs.contains("hideDesktop") {
             submenu.addItem(menuItem("隐藏桌面", systemImage: "desktopcomputer", action: #selector(toggleHideDesktop)))
         }
@@ -233,14 +227,14 @@ final class FinderSync: FIFinderSync {
     
     @objc private func copySelectedPath() {
         guard let url = resolveTargetDirectoryForAction() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.path, forType: .string)
+        FinderExtensionLog.info("copyPath: \(url.path)")
+        forwardActionRequest(action: "copyPath", path: url.path, extra: nil)
     }
     
     @objc private func copySelectedName() {
         guard let url = resolveTargetDirectoryForAction() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.lastPathComponent, forType: .string)
+        FinderExtensionLog.info("copyName: \(url.lastPathComponent)")
+        forwardActionRequest(action: "copyName", path: url.lastPathComponent, extra: nil)
     }
     
     @objc private func openTerminal() {
@@ -271,35 +265,24 @@ final class FinderSync: FIFinderSync {
     }
     
     @objc private func favoriteFolderAction(_ sender: NSMenuItem) {
-        // 用 title 判断动作（Finder Sync 不保留 representedObject）
         switch sender.title {
         case "拷贝当前路径":
             guard let url = resolveTargetDirectoryForAction() else { return }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(url.path, forType: .string)
-            FinderExtensionLog.info("copied current path: \(url.path)")
+            FinderExtensionLog.info("copyCurrentPath: \(url.path)")
+            forwardActionRequest(action: "copyPath", path: url.path, extra: nil)
         default:
+            guard let realHome = Self.realHomeDirectory else { return }
             let path: String
             switch sender.title {
-            case "桌面": path = NSString(string: "~/Desktop").expandingTildeInPath
-            case "文稿": path = NSString(string: "~/Documents").expandingTildeInPath
-            case "下载": path = NSString(string: "~/Downloads").expandingTildeInPath
+            case "桌面": path = realHome.appendingPathComponent("Desktop").path
+            case "文稿": path = realHome.appendingPathComponent("Documents").path
+            case "下载": path = realHome.appendingPathComponent("Downloads").path
             case "应用程序": path = "/Applications"
             default: return
             }
-            let url = URL(fileURLWithPath: path)
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
-            FinderExtensionLog.info("opened favorite folder: \(path)")
+            FinderExtensionLog.info("openFolder: \(path)")
+            forwardActionRequest(action: "openFolder", path: path, extra: nil)
         }
-    }
-    
-    @objc private func shareToLan() {
-        guard let url = resolveTargetDirectoryForAction() else {
-            NSSound.beep()
-            return
-        }
-        FinderExtensionLog.info("share to lan: \(url.path)")
-        forwardActionRequest(action: "shareLan", path: url.path, extra: nil)
     }
     
     @objc private func airdropAction() {
@@ -313,29 +296,12 @@ final class FinderSync: FIFinderSync {
     
     @objc private func toggleShowHidden() {
         FinderExtensionLog.info("toggle show hidden files")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        process.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", "YES"]
-        try? process.run()
-        process.waitUntilExit()
-        // 重启 Finder 使设置生效
-        let killall = Process()
-        killall.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        killall.arguments = ["Finder"]
-        try? killall.run()
+        forwardActionRequest(action: "toggleShowHidden", path: "", extra: nil)
     }
     
     @objc private func toggleHideDesktop() {
         FinderExtensionLog.info("toggle hide desktop icons")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        process.arguments = ["write", "com.apple.finder", "CreateDesktop", "-bool", "NO"]
-        try? process.run()
-        process.waitUntilExit()
-        let killall = Process()
-        killall.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
-        killall.arguments = ["Finder"]
-        try? killall.run()
+        forwardActionRequest(action: "toggleHideDesktop", path: "", extra: nil)
     }
     
     // MARK: - 路径解析（仅在动作时调用）
@@ -419,20 +385,26 @@ final class FinderSync: FIFinderSync {
         }
     }
     
-    /// 通用动作请求转发（openWith, shareLan, airdrop 等）
+    /// 通用动作请求转发（openWith, airdrop 等）
+    /// 统一用 JSON 编码到 object，避免 userInfo 跨进程不可靠
     private func forwardActionRequest(action: String, path: String, extra: String?) {
+        let payload: [String: String] = extra != nil
+            ? ["action": action, "path": path, "extra": extra!]
+            : ["action": action, "path": path]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let message = String(data: data, encoding: .utf8) else {
+            FinderExtensionLog.info("FAIL: could not encode action request: \(action)")
+            return
+        }
+
         if isHostAppRunning {
-            var userInfo: [String: Any] = ["path": path]
-            if let extra = extra {
-                userInfo["extra"] = extra
-            }
             DistributedNotificationCenter.default().postNotificationName(
-                Notification.Name("AirSentry.Finder.\(action)Request"),
-                object: path,
-                userInfo: userInfo,
+                .airSentryFinderActionRequest,
+                object: message,
+                userInfo: nil,
                 deliverImmediately: true
             )
-            FinderExtensionLog.info("forwarded \(action) via notification: \(path)")
+            FinderExtensionLog.info("forwarded \(action) via notification: \(path)\(extra.map { ", extra=\($0)" } ?? "")")
         } else {
             var components = URLComponents()
             components.scheme = "airsentry"
@@ -443,7 +415,6 @@ final class FinderSync: FIFinderSync {
                 queryItems.append(URLQueryItem(name: "extra", value: extra))
             }
             components.queryItems = queryItems
-            
             if let url = components.url {
                 NSWorkspace.shared.open(url)
             }
@@ -493,42 +464,118 @@ private extension FinderSync {
 private extension Notification.Name {
     static let airSentryFinderNewFileRequest = Notification.Name("AirSentry.Finder.NewFileRequest")
     static let airSentryFinderOpenTerminalRequest = Notification.Name("AirSentry.Finder.OpenTerminalRequest")
+    static let airSentryFinderActionRequest = Notification.Name("AirSentry.Finder.ActionRequest")
 }
 
 // MARK: - 日志
 
 private enum FinderExtensionLog {
     private static let logger = Logger(subsystem: "com.sjzm.airsentry.finderextension", category: "finder-sync")
-    
-    /// 日志文件路径：~/Library/Logs/AirSentry/finder-extension.log
-    private static var logFileURL: URL? {
+
+    /// 日志目录：~/Library/Logs/AirSentry/
+    private static var logDirectoryURL: URL? {
         guard let pw = getpwuid(getuid()) else { return nil }
         let home = URL(fileURLWithFileSystemRepresentation: pw.pointee.pw_dir, isDirectory: true, relativeTo: nil)
         let dir = home.appendingPathComponent("Library/Logs/AirSentry", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
-        return dir.appendingPathComponent("finder-extension.log")
+        return dir
     }
-    
-    static func info(_ message: String) {
-        let text = "[FinderExt] \(message)"
-        logger.info("AirSentry Finder extension \(message, privacy: .public)")
-        writeToFile(text)
+
+    private static let maxFileSizeBytes: UInt64 = 2 * 1024 * 1024
+    private static let maxLogFiles = 20
+
+    private static let fileTimestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static let logLineFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    static func info(_ message: String, file: String = #file, line: Int = #line) {
+        log(message, level: "INFO", file: file, line: line)
     }
-    
+
+    static func warning(_ message: String, file: String = #file, line: Int = #line) {
+        log(message, level: "WARN", file: file, line: line)
+    }
+
+    static func error(_ message: String, file: String = #file, line: Int = #line) {
+        log(message, level: "ERROR", file: file, line: line)
+    }
+
+    private static func log(_ message: String, level: String, file: String, line: Int) {
+        let fileName = (file as NSString).lastPathComponent
+        let timestamp = logLineFormatter.string(from: Date())
+        let formattedLine = "\(timestamp) [FinderExt] [\(level)] [\(fileName):\(line)] \(message)\n"
+
+        logger.log("AirSentry Finder extension [\(level, privacy: .public)] \(message, privacy: .public)")
+        writeToFile(formattedLine)
+    }
+
     private static func writeToFile(_ message: String) {
-        guard let url = logFileURL else { return }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        let line = "\(formatter.string(from: Date())) \(message)\n"
-        guard let data = line.data(using: .utf8) else { return }
-        if let handle = try? FileHandle(forWritingTo: url) {
+        guard let dir = logDirectoryURL else { return }
+        let fileURL = currentLogFileURL(in: dir)
+        guard let data = message.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: fileURL) {
             handle.seekToEndOfFile()
             handle.write(data)
             handle.closeFile()
         } else {
-            try? data.write(to: url)
+            try? data.write(to: fileURL)
+        }
+        pruneOldLogs(in: dir)
+    }
+
+    /// 获取当前应写入的日志文件 URL（支持大小轮转）
+    private static func currentLogFileURL(in dir: URL) -> URL {
+        if let latest = listLogFiles(in: dir).first,
+           let attrs = try? FileManager.default.attributesOfItem(atPath: latest.path),
+           let size = attrs[.size] as? UInt64,
+           size < maxFileSizeBytes {
+            return latest
+        }
+        return createNewLogFile(in: dir)
+    }
+
+    private static func createNewLogFile(in dir: URL) -> URL {
+        let timestamp = fileTimestampFormatter.string(from: Date())
+        let fileName = "finder-extension-\(timestamp).log"
+        let fileURL = dir.appendingPathComponent(fileName)
+        let header = "# AirSentry Finder Extension log\n# Created: \(timestamp)\n\n"
+        try? header.data(using: .utf8)?.write(to: fileURL)
+        return fileURL
+    }
+
+    private static func listLogFiles(in dir: URL) -> [URL] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]
+        ) else {
+            return []
+        }
+        return files
+            .filter { $0.lastPathComponent.hasPrefix("finder-extension") && $0.pathExtension == "log" }
+            .sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhsDate > rhsDate
+            }
+    }
+
+    private static func pruneOldLogs(in dir: URL) {
+        let files = listLogFiles(in: dir)
+        guard files.count > maxLogFiles else { return }
+        for file in files.suffix(from: maxLogFiles) {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 }

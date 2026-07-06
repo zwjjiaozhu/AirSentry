@@ -2418,11 +2418,10 @@ private final class SuperRightClickStore: ObservableObject {
         SuperRightClickMenuItem(id: newFileMenuItemID, title: "新建文件", subtitle: "Excel、PPT、Word 等格式", detail: "在 Finder 右键菜单中展开常用文件模板，格式顺序可单独拖拽调整。", systemImage: "doc.badge.plus", accent: .blue, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "openWith", title: "其他应用打开", subtitle: "快速选择指定应用", detail: "为文件或目录提供快捷打开方式，后续可在这里维护应用列表。", systemImage: "app.badge", accent: .purple, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "favoriteFolders", title: "常用目录", subtitle: "复制或跳转常用路径", detail: "把高频目录放进右键菜单，便于快速复制路径或在 Finder 中打开。", systemImage: "folder.badge.gearshape", accent: .orange, hasChildren: true, isEnabled: true),
-        SuperRightClickMenuItem(id: "shareLan", title: "共享到局域网", subtitle: "临时分享所选项目", detail: "面向局域网文件分享的入口，适合后续接入临时 HTTP 分享或局域网发现。", systemImage: "point.3.connected.trianglepath.dotted", accent: .green, hasChildren: false, isEnabled: true),
-        SuperRightClickMenuItem(id: "airdrop", title: "隔空投送", subtitle: "调用系统 AirDrop", detail: "把系统隔空投送动作放到统一菜单中，减少在 Finder 分享菜单里的查找成本。", systemImage: "antenna.radiowaves.left.and.right", accent: .teal, hasChildren: false, isEnabled: true),
+        SuperRightClickMenuItem(id: "airdrop", title: "隔空投送", subtitle: "调用系统 AirDrop", detail: "把系统隔空投送动作放到统一菜单中，减少在 Finder 分享菜单里的查找成本。", systemImage: "airplayaudio", accent: .teal, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "openTerminal", title: "打开终端", subtitle: "在当前目录启动 Terminal", detail: "快速打开终端并自动切换到当前所选目录，便于执行命令行操作。", systemImage: "terminal", accent: .gray, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "copyPath", title: "拷贝路径", subtitle: "复制完整文件路径", detail: "复制所选文件或目录的完整路径，方便在终端、编辑器和脚本中使用。", systemImage: "doc.on.clipboard", accent: .gray, hasChildren: false, isEnabled: true),
-        SuperRightClickMenuItem(id: "copyName", title: "拷贝名称", subtitle: "复制文件名", detail: "仅复制所选项目名称，不包含父级目录路径。", systemImage: "textformat.abc", accent: .gray, hasChildren: false, isEnabled: true),
+        SuperRightClickMenuItem(id: "copyName", title: "拷贝名称", subtitle: "复制文件名", detail: "仅复制所选项目名称，不包含父级目录路径。", systemImage: "tag", accent: .gray, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "showHidden", title: "显示隐藏", subtitle: "切换隐藏文件可见性", detail: "一键切换 Finder 中隐藏文件的显示状态。", systemImage: "eye", accent: .orange, hasChildren: false, isEnabled: false),
         SuperRightClickMenuItem(id: "hideDesktop", title: "隐藏桌面", subtitle: "切换桌面图标显示", detail: "在演示、录屏或专注时快速隐藏桌面图标。", systemImage: "desktopcomputer", accent: .blue, hasChildren: false, isEnabled: true)
     ]

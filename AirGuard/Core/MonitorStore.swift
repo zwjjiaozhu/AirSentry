@@ -12,7 +12,7 @@ final class MonitorStore: ObservableObject {
 
     private let settings: AppSettings
     private let alertManager: AlertManager
-    private let thermalLogArchiver = LogArchiver(filePrefix: "thermal")
+    private let thermalLogArchiver = LogArchiver.shared
     private let thermalReader = ThermalReader()
     private let cpuReader = CPUReader()
     private let processCPUReader = ProcessCPUReader()
@@ -135,7 +135,7 @@ final class MonitorStore: ObservableObject {
         lastThermalLogDate = now
 
         let message = buildThermalLogMessage(snapshot, topProcesses: topCPUProcesses)
-        thermalLogArchiver.write(message)
+        thermalLogArchiver.warning(message)
     }
 
     private func finishTopCPUProcessRefresh(with processes: [TopCPUProcess]) {
@@ -151,23 +151,18 @@ final class MonitorStore: ObservableObject {
 
         // 进程列表刷新后，补记一条带进程信息的日志
         let message = buildThermalLogMessage(snapshot, topProcesses: processes)
-        thermalLogArchiver.write(message)
+        thermalLogArchiver.warning(message)
         lastThermalLogDate = Date()
     }
 
     // MARK: - 日志内容构建（监控线程自己决定打什么）
 
     private func buildThermalLogMessage(_ snapshot: SystemSnapshot, topProcesses: [TopCPUProcess]) -> String {
-        let ts = Self.logDateFormatter.string(from: snapshot.capturedAt)
         let tempStr = snapshot.thermal.temperatureCelsius.map { String(format: "%.1f°C", $0) } ?? "N/A"
         let cpuPercent = String(format: "%.0f%%", snapshot.cpuUsage * 100)
 
         var lines: [String] = []
-        lines.append("═══════════════════════════════════════════════════")
-        lines.append("[\(ts)] THERMAL EVENT  level=\(snapshot.thermal.level.title)(\(snapshot.thermal.level.severity))")
-        lines.append("───────────────────────────────────────────────────")
-        lines.append("  temperature:  \(tempStr)")
-        lines.append("  cpu:          \(cpuPercent)")
+        lines.append("thermal_level=\(snapshot.thermal.level.title)(\(snapshot.thermal.level.severity)) temp=\(tempStr) cpu=\(cpuPercent)")
         lines.append("  memory:       \(formatMemory(snapshot.memory))")
         lines.append("  network:      ↓\(formatBytes(snapshot.network.downloadBytesPerSecond))/s  ↑\(formatBytes(snapshot.network.uploadBytesPerSecond))/s")
         lines.append("  thresholds:   fair=\(Int(settings.fairTemperatureThreshold))°C  serious=\(Int(settings.seriousTemperatureThreshold))°C  critical=\(Int(settings.criticalTemperatureThreshold))°C")
@@ -181,8 +176,7 @@ final class MonitorStore: ObservableObject {
             lines.append("  top processes: N/A")
         }
 
-        lines.append("")
-        return lines.joined(separator: "\n") + "\n"
+        return lines.joined(separator: "\n")
     }
 
     private func formatMemory(_ memory: MemoryInfo) -> String {
@@ -198,13 +192,6 @@ final class MonitorStore: ObservableObject {
         formatter.countStyle = .binary
         return formatter.string(fromByteCount: Int64(bytes))
     }
-
-    private static let logDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
 
     private func append(_ value: Double, to history: inout [Double]) {
         history.append(value)
