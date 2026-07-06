@@ -10,5 +10,9 @@
 	<array>
 		<string>group.com.sjzm.airsentry</string>
 	</array>
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+	<array>
+		<string>/Users/zwj/Library/Application Support/AirSentry/</string>
+	</array>
 </dict>
 </plist>

@@ -17,32 +17,56 @@ struct SuperRightClickSharedConfig: Codable {
         let systemImage: String
     }
 
-    static let appGroupID = "group.com.sjzm.airsentry"
-    private static let configKey = "superRightClickSharedConfig"
+    // MARK: - 文件共享配置（替代 App Group UserDefaults）
 
-    /// App Group 共享 UserDefaults
-    static var sharedDefaults: UserDefaults? {
-        UserDefaults(suiteName: appGroupID)
+    private static let appSupportSubdir = "AirSentry"
+    private static let configFileName = "super_right_click_config.json"
+
+    /// 获取真实主目录（绕过沙盒容器路径）
+    private static var realHomeDirectory: URL? {
+        guard let pw = getpwuid(getuid()) else { return nil }
+        return URL(fileURLWithFileSystemRepresentation: pw.pointee.pw_dir, isDirectory: true, relativeTo: nil)
     }
 
+    /// 共享配置目录：~/Library/Application Support/AirSentry/
+    static var sharedDirectoryURL: URL? {
+        guard let home = realHomeDirectory else { return nil }
+        let dir = home
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
+            .appendingPathComponent(appSupportSubdir, isDirectory: true)
+        return dir
+    }
+
+    /// 配置文件路径
+    private static var configFileURL: URL? {
+        sharedDirectoryURL?.appendingPathComponent(configFileName)
+    }
+
+    /// 从 JSON 文件加载配置
     static func load() -> SuperRightClickSharedConfig? {
-        guard let defaults = sharedDefaults,
-              let data = defaults.data(forKey: configKey),
-              let config = try? JSONDecoder().decode(SuperRightClickSharedConfig.self, from: data) else {
+        guard let url = configFileURL,
+              let data = try? Data(contentsOf: url) else {
             return nil
         }
-        return config
+        return try? JSONDecoder().decode(SuperRightClickSharedConfig.self, from: data)
     }
 
+    /// 保存配置到 JSON 文件
     func save() {
-        guard let defaults = Self.sharedDefaults else {
-            NSLog("AirSentry: App Group UserDefaults is nil")
+        guard let url = Self.configFileURL else {
+            NSLog("AirSentry: could not resolve shared config path")
             return
         }
         do {
+            // 确保目录存在
+            let dir = url.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: dir.path) {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            }
             let data = try JSONEncoder().encode(self)
-            defaults.set(data, forKey: Self.configKey)
-            NSLog("AirSentry saved config to App Group UserDefaults")
+            try data.write(to: url, options: .atomic)
+            NSLog("AirSentry saved config to %{public}@", url.path)
         } catch {
             NSLog("AirSentry failed to save config: %{public}@", error.localizedDescription)
         }

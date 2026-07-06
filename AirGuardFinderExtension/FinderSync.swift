@@ -40,12 +40,19 @@ final class FinderSync: FIFinderSync {
     
     override init() {
         super.init()
-        FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: "/")]
+        let fm = FileManager.default
+        var dirs: Set<URL> = [URL(fileURLWithPath: "/")]
+        for searchPath: FileManager.SearchPathDirectory in [.desktopDirectory, .documentDirectory, .downloadsDirectory] {
+            if let url = fm.urls(for: searchPath, in: .userDomainMask).first {
+                dirs.insert(url)
+            }
+        }
+        FIFinderSyncController.default().directoryURLs = dirs
         FinderExtensionLog.info("loaded")
     }
     
-    // MARK: - 配置加载（仅读取 App Group UserDefaults）
-    
+    // MARK: - 配置加载（从 JSON 文件读取）
+
     /// 加载轻量配置（缓存 2 秒，避免频繁读取）
     private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta]) {
         let now = Date()
@@ -54,12 +61,12 @@ final class FinderSync: FIFinderSync {
            let cachedTemplates = cachedTemplateMetas {
             return (cachedIDs, cachedTemplates)
         }
-        
+
         let config = SuperRightClickSharedConfig.load()
-        
+
         let enabledIDs: Set<String>
         let templates: [TemplateMeta]
-        
+
         if let config = config {
             enabledIDs = Set(config.enabledMenuItemIDs)
             templates = config.templates.map { meta in
@@ -69,11 +76,11 @@ final class FinderSync: FIFinderSync {
             enabledIDs = defaultEnabledMenuItemIDs
             templates = defaultTemplateMetas
         }
-        
+
         cachedEnabledMenuItemIDs = enabledIDs
         cachedTemplateMetas = templates.isEmpty ? defaultTemplateMetas : templates
         lastConfigLoadTime = now
-        
+
         return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas)
     }
     
