@@ -145,14 +145,16 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleFinderNewFileNotification(_ notification: Notification) {
+        FinderNewFileRequestHandler.logArchiver.write("[RECV] notification received")
         guard let message = notification.object as? String,
               let data = message.data(using: .utf8),
               let request = try? JSONDecoder().decode(FinderNewFileRequest.self, from: data) else {
+            FinderNewFileRequestHandler.logArchiver.write("[RECV] malformed notification")
             NSLog("AirSentry received malformed Finder new file notification")
             return
         }
 
-        // 根据 templateId 查找模板内容
+        FinderNewFileRequestHandler.logArchiver.write("[RECV] templateId=\(request.templateId), path=\(request.path)")
         let contents = FinderNewFileService.contents(forTemplateId: request.templateId)
         FinderNewFileRequestHandler.handle(path: request.path, contents: contents)
     }
@@ -168,6 +170,8 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 private enum FinderNewFileRequestHandler {
+    static let logArchiver = LogArchiver(filePrefix: "finder-newfile", maxLogFiles: 20)
+
     static func handle(_ url: URL) {
         guard url.scheme == "airsentry",
               url.host == "finder",
@@ -186,16 +190,20 @@ private enum FinderNewFileRequestHandler {
 
     static func handle(path: String, contents: Data) {
         let requestedURL = URL(fileURLWithPath: path)
+        logArchiver.write("[REQUEST] path=\(requestedURL.path), contentsSize=\(contents.count)")
         NSLog("AirSentry handling Finder new file request at %{public}@", requestedURL.path)
 
         switch FinderNewFileService.createFile(at: requestedURL, contents: contents) {
-        case .created:
+        case .created(let fileURL):
+            logArchiver.write("[OK] created \(fileURL.path)")
             return
         case .unauthorized:
+            logArchiver.write("[FAIL] unauthorized for \(requestedURL.path)")
             NSSound.beep()
             NSLog("AirSentry failed to create Finder file because target is not authorized: %{public}@", requestedURL.path)
             FinderNewFilePermissionPrompter.showUnauthorizedFolderAlert(for: requestedURL)
-        case .writeFailed:
+        case .writeFailed(let fileURL):
+            logArchiver.write("[FAIL] writeFailed at \(fileURL.path)")
             NSSound.beep()
             NSLog("AirSentry failed to create Finder file after authorization matched: %{public}@", requestedURL.path)
             FinderNewFilePermissionPrompter.showWriteFailedAlert(for: requestedURL)

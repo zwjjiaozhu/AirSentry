@@ -101,7 +101,7 @@ final class FinderSync: FIFinderSync {
         rootItem.image = menuImage(systemName: "filemenu.and.selection")
         let submenu = NSMenu(title: "AirSentry")
         
-        // 新建文件（只存 templateId）
+        // 1. 新建文件
         if enabledIDs.contains("newFile") && !templateMetas.isEmpty {
             let newFileItem = NSMenuItem(title: "新建文件", action: nil, keyEquivalent: "")
             newFileItem.image = menuImage(systemName: "doc.badge.plus")
@@ -110,30 +110,93 @@ final class FinderSync: FIFinderSync {
                 let item = NSMenuItem(title: meta.title, action: #selector(createNewFile(_:)), keyEquivalent: "")
                 item.target = self
                 item.image = menuImage(systemName: meta.systemImage)
-                item.representedObject = meta.id  // 只存 templateId
+                item.representedObject = meta.id
                 newFileSubmenu.addItem(item)
             }
             newFileItem.submenu = newFileSubmenu
             submenu.addItem(newFileItem)
         }
         
-        // 打开终端
-        if enabledIDs.contains("openTerminal") {
-            if submenu.numberOfItems > 0 { submenu.addItem(NSMenuItem.separator()) }
-            submenu.addItem(menuItem("打开终端", systemImage: "terminal", action: #selector(openTerminal)))
+        // 2. 其他应用打开（同组，无分隔线）
+        if enabledIDs.contains("openWith") {
+            let openWithItem = NSMenuItem(title: "其他应用打开", action: nil, keyEquivalent: "")
+            openWithItem.image = menuImage(systemName: "app.badge")
+            let openWithSubmenu = NSMenu(title: "其他应用打开")
+            for (appName, bundleID, icon) in [
+                ("Terminal", "com.apple.Terminal", "terminal"),
+                ("iTerm", "com.googlecode.iterm2", "terminal.fill"),
+                ("VS Code", "com.microsoft.VSCode", "chevron.left.forwardslash.chevron.right"),
+                ("Sublime Text", "com.sublimetext.4", "doc.text"),
+                ("选择其他应用…", "", "ellipsis.circle")
+            ] {
+                let item = NSMenuItem(title: appName, action: #selector(openWithApp(_:)), keyEquivalent: "")
+                item.target = self
+                item.image = menuImage(systemName: icon)
+                item.representedObject = bundleID
+                openWithSubmenu.addItem(item)
+            }
+            openWithItem.submenu = openWithSubmenu
+            submenu.addItem(openWithItem)
         }
         
-        // 拷贝路径
-        if enabledIDs.contains("copyPath") {
-            if submenu.numberOfItems > 0 && submenu.items.last != nil && !submenu.items.last!.isSeparatorItem {
-                submenu.addItem(NSMenuItem.separator())
+        // 3. 常用目录（同组，无分隔线）
+        if enabledIDs.contains("favoriteFolders") {
+            let foldersItem = NSMenuItem(title: "常用目录", action: nil, keyEquivalent: "")
+            foldersItem.image = menuImage(systemName: "folder.badge.gearshape")
+            let foldersSubmenu = NSMenu(title: "常用目录")
+            for (name, path, icon) in [
+                ("桌面", "~/Desktop", "desktopcomputer"),
+                ("文稿", "~/Documents", "doc"),
+                ("下载", "~/Downloads", "tray.and.arrow.down"),
+                ("应用程序", "/Applications", "app"),
+                ("拷贝当前路径", "", "doc.on.clipboard")
+            ] {
+                let item = NSMenuItem(title: name, action: #selector(favoriteFolderAction(_:)), keyEquivalent: "")
+                item.target = self
+                item.image = menuImage(systemName: icon)
+                item.representedObject = path
+                foldersSubmenu.addItem(item)
             }
+            foldersItem.submenu = foldersSubmenu
+            submenu.addItem(foldersItem)
+        }
+        
+        // --- 分组分隔线 ---
+        if submenu.numberOfItems > 0 { submenu.addItem(NSMenuItem.separator()) }
+        
+        // 4. 共享到局域网
+        if enabledIDs.contains("shareLan") {
+            submenu.addItem(menuItem("共享到局域网", systemImage: "point.3.connected.trianglepath.dotted", action: #selector(shareToLan)))
+        }
+        
+        // 5. 隔空投送
+        if enabledIDs.contains("airdrop") {
+            submenu.addItem(menuItem("隔空投送", systemImage: "antenna.radiowaves.left.and.right", action: #selector(airdropAction)))
+        }
+        
+        // --- 分组分隔线 ---
+        if submenu.numberOfItems > 0 && !submenu.items.last!.isSeparatorItem {
+            submenu.addItem(NSMenuItem.separator())
+        }
+        
+        // 6. 拷贝路径
+        if enabledIDs.contains("copyPath") {
             submenu.addItem(menuItem("拷贝路径", systemImage: "doc.on.clipboard", action: #selector(copySelectedPath)))
         }
         
-        // 拷贝名称
+        // 7. 拷贝名称
         if enabledIDs.contains("copyName") {
             submenu.addItem(menuItem("拷贝名称", systemImage: "textformat.abc", action: #selector(copySelectedName)))
+        }
+        
+        // 8. 显示隐藏
+        if enabledIDs.contains("showHidden") {
+            submenu.addItem(menuItem("显示隐藏", systemImage: "eye", action: #selector(toggleShowHidden)))
+        }
+        
+        // 9. 隐藏桌面
+        if enabledIDs.contains("hideDesktop") {
+            submenu.addItem(menuItem("隐藏桌面", systemImage: "desktopcomputer", action: #selector(toggleHideDesktop)))
         }
         
         rootItem.submenu = submenu
@@ -144,31 +207,27 @@ final class FinderSync: FIFinderSync {
     // MARK: - 菜单动作（点击时才解析路径）
     
     @objc private func createNewFile(_ sender: NSMenuItem) {
-        // 点击时才获取 templateId 和目标路径
-        guard let templateId = sender.representedObject as? String else {
-            NSSound.beep()
-            return
-        }
+        FinderExtensionLog.info("createNewFile called, title=\(sender.title)")
         
-        // 点击时才解析目标目录（不调用 isFinderDirectory）
-        guard let directoryURL = resolveTargetDirectoryForAction() else {
-            NSSound.beep()
-            FinderExtensionLog.info("could not resolve target directory for new file")
-            return
-        }
-        
-        // 查找模板元数据获取文件名
+        // Finder Sync 不保留 representedObject，改用 title 查找模板
         let (_, templateMetas) = loadLightweightConfig()
-        guard let meta = templateMetas.first(where: { $0.id == templateId }) else {
+        guard let meta = templateMetas.first(where: { $0.title == sender.title }) else {
+            FinderExtensionLog.info("FAIL: no template for title=\(sender.title), available=\(templateMetas.map(\.title).joined(separator: ","))")
             NSSound.beep()
-            FinderExtensionLog.info("could not find template for id=\(templateId)")
             return
         }
+        let templateId = meta.id
+        FinderExtensionLog.info("matched templateId=\(templateId)")
+        
+        guard let directoryURL = resolveTargetDirectoryForAction() else {
+            FinderExtensionLog.info("FAIL: could not resolve target directory")
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("directoryURL=\(directoryURL.path)")
         
         let fileURL = directoryURL.appendingPathComponent(meta.fileName)
-        FinderExtensionLog.info("create new file: templateId=\(templateId), path=\(fileURL.path)")
-        
-        // 只发送 templateId + path 给主应用，由主应用负责创建文件
+        FinderExtensionLog.info("forwarding create: templateId=\(templateId), path=\(fileURL.path), isHostRunning=\(isHostAppRunning)")
         forwardFileCreationRequest(templateId: templateId, fileURL: fileURL)
     }
     
@@ -191,6 +250,92 @@ final class FinderSync: FIFinderSync {
         }
         FinderExtensionLog.info("open terminal at \(directoryURL.path)")
         forwardOpenTerminalRequest(directoryPath: directoryURL.path)
+    }
+    
+    @objc private func openWithApp(_ sender: NSMenuItem) {
+        // 用 title 查找 bundleID（Finder Sync 不保留 representedObject）
+        let bundleID: String
+        switch sender.title {
+        case "Terminal": bundleID = "com.apple.Terminal"
+        case "iTerm": bundleID = "com.googlecode.iterm2"
+        case "VS Code": bundleID = "com.microsoft.VSCode"
+        case "Sublime Text": bundleID = "com.sublimetext.4"
+        default: bundleID = ""
+        }
+        guard let targetURL = FIFinderSyncController.default().selectedItemURLs()?.first else {
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("open with app=\(sender.title), bundleID=\(bundleID), target=\(targetURL.path)")
+        forwardActionRequest(action: "openWith", path: targetURL.path, extra: bundleID)
+    }
+    
+    @objc private func favoriteFolderAction(_ sender: NSMenuItem) {
+        // 用 title 判断动作（Finder Sync 不保留 representedObject）
+        switch sender.title {
+        case "拷贝当前路径":
+            guard let url = resolveTargetDirectoryForAction() else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.path, forType: .string)
+            FinderExtensionLog.info("copied current path: \(url.path)")
+        default:
+            let path: String
+            switch sender.title {
+            case "桌面": path = NSString(string: "~/Desktop").expandingTildeInPath
+            case "文稿": path = NSString(string: "~/Documents").expandingTildeInPath
+            case "下载": path = NSString(string: "~/Downloads").expandingTildeInPath
+            case "应用程序": path = "/Applications"
+            default: return
+            }
+            let url = URL(fileURLWithPath: path)
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+            FinderExtensionLog.info("opened favorite folder: \(path)")
+        }
+    }
+    
+    @objc private func shareToLan() {
+        guard let url = resolveTargetDirectoryForAction() else {
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("share to lan: \(url.path)")
+        forwardActionRequest(action: "shareLan", path: url.path, extra: nil)
+    }
+    
+    @objc private func airdropAction() {
+        guard let targetURL = FIFinderSyncController.default().selectedItemURLs()?.first else {
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("airdrop: \(targetURL.path)")
+        forwardActionRequest(action: "airdrop", path: targetURL.path, extra: nil)
+    }
+    
+    @objc private func toggleShowHidden() {
+        FinderExtensionLog.info("toggle show hidden files")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        process.arguments = ["write", "com.apple.finder", "AppleShowAllFiles", "-bool", "YES"]
+        try? process.run()
+        process.waitUntilExit()
+        // 重启 Finder 使设置生效
+        let killall = Process()
+        killall.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        killall.arguments = ["Finder"]
+        try? killall.run()
+    }
+    
+    @objc private func toggleHideDesktop() {
+        FinderExtensionLog.info("toggle hide desktop icons")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+        process.arguments = ["write", "com.apple.finder", "CreateDesktop", "-bool", "NO"]
+        try? process.run()
+        process.waitUntilExit()
+        let killall = Process()
+        killall.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        killall.arguments = ["Finder"]
+        try? killall.run()
     }
     
     // MARK: - 路径解析（仅在动作时调用）
@@ -274,6 +419,37 @@ final class FinderSync: FIFinderSync {
         }
     }
     
+    /// 通用动作请求转发（openWith, shareLan, airdrop 等）
+    private func forwardActionRequest(action: String, path: String, extra: String?) {
+        if isHostAppRunning {
+            var userInfo: [String: Any] = ["path": path]
+            if let extra = extra {
+                userInfo["extra"] = extra
+            }
+            DistributedNotificationCenter.default().postNotificationName(
+                Notification.Name("AirSentry.Finder.\(action)Request"),
+                object: path,
+                userInfo: userInfo,
+                deliverImmediately: true
+            )
+            FinderExtensionLog.info("forwarded \(action) via notification: \(path)")
+        } else {
+            var components = URLComponents()
+            components.scheme = "airsentry"
+            components.host = "finder"
+            components.path = "/\(action)"
+            var queryItems = [URLQueryItem(name: "path", value: path)]
+            if let extra = extra {
+                queryItems.append(URLQueryItem(name: "extra", value: extra))
+            }
+            components.queryItems = queryItems
+            
+            if let url = components.url {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+    
     // MARK: - 辅助方法
     
     private func menuItem(_ title: String, systemImage: String, action: Selector) -> NSMenuItem {
@@ -324,7 +500,35 @@ private extension Notification.Name {
 private enum FinderExtensionLog {
     private static let logger = Logger(subsystem: "com.sjzm.airsentry.finderextension", category: "finder-sync")
     
+    /// 日志文件路径：~/Library/Logs/AirSentry/finder-extension.log
+    private static var logFileURL: URL? {
+        guard let pw = getpwuid(getuid()) else { return nil }
+        let home = URL(fileURLWithFileSystemRepresentation: pw.pointee.pw_dir, isDirectory: true, relativeTo: nil)
+        let dir = home.appendingPathComponent("Library/Logs/AirSentry", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir.appendingPathComponent("finder-extension.log")
+    }
+    
     static func info(_ message: String) {
+        let text = "[FinderExt] \(message)"
         logger.info("AirSentry Finder extension \(message, privacy: .public)")
+        writeToFile(text)
+    }
+    
+    private static func writeToFile(_ message: String) {
+        guard let url = logFileURL else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        let line = "\(formatter.string(from: Date())) \(message)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            try? data.write(to: url)
+        }
     }
 }

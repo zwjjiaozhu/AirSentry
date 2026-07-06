@@ -14,5 +14,9 @@
 	<array>
 		<string>/Users/zwj/Library/Application Support/AirSentry/</string>
 	</array>
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
+	<array>
+		<string>/Users/zwj/Library/Logs/AirSentry/</string>
+	</array>
 </dict>
 </plist>
