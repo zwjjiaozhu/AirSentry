@@ -39,7 +39,7 @@
 		A0000000000000000000001E /* NowPlayingTrack.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000126 /* NowPlayingTrack.swift */; };
 		A0000000000000000000001F /* NowPlayingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000127 /* NowPlayingStore.swift */; };
 		A00000000000000000000020 /* MediaRemoteAdapterClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000128 /* MediaRemoteAdapterClient.swift */; };
-		A00000000000000000000021 /* MediaRemoteAdapter.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000129 /* MediaRemoteAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A00000000000000000000021 /* MediaRemoteAdapter.framework in Embed Media Adapter */ = {isa = PBXBuildFile; fileRef = A00000000000000000000129 /* MediaRemoteAdapter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A00000000000000000000022 /* StorageInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012A /* StorageInfo.swift */; };
 		A00000000000000000000023 /* StorageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012B /* StorageReader.swift */; };
 		A00000000000000000000024 /* StorageAnalyzerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000012C /* StorageAnalyzerStore.swift */; };
@@ -75,9 +75,11 @@
 		A00000000000000000000042 /* ImageProcessingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014A /* ImageProcessingStore.swift */; };
 		A00000000000000000000043 /* ImageProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014B /* ImageProcessingView.swift */; };
 		A00000000000000000000044 /* LogArchiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014C /* LogArchiver.swift */; };
+		A00000000000000000000045 /* SuperRightClickSharedConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014D /* SuperRightClickSharedConfig.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B00000000000000000000004 /* SuperRightClickSharedConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000105 /* SuperRightClickSharedConfig.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +91,31 @@
 			remoteInfo = AirSentryFinderExtension;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A00000000000000000000502 /* Embed Media Adapter */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A00000000000000000000021 /* MediaRemoteAdapter.framework in Embed Media Adapter */,
+			);
+			name = "Embed Media Adapter";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B00000000000000000000502 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A00000000000000000000100 /* AirSentry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AirSentry.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -168,37 +195,14 @@
 		A0000000000000000000014A /* ImageProcessingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingStore.swift; sourceTree = "<group>"; };
 		A0000000000000000000014B /* ImageProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingView.swift; sourceTree = "<group>"; };
 		A0000000000000000000014C /* LogArchiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogArchiver.swift; sourceTree = "<group>"; };
+		A0000000000000000000014D /* SuperRightClickSharedConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperRightClickSharedConfig.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00000000000000000000103 /* FinderSync.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FinderSync.framework; path = System/Library/Frameworks/FinderSync.framework; sourceTree = SDKROOT; };
 		B00000000000000000000104 /* FinderExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderExtension.entitlements; sourceTree = "<group>"; };
+		B00000000000000000000105 /* SuperRightClickSharedConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperRightClickSharedConfig.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		A00000000000000000000502 /* Embed Media Adapter */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				A00000000000000000000021 /* MediaRemoteAdapter.framework in Embed Frameworks */,
-			);
-			name = "Embed Media Adapter";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		B00000000000000000000502 /* Embed App Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed App Extensions */,
-			);
-			name = "Embed App Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A00000000000000000000200 /* Frameworks */ = {
@@ -229,6 +233,7 @@
 				A00000000000000000000317 /* config */,
 				A00000000000000000000318 /* Vendor */,
 				A00000000000000000000302 /* Products */,
+				FFC348322FFB61D900A0E534 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -260,16 +265,6 @@
 				B00000000000000000000100 /* AirSentryFinderExtension.appex */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		B00000000000000000000301 /* AirGuardFinderExtension */ = {
-			isa = PBXGroup;
-			children = (
-				B00000000000000000000101 /* FinderSync.swift */,
-				B00000000000000000000102 /* Info.plist */,
-				B00000000000000000000104 /* FinderExtension.entitlements */,
-			);
-			path = AirGuardFinderExtension;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000310 /* Views */ = {
@@ -310,6 +305,7 @@
 				A0000000000000000000012F /* InputMethodSwitcher.swift */,
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
 				A0000000000000000000014C /* LogArchiver.swift */,
+				A0000000000000000000014D /* SuperRightClickSharedConfig.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -330,15 +326,6 @@
 				A00000000000000000000125 /* ASMediaRemoteBridge.h */,
 			);
 			path = Readers;
-			sourceTree = "<group>";
-		};
-		A0000000000000000000031C /* ImageProcessing */ = {
-			isa = PBXGroup;
-			children = (
-				A0000000000000000000014A /* ImageProcessingStore.swift */,
-				A0000000000000000000014B /* ImageProcessingView.swift */,
-			);
-			path = ImageProcessing;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000313 /* Models */ = {
@@ -364,6 +351,39 @@
 				A00000000000000000000113 /* DateFormatterUtil.swift */,
 			);
 			path = Utils;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000315 /* media */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000118 /* logo.png */,
+			);
+			path = media;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000316 /* scripts */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000011C /* archive-app-store.sh */,
+				A0000000000000000000011B /* build-release.sh */,
+			);
+			path = scripts;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000317 /* config */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000011D /* AppStoreExportOptions.plist */,
+			);
+			path = config;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000318 /* Vendor */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000129 /* MediaRemoteAdapter.framework */,
+			);
+			path = Vendor;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000319 /* Screenshot */ = {
@@ -401,37 +421,32 @@
 			path = OCR;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000315 /* media */ = {
+		A0000000000000000000031C /* ImageProcessing */ = {
 			isa = PBXGroup;
 			children = (
-				A00000000000000000000118 /* logo.png */,
+				A0000000000000000000014A /* ImageProcessingStore.swift */,
+				A0000000000000000000014B /* ImageProcessingView.swift */,
 			);
-			path = media;
+			path = ImageProcessing;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000316 /* scripts */ = {
+		B00000000000000000000301 /* AirGuardFinderExtension */ = {
 			isa = PBXGroup;
 			children = (
-				A0000000000000000000011C /* archive-app-store.sh */,
-				A0000000000000000000011B /* build-release.sh */,
+				B00000000000000000000101 /* FinderSync.swift */,
+				B00000000000000000000105 /* SuperRightClickSharedConfig.swift */,
+				B00000000000000000000102 /* Info.plist */,
+				B00000000000000000000104 /* FinderExtension.entitlements */,
 			);
-			path = scripts;
+			path = AirGuardFinderExtension;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000317 /* config */ = {
+		FFC348322FFB61D900A0E534 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
-				A0000000000000000000011D /* AppStoreExportOptions.plist */,
+				B00000000000000000000103 /* FinderSync.framework */,
 			);
-			path = config;
-			sourceTree = "<group>";
-		};
-		A00000000000000000000318 /* Vendor */ = {
-			isa = PBXGroup;
-			children = (
-				A00000000000000000000129 /* MediaRemoteAdapter.framework */,
-			);
-			path = Vendor;
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -593,6 +608,7 @@
 				A00000000000000000000042 /* ImageProcessingStore.swift in Sources */,
 				A00000000000000000000043 /* ImageProcessingView.swift in Sources */,
 				A00000000000000000000044 /* LogArchiver.swift in Sources */,
+				A00000000000000000000045 /* SuperRightClickSharedConfig.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -601,6 +617,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B00000000000000000000001 /* FinderSync.swift in Sources */,
+				B00000000000000000000004 /* SuperRightClickSharedConfig.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -738,11 +755,11 @@
 		A00000000000000000000701 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Developer ID Application";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_ENTITLEMENTS = AirGuard/DirectDistribution.entitlements;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = T8V48KACU8;
@@ -754,9 +771,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.2.0;
-				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "AirGuard/AirGuard-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -766,11 +783,11 @@
 		A00000000000000000000702 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "Developer ID Application";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
 				CODE_SIGN_ENTITLEMENTS = AirGuard/DirectDistribution.entitlements;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = T8V48KACU8;
@@ -782,9 +799,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.2.0;
-				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "AirGuard/AirGuard-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -794,10 +811,10 @@
 		B00000000000000000000701 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "Developer ID Application";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				CODE_SIGN_ENTITLEMENTS = AirGuardFinderExtension/FinderExtension.entitlements;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEAD_CODE_STRIPPING = YES;
@@ -810,10 +827,10 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MARKETING_VERSION = 1.2.0;
-				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -824,10 +841,10 @@
 		B00000000000000000000702 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "Developer ID Application";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Developer ID Application";
+				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				CODE_SIGN_ENTITLEMENTS = AirGuardFinderExtension/FinderExtension.entitlements;
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEAD_CODE_STRIPPING = YES;
@@ -840,10 +857,10 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MARKETING_VERSION = 1.2.0;
-				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

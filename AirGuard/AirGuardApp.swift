@@ -147,12 +147,14 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleFinderNewFileNotification(_ notification: Notification) {
         guard let message = notification.object as? String,
               let data = message.data(using: .utf8),
-              let request = try? JSONDecoder().decode(FinderNewFileDistributedRequest.self, from: data) else {
+              let request = try? JSONDecoder().decode(FinderNewFileRequest.self, from: data) else {
             NSLog("AirSentry received malformed Finder new file notification")
             return
         }
 
-        FinderNewFileRequestHandler.handle(path: request.path, contents: request.decodedContents)
+        // 根据 templateId 查找模板内容
+        let contents = FinderNewFileService.contents(forTemplateId: request.templateId)
+        FinderNewFileRequestHandler.handle(path: request.path, contents: contents)
     }
 
     @objc private func handleFinderOpenTerminalNotification(_ notification: Notification) {
@@ -171,13 +173,14 @@ private enum FinderNewFileRequestHandler {
               url.host == "finder",
               url.path == "/new-file",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let templateId = components.queryValue(named: "templateId"),
               let requestedPath = components.queryValue(named: "path") else {
             NSLog("AirSentry ignored unsupported URL: %{public}@", url.absoluteString)
             return
         }
 
-        let contents = components.queryValue(named: "contents")
-            .flatMap { Data(base64Encoded: $0) } ?? Data()
+        // 根据 templateId 查找模板内容
+        let contents = FinderNewFileService.contents(forTemplateId: templateId)
         handle(path: requestedPath, contents: contents)
     }
 
@@ -218,26 +221,13 @@ private enum FinderOpenTerminalRequestHandler {
     static func handle(directoryPath: String) {
         NSLog("AirSentry handling open terminal request at %{public}@", directoryPath)
 
-        let escapedPath = directoryPath
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-
-        let script = """
-        tell application "Terminal"
-            activate
-            do script "cd \"\(escapedPath)\""
-        end tell
-        """
-
-        var error: NSDictionary?
-        if let appleScript = NSAppleScript(source: script),
-           appleScript.compileAndReturnError(&error) {
-            appleScript.executeAndReturnError(&error)
-            if let error = error {
-                NSLog("AirSentry failed to open terminal via AppleScript: %{public}@", error.description)
-            }
-        } else if let error = error {
-            NSLog("AirSentry failed to compile AppleScript: %{public}@", error.description)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "Terminal", directoryPath]
+        do {
+            try process.run()
+        } catch {
+            NSLog("AirSentry failed to open terminal: %{public}@", error.localizedDescription)
         }
     }
 }
@@ -275,13 +265,9 @@ private enum FinderNewFilePermissionPrompter {
     }
 }
 
-private struct FinderNewFileDistributedRequest: Codable {
+private struct FinderNewFileRequest: Codable {
+    let templateId: String
     let path: String
-    let contents: String
-
-    var decodedContents: Data {
-        Data(base64Encoded: contents) ?? Data()
-    }
 }
 
 private extension Notification.Name {

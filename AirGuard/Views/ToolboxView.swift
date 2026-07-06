@@ -2289,11 +2289,11 @@ private final class SuperRightClickStore: ObservableObject {
     static let defaultSelectedMenuItemID = newFileMenuItemID
 
     @Published var menuItems: [SuperRightClickMenuItem] {
-        didSet { saveMenuItems() }
+        didSet { saveMenuItems(); syncToSharedConfig() }
     }
 
     @Published var templates: [SuperRightClickTemplate] {
-        didSet { saveTemplates() }
+        didSet { saveTemplates(); syncToSharedConfig() }
     }
 
     var enabledMenuItems: [SuperRightClickMenuItem] {
@@ -2310,6 +2310,8 @@ private final class SuperRightClickStore: ObservableObject {
         self.defaults = defaults
         menuItems = Self.loadMenuItems(from: defaults)
         templates = Self.loadTemplates(from: defaults)
+        // 初始化时同步配置到共享文件，确保 Finder 扩展能读取
+        syncToSharedConfig()
     }
 
     func menuItem(withID menuItemID: String) -> SuperRightClickMenuItem? {
@@ -2440,6 +2442,53 @@ private final class SuperRightClickStore: ObservableObject {
     private enum Keys {
         static let menuItems = "superRightClickMenuItems"
         static let templates = "superRightClickTemplates"
+    }
+
+    private func syncToSharedConfig() {
+        NSLog("AirSentry syncToSharedConfig called")
+        let enabledMenuItemIDs = menuItems.filter(\.isEnabled).map(\.id)
+        let enabledTemplateIDs = templates.filter(\.isEnabled).map(\.id)
+        NSLog("AirSentry enabled menu items: %{public}@", enabledMenuItemIDs.joined(separator: ", "))
+        // 只同步轻量元数据（不含 contents）
+        let templateMetas = templates.filter(\.isEnabled).map { template in
+            SuperRightClickSharedConfig.TemplateMeta(
+                id: template.id,
+                title: template.name,
+                fileName: Self.fileName(for: template),
+                systemImage: template.systemImage
+            )
+        }
+
+        let config = SuperRightClickSharedConfig(
+            enabledMenuItemIDs: enabledMenuItemIDs,
+            enabledTemplateIDs: enabledTemplateIDs,
+            templates: templateMetas
+        )
+        config.save()
+    }
+
+    private static func fileName(for template: SuperRightClickTemplate) -> String {
+        switch template.id {
+        case "xlsx": return "新建表格.xlsx"
+        case "pptx": return "新建演示.pptx"
+        case "docx": return "新建文档.docx"
+        case "txt": return "新建文本.txt"
+        case "md": return "新建文档.md"
+        case "csv": return "新建表格.csv"
+        case "json": return "新建配置.json"
+        case "rtf": return "新建文档.rtf"
+        case "html": return "新建页面.html"
+        default: return "新建文件.\(template.fileExtension)"
+        }
+    }
+
+    private static func contents(for template: SuperRightClickTemplate) -> Data {
+        switch template.id {
+        case "md": return Data("# 新建文档\n".utf8)
+        case "json": return Data("{\n  \n}\n".utf8)
+        case "html": return Data("<!doctype html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>新建页面</title>\n</head>\n<body>\n</body>\n</html>\n".utf8)
+        default: return Data()
+        }
     }
 }
 

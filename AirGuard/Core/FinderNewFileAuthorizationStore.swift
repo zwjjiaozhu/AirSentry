@@ -79,6 +79,16 @@ final class FinderNewFileAuthorizationStore: ObservableObject {
 }
 
 enum FinderNewFileService {
+    /// 根据 templateId 返回模板文件内容
+    static func contents(forTemplateId templateId: String) -> Data {
+        switch templateId {
+        case "md": return Data("# 新建文档\n".utf8)
+        case "json": return Data("{\n  \n}\n".utf8)
+        case "html": return Data("<!doctype html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>新建页面</title>\n</head>\n<body>\n</body>\n</html>\n".utf8)
+        default: return Data()
+        }
+    }
+
     static func createFile(at requestedURL: URL, contents: Data, defaults: UserDefaults = .standard) -> FinderNewFileCreationResult {
         guard let scope = authorizedScope(for: requestedURL, defaults: defaults) else {
             NSLog("AirSentry Finder new file target is not authorized: \(requestedURL.path)")
