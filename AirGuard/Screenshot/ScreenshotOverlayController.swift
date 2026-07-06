@@ -1155,6 +1155,10 @@ private struct ScreenshotOverlayView: View {
         mergedCaptureTargets
             .filter { $0.hitRect.contains(point) }
             .sorted { first, second in
+                // 系统 UI（Dock、菜单栏）优先级最低，避免覆盖其他窗口
+                if first.isSystemUI != second.isSystemUI {
+                    return !first.isSystemUI
+                }
                 if first.shouldPreferOver(second) {
                     return true
                 }
@@ -1933,6 +1937,12 @@ private struct ScreenshotCaptureTarget: Identifiable {
     let title: String?
     let priority: Double
     let pid: pid_t
+    let layer: Int
+
+    /// 系统 UI（Dock、菜单栏）的 bounds 远大于实际可见区域，悬停检测时降低优先级
+    var isSystemUI: Bool {
+        layer == 20 || layer == 24
+    }
 
     var hitRect: CGRect {
         screenRect.insetBy(dx: -6, dy: -6)
@@ -1956,8 +1966,11 @@ private struct ScreenshotCaptureTarget: Identifiable {
 }
 
 private enum ScreenshotWindowTargetDetector {
+    private static let debugLogger = LogArchiver(filePrefix: "window-detect")
+
     static func targets(on screenFrame: CGRect) -> [ScreenshotCaptureTarget] {
         guard let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+            debugLogger.write("[targets] Failed to get window info list")
             return []
         }
 
@@ -1966,16 +1979,36 @@ private enum ScreenshotWindowTargetDetector {
         var targets: [ScreenshotCaptureTarget] = []
         var frontWindowRects: [CGRect] = []
 
+        debugLogger.write("[targets] === Start === PID=\(currentProcessID) totalWindows=\(windowInfoList.count)")
+
         for (index, info) in windowInfoList.enumerated() {
-            guard let layer = intValue(info[kCGWindowLayer as String]),
-                  layer == 0,
-                  let alpha = doubleValue(info[kCGWindowAlpha as String]),
-                  alpha > 0.05,
-                  boolValue(info[kCGWindowIsOnscreen as String]) == true,
-                  let ownerPID = intValue(info[kCGWindowOwnerPID as String]),
-                  let windowNumber = intValue(info[kCGWindowNumber as String]),
-                  let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
+            let layer = intValue(info[kCGWindowLayer as String]) ?? -999
+            let alpha = doubleValue(info[kCGWindowAlpha as String]) ?? 0
+            let onscreen = boolValue(info[kCGWindowIsOnscreen as String]) ?? false
+            let ownerPID = intValue(info[kCGWindowOwnerPID as String]) ?? 0
+            let windowNumber = intValue(info[kCGWindowNumber as String]) ?? 0
+            let ownerName = info[kCGWindowOwnerName as String] as? String ?? ""
+            let windowName = info[kCGWindowName as String] as? String ?? ""
+            let displayName = [ownerName, windowName].filter { !$0.isEmpty }.joined(separator: " - ")
+
+            guard let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
                   let quartzRect = CGRect(dictionaryRepresentation: boundsDictionary) else {
+                debugLogger.write("[targets] #\(index) SKIP(no bounds) layer=\(layer) \(displayName)")
+                continue
+            }
+
+            // 允许的窗口层级：0=普通窗口, 3=浮动面板, 20=Dock, 24=菜单栏
+            let allowedLayers: Set<Int> = [0, 3, 20, 24]
+            guard allowedLayers.contains(layer) else {
+                debugLogger.write("[targets] #\(index) SKIP(layer) layer=\(layer) \(displayName)")
+                continue
+            }
+
+            // 系统 UI（Dock、菜单栏）的 bounds 远大于实际可见区域，特殊处理
+            let isSystemUI = (layer == 20 || layer == 24)
+
+            guard alpha > 0.05, onscreen == true else {
+                debugLogger.write("[targets] #\(index) SKIP(alpha/onscreen) layer=\(layer) alpha=\(alpha) onScr=\(onscreen) \(displayName)")
                 continue
             }
 
@@ -1985,28 +2018,39 @@ private enum ScreenshotWindowTargetDetector {
                 width: quartzRect.width,
                 height: quartzRect.height
             )
-            guard globalRect.width >= 40,
-                  globalRect.height >= 40,
-                  globalRect.width * globalRect.height >= 2_500 else {
+            guard globalRect.width * globalRect.height >= 500 else {
+                debugLogger.write("[targets] #\(index) SKIP(size) w=\(Int(globalRect.width)) h=\(Int(globalRect.height)) \(displayName)")
                 continue
             }
 
             let clippedGlobalRect = globalRect.intersection(screenFrame)
-            guard !clippedGlobalRect.isNull,
-                  clippedGlobalRect.width >= 30,
-                  clippedGlobalRect.height >= 30 else {
+            guard !clippedGlobalRect.isNull else {
+                debugLogger.write("[targets] #\(index) SKIP(clip) \(displayName)")
                 continue
             }
 
             let visibleRects = visibleRects(for: clippedGlobalRect, occludedBy: frontWindowRects)
             let visibleArea = visibleRects.reduce(CGFloat.zero) { $0 + $1.width * $1.height }
             let totalArea = clippedGlobalRect.width * clippedGlobalRect.height
-            frontWindowRects.append(clippedGlobalRect)
 
-            guard ownerPID != currentProcessID,
-                  visibleArea >= max(1_200, totalArea * 0.08) else {
+            // 系统 UI 不加入遮挡计算（其 bounds 远大于实际可见区域，会影响其他窗口检测）
+            if !isSystemUI {
+                frontWindowRects.append(clippedGlobalRect)
+            }
+
+            let isFloatingPanel = (layer == 3)
+            // 可见性检查：系统 UI 放宽（总是可见），普通窗口需要 >= 200 像素
+            let minVisibleArea: CGFloat = isSystemUI ? 0 : 200
+            // 排除自身进程的高层级窗口（overlay layer=27），
+            // 但允许自身的普通窗口（如六边形工具箱 layer=0）通过
+            let isSelfHighLayer = (ownerPID == currentProcessID && layer >= 24)
+            guard !isSelfHighLayer,
+                  visibleArea >= minVisibleArea else {
+                debugLogger.write("[targets] #\(index) SKIP(visibility) pid=\(ownerPID) self=\(ownerPID == currentProcessID) selfHigh=\(isSelfHighLayer) visArea=\(Int(visibleArea))/\(Int(totalArea)) floating=\(isFloatingPanel) \(displayName)")
                 continue
             }
+
+            debugLogger.write("[targets] #\(index) ADD layer=\(layer) w=\(Int(globalRect.width)) h=\(Int(globalRect.height)) pid=\(ownerPID) \(displayName)")
 
             let screenRect = CGRect(
                 x: clippedGlobalRect.minX - screenFrame.minX,
@@ -2014,11 +2058,8 @@ private enum ScreenshotWindowTargetDetector {
                 width: clippedGlobalRect.width,
                 height: clippedGlobalRect.height
             )
-            let ownerName = info[kCGWindowOwnerName as String] as? String
-            let windowName = info[kCGWindowName as String] as? String
-            let title = [ownerName, windowName]
+            let title = [displayName.isEmpty ? nil : displayName]
                 .compactMap { $0 }
-                .filter { !$0.isEmpty }
                 .joined(separator: " - ")
 
             targets.append(ScreenshotCaptureTarget(
@@ -2028,7 +2069,8 @@ private enum ScreenshotWindowTargetDetector {
                 screenRect: screenRect,
                 title: title.isEmpty ? nil : title,
                 priority: Double(windowInfoList.count - index),
-                pid: pid_t(ownerPID)
+                pid: pid_t(ownerPID),
+                layer: layer
             ))
         }
 
@@ -2150,7 +2192,8 @@ private enum ScreenshotAccessibilityDetector {
             screenRect: screenRect,
             title: axTitle(of: element) ?? windowTarget.title,
             priority: windowTarget.priority + 1.0,
-            pid: windowTarget.pid
+            pid: windowTarget.pid,
+            layer: 0 // AX 控件始终为普通窗口层级
         )
     }
 

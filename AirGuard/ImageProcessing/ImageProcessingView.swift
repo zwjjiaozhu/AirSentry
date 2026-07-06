@@ -227,100 +227,124 @@ struct ImageProcessingView: View {
     }
 
     private var controlsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            controlGroup(title: "格式") {
-                Picker("", selection: $store.outputFormat) {
-                    ForEach(ImageProcessingOutputFormat.allCases) { format in
-                        Text(format.rawValue).tag(format)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                controlGroup(title: "输出格式", icon: "doc.badge.gearshape") {
+                    Picker("", selection: $store.outputFormat) {
+                        ForEach(ImageProcessingOutputFormat.allCases) { format in
+                            Text(format.rawValue).tag(format)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
 
-            controlGroup(title: "压缩") {
-                Picker("", selection: $store.compressionMode) {
-                    ForEach(ImageProcessingCompressionMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                controlDivider
+
+                controlGroup(title: "压缩方式", icon: "zip") {
+                    Picker("", selection: $store.compressionMode) {
+                        ForEach(ImageProcessingCompressionMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .disabled(!store.outputFormat.supportsQuality)
-
-                if store.compressionMode == .targetSize, store.outputFormat.supportsQuality {
-                    valueSlider(
-                        title: "目标大小",
-                        value: $store.targetSizeKB,
-                        range: 50...5000,
-                        step: 50,
-                        suffix: "KB"
-                    )
-                } else {
-                    valueSlider(
-                        title: "质量",
-                        value: $store.qualityPercent,
-                        range: 5...100,
-                        step: 1,
-                        suffix: "%"
-                    )
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                     .disabled(!store.outputFormat.supportsQuality)
-                }
-            }
 
-            controlGroup(title: "尺寸") {
-                Toggle("限制最长边", isOn: $store.shouldResize)
-                    .toggleStyle(.checkbox)
-
-                valueSlider(
-                    title: "最长边",
-                    value: $store.longestSidePixels,
-                    range: 320...6000,
-                    step: 20,
-                    suffix: "px"
-                )
-                .disabled(!store.shouldResize)
-            }
-
-            controlGroup(title: "裁剪") {
-                Picker("", selection: $store.cropMode) {
-                    ForEach(ImageProcessingCropMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                    if store.compressionMode == .targetSize, store.outputFormat.supportsQuality {
+                        valueSlider(
+                            title: "目标大小",
+                            value: $store.targetSizeKB,
+                            range: 50...5000,
+                            step: 50,
+                            suffix: "KB"
+                        )
+                    } else {
+                        valueSlider(
+                            title: "质量",
+                            value: $store.qualityPercent,
+                            range: 5...100,
+                            step: 1,
+                            suffix: "%"
+                        )
+                        .disabled(!store.outputFormat.supportsQuality)
                     }
                 }
-                .labelsHidden()
-            }
 
-            Divider()
+                controlDivider
 
-            HStack(spacing: 10) {
-                Button {
-                    store.reset()
-                } label: {
-                    Label("重置", systemImage: "arrow.counterclockwise")
+                controlGroup(title: "尺寸调整", icon: "aspectratio") {
+                    Toggle("限制最长边", isOn: $store.shouldResize)
+                        .toggleStyle(.checkbox)
+
+                    valueSlider(
+                        title: "最长边",
+                        value: $store.longestSidePixels,
+                        range: 320...6000,
+                        step: 20,
+                        suffix: "px"
+                    )
+                    .disabled(!store.shouldResize)
                 }
-                .buttonStyle(.bordered)
-                .disabled(!store.hasImages)
 
-                Spacer()
+                controlDivider
 
-                Button {
-                    store.exportImages()
-                } label: {
-                    Label("批量导出", systemImage: "square.and.arrow.down")
+                controlGroup(title: "裁剪比例", icon: "crop") {
+                    Picker("", selection: $store.cropMode) {
+                        ForEach(ImageProcessingCropMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!store.hasImages || store.exportableCount == 0)
+
+                controlDivider
+
+                HStack(spacing: 12) {
+                    Button {
+                        store.reset()
+                    } label: {
+                        Label("重置", systemImage: "arrow.counterclockwise")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(!store.hasImages)
+
+                    Button {
+                        store.exportImages()
+                    } label: {
+                        Label("批量导出", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .disabled(!store.hasImages || store.exportableCount == 0)
+                }
+                .padding(.top, 4)
             }
+            .padding(18)
         }
-        .padding(18)
         .imageProcessingCard()
     }
 
-    private func controlGroup<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text(title)
-                .font(.system(size: 13.5, weight: .semibold))
+    private var controlDivider: some View {
+        Divider()
+            .padding(.vertical, 14)
+    }
+
+    private func controlGroup<Content: View>(title: String, icon: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
             content()
         }
     }
@@ -332,16 +356,24 @@ struct ImageProcessingView: View {
         step: Double,
         suffix: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(Int(value.wrappedValue)) \(suffix)")
-                    .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.blue.opacity(0.08))
+                    )
             }
             Slider(value: value, in: range, step: step)
+                .padding(.top, 2)
         }
     }
 

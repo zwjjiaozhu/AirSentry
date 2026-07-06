@@ -21,6 +21,7 @@ struct ToolboxView: View {
     @State private var selectedSuperRightClickMenuItemID: String = SuperRightClickStore.defaultSelectedMenuItemID
     @State private var draggedSuperRightClickMenuItemID: String?
     @State private var draggedSuperRightClickTemplateID: String?
+    @State private var localSortOption: AppUninstallerStore.SortOption = .name
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,20 +31,6 @@ struct ToolboxView: View {
         }
         .frame(minWidth: 820, minHeight: 580)
         .background(Color(nsColor: .windowBackgroundColor))
-        .task {
-            storageStore.refresh()
-            uninstallerStore.refreshApplications()
-            appLauncherStore.refreshApplications()
-        }
-        .onChange(of: selectedTool) { tool in
-            if tool == .inputMethod {
-                refreshInputSources()
-            } else if tool == .uninstaller {
-                uninstallerStore.refreshApplications()
-            } else if tool == .appLauncher {
-                appLauncherStore.refreshApplications()
-            }
-        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AirSentry.SelectSuperRightClickToolboxSection"))) { _ in
             selectedTool = .superRightClick
         }
@@ -230,6 +217,9 @@ struct ToolboxView: View {
                     .foregroundStyle(.orange)
             }
         }
+        .onAppear {
+            storageStore.refresh()
+        }
     }
 
     private var inputMethodContent: some View {
@@ -248,6 +238,9 @@ struct ToolboxView: View {
             appLauncherShortcutSection
             appLauncherAuthorizationSection
             appLauncherPanelEntrySection
+        }
+        .onAppear {
+            appLauncherStore.refreshApplications()
         }
     }
 
@@ -321,6 +314,9 @@ struct ToolboxView: View {
             if !uninstallerStore.trashLogs.isEmpty {
                 uninstallerLogSection
             }
+        }
+        .onAppear {
+            uninstallerStore.refreshApplications()
         }
     }
 
@@ -662,13 +658,16 @@ struct ToolboxView: View {
             TextField("搜索应用或 Bundle ID", text: $uninstallerStore.searchText)
                 .textFieldStyle(.roundedBorder)
 
-            Picker("", selection: $uninstallerStore.sortOption) {
+            Picker("", selection: $localSortOption) {
                 ForEach(AppUninstallerStore.SortOption.allCases) { option in
                     Text(option.rawValue).tag(option)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .onChange(of: localSortOption) { newValue in
+                uninstallerStore.sortOption = newValue
+            }
 
             if uninstallerStore.filteredApplications.isEmpty {
                 VStack(spacing: 9) {
@@ -681,11 +680,14 @@ struct ToolboxView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 220)
             } else {
-                VStack(spacing: 4) {
-                    ForEach(uninstallerStore.filteredApplications) { app in
-                        appRow(app)
+                ScrollView {
+                    VStack(spacing: 4) {
+                        ForEach(uninstallerStore.filteredApplications) { app in
+                            appRow(app)
+                        }
                     }
                 }
+                .frame(maxHeight: 420)
             }
         }
         .padding(16)

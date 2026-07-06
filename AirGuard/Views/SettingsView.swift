@@ -28,8 +28,8 @@ struct SettingsView: View {
                             .id(SettingsSectionID.labs)
                         toolboxSection
                             .id(SettingsSectionID.toolbox)
-                        startupSection
-                            .id(SettingsSectionID.startup)
+                        systemSection
+                            .id(SettingsSectionID.system)
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 24)
@@ -118,11 +118,11 @@ struct SettingsView: View {
                 }
 
                 SidebarItem(
-                    title: "启动",
-                    systemImage: "power",
-                    isSelected: selectedSection == .startup
+                    title: "系统",
+                    systemImage: "gearshape.fill",
+                    isSelected: selectedSection == .system
                 ) {
-                    selectedSection = .startup
+                    selectedSection = .system
                 }
             }
             .padding(.horizontal, 22)
@@ -323,17 +323,51 @@ struct SettingsView: View {
         }
     }
 
-    private var startupSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionTitle("启动")
+    private var systemSection: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionTitle("启动")
 
-            SettingsGroup {
-                PreferenceRow(
-                    title: "开机自动启动",
-                    subtitle: "在系统启动时自动运行 AirSentry",
-                    systemImage: "power",
-                    isOn: $settings.launchAtLoginEnabled
-                )
+                SettingsGroup {
+                    PreferenceRow(
+                        title: "开机自动启动",
+                        subtitle: "在系统启动时自动运行 AirSentry",
+                        systemImage: "power",
+                        isOn: $settings.launchAtLoginEnabled
+                    )
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                SectionTitle("运行日志")
+
+                SettingsGroup {
+                    HStack(spacing: 18) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(.blue)
+                            .frame(width: 34)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("日志文件夹")
+                                .font(.system(size: 15, weight: .semibold))
+
+                            Text("温度异常等运行事件归档到 ~/Library/Logs/AirSentry/")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button("打开") {
+                            openLogFolder()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 15)
+                }
             }
         }
     }
@@ -564,6 +598,15 @@ struct SettingsView: View {
         focusedThreshold = nil
     }
 
+    private func openLogFolder() {
+        let logsDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Logs/AirSentry", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: logsDir.path) {
+            try? FileManager.default.createDirectory(at: logsDir, withIntermediateDirectories: true)
+        }
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: logsDir.path)
+    }
+
     private var sidebarSurfaceColor: Color {
         colorScheme == .dark ? Color.white.opacity(0.12) : Color.white
     }
@@ -582,7 +625,7 @@ private enum SettingsSectionID: Hashable {
     case toolbox
     case threshold
     case labs
-    case startup
+    case system
 }
 
 private enum TemperatureThresholdID: Hashable {

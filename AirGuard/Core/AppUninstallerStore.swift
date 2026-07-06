@@ -111,7 +111,11 @@ final class AppUninstallerStore: ObservableObject {
         panel.canCreateDirectories = false
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
 
-        guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
+        guard panel.runModal() == .OK, let selectedURL = panel.url else {
+            bringToolboxWindowToFront()
+            return
+        }
+        bringToolboxWindowToFront()
         setApplicationsURL(selectedURL, saveBookmark: true)
         refreshApplications()
         if let app = plan?.app {
@@ -130,7 +134,11 @@ final class AppUninstallerStore: ObservableObject {
         panel.canCreateDirectories = false
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
 
-        guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
+        guard panel.runModal() == .OK, let selectedURL = panel.url else {
+            bringToolboxWindowToFront()
+            return
+        }
+        bringToolboxWindowToFront()
         setHomeURL(selectedURL, saveBookmark: true)
         if let app = plan?.app {
             select(app)
@@ -185,12 +193,10 @@ final class AppUninstallerStore: ObservableObject {
 
         isBuildingPlan = true
         errorMessage = nil
-        let planTask = Task.detached(priority: .utility) { [reader] in
-            reader.buildPlan(for: app, homeURL: homeURL)
-        }
-        Task { [weak self] in
+        Task { [weak self, reader] in
             guard let self else { return }
-            let plan = await planTask.value
+            await Task.yield()
+            let plan = reader.buildPlan(for: app, homeURL: homeURL)
             self.plan = self.planWithCurrentPermissions(plan)
             self.selectedArtifactIDs = Set(plan.artifacts.filter(\.isRecommended).map(\.id))
             self.isBuildingPlan = false
@@ -310,6 +316,13 @@ final class AppUninstallerStore: ObservableObject {
         }
     }
 
+    private func bringToolboxWindowToFront() {
+        guard let toolboxWindow = NSApp.windows.first(where: { $0.title.contains("工具箱") }) else { return }
+        toolboxWindow.makeKeyAndOrderFront(nil)
+        toolboxWindow.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     private func confirmTrash(app: InstalledAppInfo, artifacts: [AppUninstallArtifact]) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -382,6 +395,14 @@ final class AppUninstallerStore: ObservableObject {
         selectedHomePath = url.path
         isAccessingSecurityScopedResource = url.startAccessingSecurityScopedResource()
         hasHomeAccess = true
+
+        // 预热 TCC 权限：主动触发一次 "访问其他 App 数据" 的系统弹窗，
+        // 用户点击允许后，后续 buildPlan() 访问 ~/Library 子目录时不再弹窗。
+        let libraryURL = url.appendingPathComponent("Library", isDirectory: true)
+        for subdirectory in ["Application Support", "Containers", "Group Containers"] {
+            let dirURL = libraryURL.appendingPathComponent(subdirectory, isDirectory: true)
+            _ = try? FileManager.default.contentsOfDirectory(atPath: dirURL.path)
+        }
 
         guard saveBookmark else { return }
         do {

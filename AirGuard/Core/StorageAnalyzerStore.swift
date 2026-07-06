@@ -16,7 +16,6 @@ final class StorageAnalyzerStore: ObservableObject {
     private var isAccessingSecurityScopedResource = false
 
     init() {
-        disk = reader.readDiskStorage()
         restoreBookmark()
     }
 

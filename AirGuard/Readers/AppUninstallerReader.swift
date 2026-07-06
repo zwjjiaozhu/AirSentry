@@ -130,6 +130,8 @@ struct AppUninstallerReader {
         candidates += matchingGroupContainers(in: libraryURL, app: app)
 
         return candidates.compactMap { candidate in
+            // 先检查可读性，避免未授权的 TCC 保护路径触发系统弹窗
+            guard fileManager.isReadableFile(atPath: candidate.url.path) else { return nil }
             var isDirectory: ObjCBool = false
             guard fileManager.fileExists(atPath: candidate.url.path, isDirectory: &isDirectory) else { return nil }
             let bytes = isDirectory.boolValue ? allocatedSize(of: candidate.url) : allocatedFileSize(at: candidate.url)
@@ -140,7 +142,7 @@ struct AppUninstallerReader {
                 kind: candidate.kind,
                 risk: candidate.risk,
                 bytes: bytes,
-                isAccessible: fileManager.isReadableFile(atPath: candidate.url.path)
+                isAccessible: fileManager.isWritableFile(atPath: candidate.url.path)
             )
         }
     }

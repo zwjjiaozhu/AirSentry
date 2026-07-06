@@ -96,6 +96,13 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
             name: .airSentryFinderNewFileRequest,
             object: nil
         )
+
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleFinderOpenTerminalNotification(_:)),
+            name: .airSentryFinderOpenTerminalRequest,
+            object: nil
+        )
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -104,12 +111,21 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
             name: .airSentryFinderNewFileRequest,
             object: nil
         )
+        DistributedNotificationCenter.default().removeObserver(
+            self,
+            name: .airSentryFinderOpenTerminalRequest,
+            object: nil
+        )
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             NSLog("AirSentry received URL via NSApplicationDelegate: %{public}@", url.absoluteString)
-            FinderNewFileRequestHandler.handle(url)
+            if url.path == "/open-terminal" {
+                FinderOpenTerminalRequestHandler.handle(url)
+            } else {
+                FinderNewFileRequestHandler.handle(url)
+            }
         }
     }
 
@@ -121,7 +137,11 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NSLog("AirSentry received URL via AppleEvent: %{public}@", url.absoluteString)
-        FinderNewFileRequestHandler.handle(url)
+        if url.path == "/open-terminal" {
+            FinderOpenTerminalRequestHandler.handle(url)
+        } else {
+            FinderNewFileRequestHandler.handle(url)
+        }
     }
 
     @objc private func handleFinderNewFileNotification(_ notification: Notification) {
@@ -133,6 +153,15 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
         }
 
         FinderNewFileRequestHandler.handle(path: request.path, contents: request.decodedContents)
+    }
+
+    @objc private func handleFinderOpenTerminalNotification(_ notification: Notification) {
+        guard let directoryPath = notification.object as? String else {
+            NSLog("AirSentry received malformed Finder open terminal notification")
+            return
+        }
+
+        FinderOpenTerminalRequestHandler.handle(directoryPath: directoryPath)
     }
 }
 
@@ -168,6 +197,47 @@ private enum FinderNewFileRequestHandler {
             NSLog("AirSentry failed to create Finder file after authorization matched: %{public}@", requestedURL.path)
             FinderNewFilePermissionPrompter.showWriteFailedAlert(for: requestedURL)
             return
+        }
+    }
+}
+
+private enum FinderOpenTerminalRequestHandler {
+    static func handle(_ url: URL) {
+        guard url.scheme == "airsentry",
+              url.host == "finder",
+              url.path == "/open-terminal",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let requestedPath = components.queryValue(named: "path") else {
+            NSLog("AirSentry ignored unsupported open-terminal URL: %{public}@", url.absoluteString)
+            return
+        }
+
+        handle(directoryPath: requestedPath)
+    }
+
+    static func handle(directoryPath: String) {
+        NSLog("AirSentry handling open terminal request at %{public}@", directoryPath)
+
+        let escapedPath = directoryPath
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "cd \"\(escapedPath)\""
+        end tell
+        """
+
+        var error: NSDictionary?
+        if let appleScript = NSAppleScript(source: script),
+           appleScript.compileAndReturnError(&error) {
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                NSLog("AirSentry failed to open terminal via AppleScript: %{public}@", error.description)
+            }
+        } else if let error = error {
+            NSLog("AirSentry failed to compile AppleScript: %{public}@", error.description)
         }
     }
 }
@@ -216,6 +286,7 @@ private struct FinderNewFileDistributedRequest: Codable {
 
 private extension Notification.Name {
     static let airSentryFinderNewFileRequest = Notification.Name("AirSentry.Finder.NewFileRequest")
+    static let airSentryFinderOpenTerminalRequest = Notification.Name("AirSentry.Finder.OpenTerminalRequest")
     static let airSentryOpenFinderAuthorizationSettings = Notification.Name("AirSentry.OpenFinderAuthorizationSettings")
     static let airSentrySelectSuperRightClickToolboxSection = Notification.Name("AirSentry.SelectSuperRightClickToolboxSection")
 }

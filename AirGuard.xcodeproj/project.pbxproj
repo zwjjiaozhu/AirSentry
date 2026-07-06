@@ -74,6 +74,7 @@
 		A00000000000000000000041 /* OCRPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000149 /* OCRPanelView.swift */; };
 		A00000000000000000000042 /* ImageProcessingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014A /* ImageProcessingStore.swift */; };
 		A00000000000000000000043 /* ImageProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014B /* ImageProcessingView.swift */; };
+		A00000000000000000000044 /* LogArchiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014C /* LogArchiver.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -166,6 +167,7 @@
 		A00000000000000000000149 /* OCRPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCRPanelView.swift; sourceTree = "<group>"; };
 		A0000000000000000000014A /* ImageProcessingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingStore.swift; sourceTree = "<group>"; };
 		A0000000000000000000014B /* ImageProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingView.swift; sourceTree = "<group>"; };
+		A0000000000000000000014C /* LogArchiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogArchiver.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -307,6 +309,7 @@
 				A0000000000000000000012E /* InputMethodShortcut.swift */,
 				A0000000000000000000012F /* InputMethodSwitcher.swift */,
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
+				A0000000000000000000014C /* LogArchiver.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -589,6 +592,7 @@
 				A00000000000000000000041 /* OCRPanelView.swift in Sources */,
 				A00000000000000000000042 /* ImageProcessingStore.swift in Sources */,
 				A00000000000000000000043 /* ImageProcessingView.swift in Sources */,
+				A00000000000000000000044 /* LogArchiver.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

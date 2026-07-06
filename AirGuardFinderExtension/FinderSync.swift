@@ -54,6 +54,8 @@ final class FinderSync: FIFinderSync {
         submenu.addItem(NSMenuItem.separator())
         submenu.addItem(menuItem("拷贝路径", systemImage: "doc.on.clipboard", action: #selector(copySelectedPath)))
         submenu.addItem(menuItem("拷贝名称", systemImage: "textformat.abc", action: #selector(copySelectedName)))
+        submenu.addItem(NSMenuItem.separator())
+        submenu.addItem(menuItem("打开终端", systemImage: "terminal", action: #selector(openTerminal)))
 
         rootItem.submenu = submenu
         menu.addItem(rootItem)
@@ -94,6 +96,39 @@ final class FinderSync: FIFinderSync {
         guard let text = selectedURLs().first?.lastPathComponent ?? targetDirectoryURL()?.lastPathComponent else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    @objc private func openTerminal() {
+        guard let directoryURL = targetDirectoryURL() else {
+            NSSound.beep()
+            FinderExtensionLog.info("could not resolve target directory for terminal")
+            return
+        }
+        FinderExtensionLog.info("open terminal at \(directoryURL.path)")
+        forwardOpenTerminalRequest(directoryPath: directoryURL.path)
+    }
+
+    private func forwardOpenTerminalRequest(directoryPath: String) {
+        if isHostAppRunning {
+            DistributedNotificationCenter.default().postNotificationName(
+                .airSentryFinderOpenTerminalRequest,
+                object: directoryPath,
+                userInfo: nil,
+                deliverImmediately: true
+            )
+            FinderExtensionLog.info("forwarded open terminal request through distributed notification for \(directoryPath)")
+        } else {
+            var components = URLComponents()
+            components.scheme = "airsentry"
+            components.host = "finder"
+            components.path = "/open-terminal"
+            components.queryItems = [URLQueryItem(name: "path", value: directoryPath)]
+
+            if let url = components.url {
+                let opened = NSWorkspace.shared.open(url)
+                FinderExtensionLog.info("forwarded open terminal request through URL scheme: opened=\(opened)")
+            }
+        }
     }
 
     private func menuItem(_ title: String, systemImage: String, action: Selector) -> NSMenuItem {
@@ -214,6 +249,7 @@ private extension FinderSync {
 
 private extension Notification.Name {
     static let airSentryFinderNewFileRequest = Notification.Name("AirSentry.Finder.NewFileRequest")
+    static let airSentryFinderOpenTerminalRequest = Notification.Name("AirSentry.Finder.OpenTerminalRequest")
 }
 
 private enum FinderExtensionLog {
