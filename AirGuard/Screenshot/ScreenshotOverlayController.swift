@@ -160,6 +160,7 @@ private struct ScreenshotOverlayView: View {
     @State private var hoveredTargetID: ScreenshotCaptureTarget.ID?
     @State private var mosaicSampler: ScreenshotOverlayMosaicSampler?
     @FocusState private var focusedTextAnnotationID: UUID?
+    @State private var pendingFocusAnnotationID: UUID?
 
     // Accessibility 控件检测相关状态
     @State private var controlHoverTarget: ScreenshotCaptureTarget?
@@ -237,6 +238,7 @@ private struct ScreenshotOverlayView: View {
                 if tool == nil {
                     selectedAnnotationID = nil
                     focusedTextAnnotationID = nil
+                    pendingFocusAnnotationID = nil
                 }
                 if tool != .text {
                     finishTextEditing()
@@ -534,6 +536,12 @@ private struct ScreenshotOverlayView: View {
                                   y: origin.y + textBounds(for: annotation).height / 2)
                         .onTapGesture {
                             selectAnnotation(annotation)
+                        }
+                        .onAppear {
+                            if annotation.id == pendingFocusAnnotationID {
+                                focusedTextAnnotationID = annotation.id
+                                pendingFocusAnnotationID = nil
+                            }
                         }
                         .simultaneousGesture(textMoveGesture(annotationID: annotation.id, in: selection))
                 }
@@ -1347,9 +1355,9 @@ private struct ScreenshotOverlayView: View {
         )
         annotations.append(annotation)
         selectedAnnotationID = annotation.id
-        DispatchQueue.main.async {
-            focusedTextAnnotationID = annotation.id
-        }
+        // 记录待聚焦的批注 ID，在 TextField 的 onAppear 中设置焦点
+        // 避免 DispatchQueue.main.async 无法取消导致的竞态条件
+        pendingFocusAnnotationID = annotation.id
         redoAnnotations.removeAll()
     }
 
@@ -1465,18 +1473,28 @@ private struct ScreenshotOverlayView: View {
         if focusedTextAnnotationID != annotationID {
             focusedTextAnnotationID = nil
         }
+        if pendingFocusAnnotationID != annotationID {
+            pendingFocusAnnotationID = nil
+        }
         removeEmptyTextAnnotations(keeping: annotationID)
     }
 
     private func removeEmptyTextAnnotations(keeping annotationID: UUID? = nil) {
-        annotations.removeAll { annotation in
-            annotation.tool == .text &&
-            annotation.id != annotationID &&
-            annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        if let selectedAnnotationID,
-           !annotations.contains(where: { $0.id == selectedAnnotationID }) {
+        let idsToRemove = annotations.filter {
+            $0.tool == .text &&
+            $0.id != annotationID &&
+            $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.map { $0.id }
+
+        if let selectedAnnotationID, idsToRemove.contains(selectedAnnotationID) {
             self.selectedAnnotationID = nil
+        }
+
+        guard !idsToRemove.isEmpty else { return }
+
+        // 延迟到下一个 runloop 再从数组中移除，避免 ForEach 中 TextField 焦点绑定重入导致崩溃
+        DispatchQueue.main.async {
+            annotations.removeAll { idsToRemove.contains($0.id) }
         }
     }
 
