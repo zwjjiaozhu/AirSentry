@@ -175,12 +175,8 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(translationDefaultEngine.rawValue, forKey: Keys.translationDefaultEngine) }
     }
 
-    @Published var translationPanelMode: TranslationPanelMode {
-        didSet { defaults.set(translationPanelMode.rawValue, forKey: Keys.translationPanelMode) }
-    }
-
-    @Published var translationComparisonEngines: [TranslationEngine] {
-        didSet { saveTranslationComparisonEngines() }
+    @Published var translationEngines: [TranslationEngine] {
+        didSet { saveTranslationEngines() }
     }
 
     @Published var translationReadsClipboardText: Bool {
@@ -248,8 +244,7 @@ final class AppSettings: ObservableObject {
         translationDefaultSourceLanguage = TranslationLanguage(rawValue: defaults.string(forKey: Keys.translationDefaultSourceLanguage) ?? "") ?? .automatic
         translationDefaultTargetLanguage = TranslationLanguage(rawValue: defaults.string(forKey: Keys.translationDefaultTargetLanguage) ?? "") ?? .simplifiedChinese
         translationDefaultEngine = TranslationEngine(rawValue: defaults.string(forKey: Keys.translationDefaultEngine) ?? "") ?? .appleSystem
-        translationPanelMode = TranslationPanelMode(rawValue: defaults.string(forKey: Keys.translationPanelMode) ?? "") ?? .comparison
-        translationComparisonEngines = Self.loadTranslationComparisonEngines(from: defaults)
+        translationEngines = Self.loadTranslationEngines(from: defaults)
         translationReadsClipboardText = defaults.object(forKey: Keys.translationReadsClipboardText) as? Bool ?? true
         translationAutoFocusesInput = defaults.object(forKey: Keys.translationAutoFocusesInput) as? Bool ?? true
         translationAutoCopiesResult = defaults.object(forKey: Keys.translationAutoCopiesResult) as? Bool ?? false
@@ -375,17 +370,17 @@ final class AppSettings: ObservableObject {
         translationShortcut = shortcut
     }
 
-    func setTranslationComparisonEngine(_ engine: TranslationEngine, enabled: Bool) {
+    func setTranslationEngine(_ engine: TranslationEngine, enabled: Bool) {
         if enabled {
-            if !translationComparisonEngines.contains(engine) {
-                translationComparisonEngines.append(engine)
+            if !translationEngines.contains(engine) {
+                translationEngines.append(engine)
             }
         } else {
-            translationComparisonEngines.removeAll { $0 == engine }
+            translationEngines.removeAll { $0 == engine }
         }
 
-        if translationComparisonEngines.isEmpty {
-            translationComparisonEngines = [.appleSystem]
+        if translationEngines.isEmpty {
+            translationEngines = [.appleSystem]
         }
     }
 
@@ -405,8 +400,8 @@ final class AppSettings: ObservableObject {
         if translationDefaultSourceLanguage == translationDefaultTargetLanguage {
             translationDefaultSourceLanguage = .automatic
         }
-        if translationComparisonEngines.isEmpty {
-            translationComparisonEngines = [.appleSystem]
+        if translationEngines.isEmpty {
+            translationEngines = [.appleSystem]
         }
         translationQualityPreference = min(max(translationQualityPreference, 0), 1)
     }
@@ -467,10 +462,10 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    private func saveTranslationComparisonEngines() {
+    private func saveTranslationEngines() {
         do {
-            let data = try JSONEncoder().encode(translationComparisonEngines)
-            defaults.set(data, forKey: Keys.translationComparisonEngines)
+            let data = try JSONEncoder().encode(translationEngines)
+            defaults.set(data, forKey: Keys.translationEngines)
         } catch {
             NSLog("AirSentry translation engines save failed: \(error.localizedDescription)")
         }
@@ -538,8 +533,8 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    private static func loadTranslationComparisonEngines(from defaults: UserDefaults) -> [TranslationEngine] {
-        guard let data = defaults.data(forKey: Keys.translationComparisonEngines) else {
+    private static func loadTranslationEngines(from defaults: UserDefaults) -> [TranslationEngine] {
+        guard let data = defaults.data(forKey: Keys.translationEngines) else {
             return [.appleSystem, .openAI]
         }
 
@@ -589,8 +584,7 @@ private enum Keys {
     static let translationDefaultSourceLanguage = "translationDefaultSourceLanguage"
     static let translationDefaultTargetLanguage = "translationDefaultTargetLanguage"
     static let translationDefaultEngine = "translationDefaultEngine"
-    static let translationPanelMode = "translationPanelMode"
-    static let translationComparisonEngines = "translationComparisonEngines"
+    static let translationEngines = "translationEngines"
     static let translationReadsClipboardText = "translationReadsClipboardText"
     static let translationAutoFocusesInput = "translationAutoFocusesInput"
     static let translationAutoCopiesResult = "translationAutoCopiesResult"

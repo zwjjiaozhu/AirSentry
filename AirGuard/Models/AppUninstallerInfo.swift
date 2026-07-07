@@ -1,12 +1,12 @@
 import Foundation
 
-struct InstalledAppInfo: Identifiable, Equatable {
+struct InstalledAppInfo: Identifiable, Equatable, Codable {
     let id: String
     let name: String
     let bundleIdentifier: String?
     let version: String?
     let url: URL
-    let bytes: UInt64
+    var bytes: UInt64
     let lastUsedAt: Date?
     let isSystemApp: Bool
 

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 
 @MainActor
@@ -11,6 +12,8 @@ final class AppUninstallerStore: ObservableObject {
         var id: String { rawValue }
     }
 
+    @Published private(set) var filteredApplications: [InstalledAppInfo] = []
+    @Published private(set) var isBackfillingSizes = false
     @Published private(set) var applications: [InstalledAppInfo] = []
     @Published private(set) var plan: AppUninstallPlan?
     @Published private(set) var selectedArtifactIDs: Set<String> = []
@@ -34,35 +37,49 @@ final class AppUninstallerStore: ObservableObject {
     private var applicationsURL: URL?
     private var isAccessingSecurityScopedResource = false
     private var isAccessingApplicationsSecurityScopedResource = false
+    private var sizeBackfillTask: Task<Void, Never>?
+
+    private let cacheURL: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let airSentryDir = dir.appendingPathComponent("AirSentry", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: airSentryDir.path) {
+            try? FileManager.default.createDirectory(at: airSentryDir, withIntermediateDirectories: true)
+        }
+        return airSentryDir.appendingPathComponent("UninstalledAppsCache.json")
+    }()
 
     init() {
         restoreBookmark()
         restoreApplicationsBookmark()
+        loadCachedApplications()
+
+        // 当 applications / searchText / sortOption 变化时自动更新 filteredApplications
+        Publishers.CombineLatest3($applications, $searchText, $sortOption)
+            .map { apps, search, sort in
+                let filtered = apps.filter { app in
+                    search.isEmpty ||
+                    app.name.localizedCaseInsensitiveContains(search) ||
+                    (app.bundleIdentifier?.localizedCaseInsensitiveContains(search) ?? false)
+                }
+                switch sort {
+                case .name:
+                    return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                case .size:
+                    return filtered.sorted { $0.bytes > $1.bytes }
+                case .lastUsed:
+                    return filtered.sorted { ($0.lastUsedAt ?? .distantPast) > ($1.lastUsedAt ?? .distantPast) }
+                }
+            }
+            .assign(to: &$filteredApplications)
     }
 
     deinit {
+        sizeBackfillTask?.cancel()
         if isAccessingSecurityScopedResource {
             homeURL?.stopAccessingSecurityScopedResource()
         }
         if isAccessingApplicationsSecurityScopedResource {
             applicationsURL?.stopAccessingSecurityScopedResource()
-        }
-    }
-
-    var filteredApplications: [InstalledAppInfo] {
-        let filtered = applications.filter { app in
-            searchText.isEmpty ||
-            app.name.localizedCaseInsensitiveContains(searchText) ||
-            (app.bundleIdentifier?.localizedCaseInsensitiveContains(searchText) ?? false)
-        }
-
-        switch sortOption {
-        case .name:
-            return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case .size:
-            return filtered.sorted { $0.bytes > $1.bytes }
-        case .lastUsed:
-            return filtered.sorted { ($0.lastUsedAt ?? .distantPast) > ($1.lastUsedAt ?? .distantPast) }
         }
     }
 
@@ -77,8 +94,10 @@ final class AppUninstallerStore: ObservableObject {
         selectedArtifactIDs.count
     }
 
-    func refreshApplications() {
+    func refreshApplications(force: Bool = false) {
         guard !isScanningApplications else { return }
+        // 有缓存且非强制刷新时跳过扫描
+        if !force && !applications.isEmpty { return }
         isScanningApplications = true
         errorMessage = nil
 
@@ -90,12 +109,36 @@ final class AppUninstallerStore: ObservableObject {
             let applications = await scanTask.value
             self.applications = applications
             self.isScanningApplications = false
+            self.saveCachedApplications()
+            self.backfillSizes()
 
-            if self.plan == nil, let first = self.filteredApplications.first {
-                self.select(first)
-            } else if let selectedApp = self.plan?.app,
-                      let refreshed = applications.first(where: { $0.id == selectedApp.id }) {
+            if let selectedApp = self.plan?.app,
+               let refreshed = applications.first(where: { $0.id == selectedApp.id }) {
                 self.select(refreshed)
+            }
+        }
+    }
+
+    /// 后台分批计算应用体积并逐个更新
+    private func backfillSizes() {
+        sizeBackfillTask?.cancel()
+        isBackfillingSizes = true
+        sizeBackfillTask = Task { [weak self, reader] in
+            guard let self else { return }
+            let apps = self.applications
+            for (index, app) in apps.enumerated() {
+                guard !Task.isCancelled else { break }
+                let size = await reader.computeSize(for: app)
+                await MainActor.run {
+                    guard index < self.applications.count else { return }
+                    if self.applications[index].id == app.id {
+                        self.applications[index].bytes = size
+                    }
+                }
+            }
+            await MainActor.run {
+                self.isBackfillingSizes = false
+                self.saveCachedApplications()
             }
         }
     }
@@ -345,6 +388,21 @@ final class AppUninstallerStore: ObservableObject {
         formatter.dateFormat = "HH:mm:ss.SSS"
         return formatter
     }()
+
+    private func loadCachedApplications() {
+        guard let data = try? Data(contentsOf: cacheURL),
+              let cached = try? JSONDecoder().decode([InstalledAppInfo].self, from: data) else { return }
+        self.applications = cached
+    }
+
+    private func saveCachedApplications() {
+        let apps = applications
+        let url = cacheURL
+        Task.detached(priority: .background) {
+            guard let data = try? JSONEncoder().encode(apps) else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
 
     private func restoreBookmark() {
         guard let data = UserDefaults.standard.data(forKey: bookmarkKey) else {

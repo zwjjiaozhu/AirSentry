@@ -7,8 +7,6 @@ final class TranslationStore: ObservableObject {
     @Published var sourceText = ""
     @Published var sourceLanguage: TranslationLanguage
     @Published var targetLanguage: TranslationLanguage
-    @Published var selectedEngine: TranslationEngine
-    @Published var panelMode: TranslationPanelMode
     @Published var results: [TranslationResultItem] = []
     @Published var isPinned = false
     @Published var appleTranslationRequestID: UUID?
@@ -21,8 +19,6 @@ final class TranslationStore: ObservableObject {
         self.settings = settings
         sourceLanguage = settings.translationDefaultSourceLanguage
         targetLanguage = settings.translationDefaultTargetLanguage
-        selectedEngine = settings.translationDefaultEngine
-        panelMode = settings.translationPanelMode
 
         settings.$translationDefaultSourceLanguage
             .sink { [weak self] language in self?.sourceLanguage = language }
@@ -31,22 +27,10 @@ final class TranslationStore: ObservableObject {
         settings.$translationDefaultTargetLanguage
             .sink { [weak self] language in self?.targetLanguage = language }
             .store(in: &cancellables)
-
-        settings.$translationDefaultEngine
-            .sink { [weak self] engine in self?.selectedEngine = engine }
-            .store(in: &cancellables)
-
-        settings.$translationPanelMode
-            .sink { [weak self] mode in self?.panelMode = mode }
-            .store(in: &cancellables)
     }
 
     var activeEngines: [TranslationEngine] {
-        if panelMode == .single {
-            return [selectedEngine]
-        }
-
-        let configured = settings.translationComparisonEngines
+        let configured = settings.translationEngines
         return configured.isEmpty ? [.appleSystem] : configured
     }
 
@@ -57,8 +41,6 @@ final class TranslationStore: ObservableObject {
     func prepareForPresentation() {
         sourceLanguage = settings.translationDefaultSourceLanguage
         targetLanguage = settings.translationDefaultTargetLanguage
-        selectedEngine = settings.translationDefaultEngine
-        panelMode = settings.translationPanelMode
 
         if settings.translationReadsClipboardText,
            let pastedText = NSPasteboard.general.string(forType: .string),

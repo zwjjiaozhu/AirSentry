@@ -96,10 +96,15 @@ struct AppUninstallerReader {
             bundleIdentifier: bundleIdentifier,
             version: version,
             url: url,
-            bytes: allocatedSize(of: url),
+            bytes: 0,
             lastUsedAt: values?.contentAccessDate ?? values?.contentModificationDate,
             isSystemApp: url.path.hasPrefix("/System/")
         )
+    }
+
+    /// 异步计算应用体积（供后台回填使用）
+    func computeSize(for app: InstalledAppInfo) async -> UInt64 {
+        allocatedSize(of: app.url)
     }
 
     private func applicationArtifact(for app: InstalledAppInfo) -> AppUninstallArtifact {

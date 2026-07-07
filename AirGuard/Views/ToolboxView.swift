@@ -22,6 +22,7 @@ struct ToolboxView: View {
     @State private var draggedSuperRightClickMenuItemID: String?
     @State private var draggedSuperRightClickTemplateID: String?
     @State private var localSortOption: AppUninstallerStore.SortOption = .name
+    @State private var uninstallerIconCache: [String: NSImage] = [:]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -456,9 +457,13 @@ struct ToolboxView: View {
                 .disabled(uninstallerStore.isTrashing)
 
                 Button {
-                    uninstallerStore.refreshApplications()
+                    uninstallerStore.refreshApplications(force: true)
                 } label: {
-                    Label(uninstallerStore.isScanningApplications ? "扫描中" : "刷新应用", systemImage: "arrow.clockwise")
+                    Label(
+                        uninstallerStore.isScanningApplications ? "扫描中" :
+                        uninstallerStore.isBackfillingSizes ? "计算体积中" : "刷新应用",
+                        systemImage: "arrow.clockwise"
+                    )
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(uninstallerStore.isScanningApplications || uninstallerStore.isTrashing)
@@ -649,7 +654,7 @@ struct ToolboxView: View {
                 Text("应用")
                     .font(.system(size: 17, weight: .semibold))
                 Spacer()
-                if uninstallerStore.isScanningApplications {
+                if uninstallerStore.isScanningApplications || uninstallerStore.isBackfillingSizes {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -678,7 +683,8 @@ struct ToolboxView: View {
                         .font(.system(size: 13.5, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, minHeight: 220)
+                .frame(maxWidth: .infinity)
+                .frame(height: 420)
             } else {
                 ScrollView {
                     VStack(spacing: 4) {
@@ -687,7 +693,7 @@ struct ToolboxView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 420)
+                .frame(height: 420)
             }
         }
         .padding(16)
@@ -699,15 +705,22 @@ struct ToolboxView: View {
             uninstallerStore.select(app)
         } label: {
             HStack(spacing: 10) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path))
-                    .resizable()
-                    .frame(width: 30, height: 30)
+                if let icon = uninstallerIconCache[app.id] {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 30, height: 30)
+                } else {
+                    Image(systemName: "app")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(app.name)
                         .font(.system(size: 13.5, weight: .semibold))
                         .lineLimit(1)
-                    Text(ByteFormatter.string(from: app.bytes))
+                    Text(app.bytes > 0 ? ByteFormatter.string(from: app.bytes) : "-- MB")
                         .font(.system(size: 11.5).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -727,6 +740,12 @@ struct ToolboxView: View {
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
+        .task(id: app.id) {
+            if uninstallerIconCache[app.id] == nil {
+                let icon = NSWorkspace.shared.icon(forFile: app.url.path)
+                uninstallerIconCache[app.id] = icon
+            }
+        }
     }
 
     @ViewBuilder

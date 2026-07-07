@@ -80,24 +80,16 @@ struct TranslationPanelView: View {
                 compactPicker(selection: $store.targetLanguage, options: TranslationLanguage.targetOptions) { $0.title }
                     .frame(width: 145)
 
-                compactPicker(selection: $store.panelMode, options: TranslationPanelMode.allCases) { $0.title }
-                    .frame(width: 145)
-
-                if store.panelMode == .single {
-                    compactPicker(selection: $store.selectedEngine, options: TranslationEngine.allCases) { $0.shortTitle }
-                        .frame(width: 165)
-                } else {
-                    HStack(spacing: 6) {
-                        Image(systemName: "rectangle.3.group")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("\(store.activeEngines.count) 个引擎")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(controlBackground, in: Capsule())
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.3.group")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(store.activeEngines.count) 个引擎")
+                        .font(.system(size: 13, weight: .semibold))
                 }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(controlBackground, in: Capsule())
 
                 Spacer()
             }
@@ -315,9 +307,6 @@ struct TranslationPanelView: View {
     }
 
     private func retry(_ engine: TranslationEngine) {
-        if store.panelMode == .single {
-            store.selectedEngine = engine
-        }
         store.translate()
     }
 

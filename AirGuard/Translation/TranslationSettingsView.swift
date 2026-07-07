@@ -16,12 +16,6 @@ struct TranslationSettingsView: View {
             behaviorCard
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            configurationEngine = settings.translationDefaultEngine
-        }
-        .onChange(of: settings.translationDefaultEngine) { engine in
-            configurationEngine = engine
-        }
     }
 
     private var header: some View {
@@ -100,49 +94,66 @@ struct TranslationSettingsView: View {
             Text("默认语言")
                 .font(.system(size: 17, weight: .semibold))
 
-            VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    languagePicker(title: "源语言", selection: $settings.translationDefaultSourceLanguage, options: TranslationLanguage.sourceOptions)
-                    Spacer(minLength: 12)
-                    languagePicker(title: "目标语言", selection: $settings.translationDefaultTargetLanguage, options: TranslationLanguage.targetOptions)
-                }
-
-                HStack(spacing: 12) {
-                    Button {
-                        guard settings.translationDefaultSourceLanguage != .automatic else { return }
-                        let oldSource = settings.translationDefaultSourceLanguage
-                        settings.translationDefaultSourceLanguage = settings.translationDefaultTargetLanguage
-                        settings.translationDefaultTargetLanguage = oldSource
-                    } label: {
-                        Label("交换默认语言", systemImage: "arrow.left.arrow.right")
+            // 语言选择行：源语言 — 交换按钮 — 目标语言
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("源语言")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $settings.translationDefaultSourceLanguage) {
+                        ForEach(TranslationLanguage.sourceOptions) { language in
+                            Text(language.title).tag(language)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(settings.translationDefaultSourceLanguage == .automatic)
-
-                    Spacer(minLength: 12)
-
-                    settingPicker(title: "默认模式", selection: $settings.translationPanelMode, options: TranslationPanelMode.allCases)
-                        .frame(width: 180)
+                    .labelsHidden()
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    guard settings.translationDefaultSourceLanguage != .automatic else { return }
+                    let oldSource = settings.translationDefaultSourceLanguage
+                    settings.translationDefaultSourceLanguage = settings.translationDefaultTargetLanguage
+                    settings.translationDefaultTargetLanguage = oldSource
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(settings.translationDefaultSourceLanguage == .automatic ? .tertiary : .secondary)
+                        .frame(width: 34, height: 34)
+                        .background(
+                            Circle()
+                                .fill(settings.translationDefaultSourceLanguage == .automatic ? Color.primary.opacity(0.04) : Color.accentColor.opacity(0.10))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(settings.translationDefaultSourceLanguage == .automatic)
+                .help("交换默认语言")
+                .padding(.top, 18)
+                .padding(.horizontal, 14)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("目标语言")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $settings.translationDefaultTargetLanguage) {
+                        ForEach(TranslationLanguage.targetOptions) { language in
+                            Text(language.title).tag(language)
+                        }
+                    }
+                    .labelsHidden()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
     private var engineCard: some View {
         settingsCard {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("翻译引擎")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("勾选的引擎会出现在多引擎对照模式中。")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                settingPicker(title: "主引擎", selection: $settings.translationDefaultEngine, options: TranslationEngine.allCases)
-                    .frame(width: 190)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("翻译引擎")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("勾选的引擎会出现在翻译面板中。")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 132, maximum: 170), spacing: 10)], spacing: 10) {
@@ -305,56 +316,9 @@ struct TranslationSettingsView: View {
         }
     }
 
-    private func languagePicker(
-        title: String,
-        selection: Binding<TranslationLanguage>,
-        options: [TranslationLanguage]
-    ) -> some View {
-        HStack(spacing: 10) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 56, alignment: .leading)
-                .fixedSize()
-
-            Picker("", selection: selection) {
-                ForEach(options) { language in
-                    Text(language.title).tag(language)
-                }
-            }
-            .labelsHidden()
-            .frame(width: 150)
-        }
-        .frame(minWidth: 220, alignment: .leading)
-    }
-
-    private func settingPicker<T: Identifiable & Hashable>(
-        title: String,
-        selection: Binding<T>,
-        options: [T]
-    ) -> some View where T.ID == String {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-            Picker("", selection: selection) {
-                ForEach(options) { option in
-                    Text(optionTitle(option)).tag(option)
-                }
-            }
-            .labelsHidden()
-        }
-    }
-
-    private func optionTitle<T>(_ option: T) -> String {
-        if let engine = option as? TranslationEngine { return engine.shortTitle }
-        if let mode = option as? TranslationPanelMode { return mode.title }
-        return String(describing: option)
-    }
-
     private func engineTile(_ engine: TranslationEngine) -> some View {
         let isConfiguring = configurationEngine == engine
-        let isComparisonEnabled = settings.translationComparisonEngines.contains(engine)
+        let isEnabled = settings.translationEngines.contains(engine)
         let accent = engine == .appleSystem ? Color.blue : (engine == .openAI ? Color.green : Color.orange)
 
         return Button {
@@ -381,8 +345,8 @@ struct TranslationSettingsView: View {
                     .background(accent.opacity(0.12), in: Capsule())
 
                 Toggle("", isOn: Binding(
-                    get: { isComparisonEnabled },
-                    set: { settings.setTranslationComparisonEngine(engine, enabled: $0) }
+                    get: { isEnabled },
+                    set: { settings.setTranslationEngine(engine, enabled: $0) }
                 ))
                 .labelsHidden()
                 .toggleStyle(.checkbox)

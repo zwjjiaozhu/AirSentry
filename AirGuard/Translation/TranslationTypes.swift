@@ -95,19 +95,6 @@ enum TranslationLanguage: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-enum TranslationPanelMode: String, Codable, CaseIterable, Identifiable {
-    case single
-    case comparison
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .single: "单引擎"
-        case .comparison: "多引擎对照"
-        }
-    }
-}
 
 enum TranslationResultState: Equatable {
     case idle
