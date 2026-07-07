@@ -13,6 +13,13 @@ final class FinderSync: FIFinderSync {
         let fileName: String
         let systemImage: String
     }
+
+    /// “其他应用打开”中的应用元数据
+    private struct OpenWithAppMeta {
+        let name: String
+        let bundleID: String
+        let systemImage: String
+    }
     
     /// 默认模板元数据
     private let defaultTemplateMetas: [TemplateMeta] = [
@@ -25,14 +32,23 @@ final class FinderSync: FIFinderSync {
         TemplateMeta(id: "json", title: "JSON 配置", fileName: "新建配置.json", systemImage: "curlybraces.square"),
         TemplateMeta(id: "html", title: "HTML 页面", fileName: "新建页面.html", systemImage: "chevron.left.forwardslash.chevron.right")
     ]
+
+    /// 默认的“其他应用打开”应用列表
+    private let defaultOpenWithApps: [OpenWithAppMeta] = [
+        OpenWithAppMeta(name: "Terminal", bundleID: "com.apple.Terminal", systemImage: "terminal"),
+        OpenWithAppMeta(name: "iTerm", bundleID: "com.googlecode.iterm2", systemImage: "terminal.fill"),
+        OpenWithAppMeta(name: "VS Code", bundleID: "com.microsoft.VSCode", systemImage: "chevron.left.forwardslash.chevron.right"),
+        OpenWithAppMeta(name: "Sublime Text", bundleID: "com.sublimetext.4", systemImage: "doc.text")
+    ]
     
     /// 默认启用的菜单项 ID
-    private let defaultEnabledMenuItemIDs: Set<String> = ["newFile", "copyPath", "copyName", "openTerminal"]
+    private let defaultEnabledMenuItemIDs: Set<String> = ["newFile", "copyPath", "copyName"]
     
     // MARK: - 缓存配置（避免重复读取）
     
     private var cachedEnabledMenuItemIDs: Set<String>?
     private var cachedTemplateMetas: [TemplateMeta]?
+    private var cachedOpenWithApps: [OpenWithAppMeta]?
     private var lastConfigLoadTime: Date = .distantPast
     private let configCacheDuration: TimeInterval = 2.0
     
@@ -61,34 +77,41 @@ final class FinderSync: FIFinderSync {
     // MARK: - 配置加载（从 JSON 文件读取）
 
     /// 加载轻量配置（缓存 2 秒，避免频繁读取）
-    private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta]) {
+    private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta], openWithApps: [OpenWithAppMeta]) {
         let now = Date()
         if now.timeIntervalSince(lastConfigLoadTime) < configCacheDuration,
            let cachedIDs = cachedEnabledMenuItemIDs,
-           let cachedTemplates = cachedTemplateMetas {
-            return (cachedIDs, cachedTemplates)
+           let cachedTemplates = cachedTemplateMetas,
+           let cachedApps = cachedOpenWithApps {
+            return (cachedIDs, cachedTemplates, cachedApps)
         }
 
         let config = SuperRightClickSharedConfig.load()
 
         let enabledIDs: Set<String>
         let templates: [TemplateMeta]
+        let openWithApps: [OpenWithAppMeta]
 
         if let config = config {
             enabledIDs = Set(config.enabledMenuItemIDs)
             templates = config.templates.map { meta in
                 TemplateMeta(id: meta.id, title: meta.title, fileName: meta.fileName, systemImage: meta.systemImage)
             }
+            openWithApps = config.openWithApps.map { meta in
+                OpenWithAppMeta(name: meta.name, bundleID: meta.bundleID, systemImage: meta.systemImage)
+            }
         } else {
             enabledIDs = defaultEnabledMenuItemIDs
             templates = defaultTemplateMetas
+            openWithApps = defaultOpenWithApps
         }
 
         cachedEnabledMenuItemIDs = enabledIDs
         cachedTemplateMetas = templates.isEmpty ? defaultTemplateMetas : templates
+        cachedOpenWithApps = openWithApps.isEmpty ? defaultOpenWithApps : openWithApps
         lastConfigLoadTime = now
 
-        return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas)
+        return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas, cachedOpenWithApps ?? defaultOpenWithApps)
     }
     
     // MARK: - 菜单构建（轻量，不访问文件系统）
@@ -101,7 +124,7 @@ final class FinderSync: FIFinderSync {
         }
         
         // 仅读取轻量配置，不访问文件系统
-        let (enabledIDs, templateMetas) = loadLightweightConfig()
+        let (enabledIDs, templateMetas, openWithApps) = loadLightweightConfig()
         
         let menu = NSMenu(title: "AirSentry")
         let rootItem = NSMenuItem(title: "AirSentry", action: nil, keyEquivalent: "")
@@ -125,23 +148,24 @@ final class FinderSync: FIFinderSync {
         }
         
         // 2. 其他应用打开（同组，无分隔线）
-        if enabledIDs.contains("openWith") {
+        if enabledIDs.contains("openWith") && !openWithApps.isEmpty {
             let openWithItem = NSMenuItem(title: "其他应用打开", action: nil, keyEquivalent: "")
             openWithItem.image = menuImage(systemName: "app.badge")
             let openWithSubmenu = NSMenu(title: "其他应用打开")
-            for (appName, bundleID, icon) in [
-                ("Terminal", "com.apple.Terminal", "terminal"),
-                ("iTerm", "com.googlecode.iterm2", "terminal.fill"),
-                ("VS Code", "com.microsoft.VSCode", "chevron.left.forwardslash.chevron.right"),
-                ("Sublime Text", "com.sublimetext.4", "doc.text"),
-                ("选择其他应用…", "", "ellipsis.circle")
-            ] {
-                let item = NSMenuItem(title: appName, action: #selector(openWithApp(_:)), keyEquivalent: "")
+            for app in openWithApps {
+                let item = NSMenuItem(title: app.name, action: #selector(openWithApp(_:)), keyEquivalent: "")
                 item.target = self
-                item.image = menuImage(systemName: icon)
-                item.representedObject = bundleID
+                item.image = menuImage(systemName: app.systemImage)
+                item.representedObject = app.bundleID
                 openWithSubmenu.addItem(item)
             }
+            // 添加“选择其他应用”选项
+            let chooseItem = NSMenuItem(title: "选择其他应用…", action: #selector(openWithApp(_:)), keyEquivalent: "")
+            chooseItem.target = self
+            chooseItem.image = menuImage(systemName: "ellipsis.circle")
+            chooseItem.representedObject = ""
+            openWithSubmenu.addItem(NSMenuItem.separator())
+            openWithSubmenu.addItem(chooseItem)
             openWithItem.submenu = openWithSubmenu
             submenu.addItem(openWithItem)
         }
@@ -204,7 +228,7 @@ final class FinderSync: FIFinderSync {
         FinderExtensionLog.info("createNewFile called, title=\(sender.title)")
         
         // Finder Sync 不保留 representedObject，改用 title 查找模板
-        let (_, templateMetas) = loadLightweightConfig()
+        let (_, templateMetas, _) = loadLightweightConfig()
         guard let meta = templateMetas.first(where: { $0.title == sender.title }) else {
             FinderExtensionLog.info("FAIL: no template for title=\(sender.title), available=\(templateMetas.map(\.title).joined(separator: ","))")
             NSSound.beep()
@@ -226,13 +250,13 @@ final class FinderSync: FIFinderSync {
     }
     
     @objc private func copySelectedPath() {
-        guard let url = resolveTargetDirectoryForAction() else { return }
+        guard let url = resolveSelectedItem() else { return }
         FinderExtensionLog.info("copyPath: \(url.path)")
         forwardActionRequest(action: "copyPath", path: url.path, extra: nil)
     }
     
     @objc private func copySelectedName() {
-        guard let url = resolveTargetDirectoryForAction() else { return }
+        guard let url = resolveSelectedItem() else { return }
         FinderExtensionLog.info("copyName: \(url.lastPathComponent)")
         forwardActionRequest(action: "copyName", path: url.lastPathComponent, extra: nil)
     }
@@ -248,14 +272,8 @@ final class FinderSync: FIFinderSync {
     
     @objc private func openWithApp(_ sender: NSMenuItem) {
         // 用 title 查找 bundleID（Finder Sync 不保留 representedObject）
-        let bundleID: String
-        switch sender.title {
-        case "Terminal": bundleID = "com.apple.Terminal"
-        case "iTerm": bundleID = "com.googlecode.iterm2"
-        case "VS Code": bundleID = "com.microsoft.VSCode"
-        case "Sublime Text": bundleID = "com.sublimetext.4"
-        default: bundleID = ""
-        }
+        let (_, _, openWithApps) = loadLightweightConfig()
+        let bundleID = openWithApps.first { $0.name == sender.title }?.bundleID ?? ""
         guard let targetURL = FIFinderSyncController.default().selectedItemURLs()?.first else {
             NSSound.beep()
             return
@@ -326,6 +344,14 @@ final class FinderSync: FIFinderSync {
         }
         
         return nil
+    }
+    
+    /// 解析选中的文件或目录（返回选中项本身，不强制转父目录）
+    private func resolveSelectedItem() -> URL? {
+        if let selectedURL = FIFinderSyncController.default().selectedItemURLs()?.first {
+            return selectedURL
+        }
+        return FIFinderSyncController.default().targetedURL()
     }
     
     // MARK: - 请求转发

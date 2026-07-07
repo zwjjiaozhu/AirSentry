@@ -12,7 +12,7 @@ struct ToolboxView: View {
     @StateObject private var superRightClickStore = SuperRightClickStore()
     @StateObject private var finderAuthorizationStore = FinderNewFileAuthorizationStore()
     @StateObject private var imageProcessingStore = ImageProcessingStore()
-    @State private var selectedTool: ToolboxSection = .storage
+    @State private var selectedTool: ToolboxSection = .appLauncher
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
     @State private var isRecordingAppLauncherShortcut = false
@@ -1612,6 +1612,8 @@ struct ToolboxView: View {
     private var superRightClickDetailSection: some View {
         if selectedSuperRightClickMenuItemID == SuperRightClickStore.newFileMenuItemID {
             superRightClickNewFileDetailSection
+        } else if selectedSuperRightClickMenuItemID == SuperRightClickStore.openWithMenuItemID {
+            superRightClickOpenWithDetailSection
         } else if let menuItem = superRightClickStore.menuItem(withID: selectedSuperRightClickMenuItemID) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("功能详情")
@@ -1689,6 +1691,61 @@ struct ToolboxView: View {
                 }
             }
         }
+    }
+
+    private var superRightClickOpenWithDetailSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("其他应用打开")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Spacer()
+                Text("应用排序")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                ForEach(Array(superRightClickStore.openWithApps.enumerated()), id: \.element.id) { index, app in
+                    superRightClickOpenWithAppRow(app)
+
+                    if index < superRightClickStore.openWithApps.count - 1 {
+                        Divider().padding(.leading, 44)
+                    }
+                }
+            }
+        }
+    }
+
+    private func superRightClickOpenWithAppRow(_ app: SuperRightClickOpenWithApp) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: app.systemImage)
+                .font(.system(size: 16))
+                .foregroundStyle(.purple)
+                .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app.name)
+                    .font(.system(size: 13.5, weight: .medium))
+                Text(app.bundleID)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { app.isEnabled },
+                set: { superRightClickStore.setOpenWithApp(app.id, isEnabled: $0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private var superRightClickPreviewSection: some View {
@@ -2302,9 +2359,18 @@ private struct SuperRightClickTemplate: Identifiable, Codable, Equatable, Hashab
     }
 }
 
+private struct SuperRightClickOpenWithApp: Identifiable, Codable, Equatable, Hashable {
+    let id: String
+    let name: String
+    let bundleID: String
+    let systemImage: String
+    var isEnabled: Bool
+}
+
 @MainActor
 private final class SuperRightClickStore: ObservableObject {
     static let newFileMenuItemID = "newFile"
+    static let openWithMenuItemID = "openWith"
     static let defaultSelectedMenuItemID = newFileMenuItemID
 
     @Published var menuItems: [SuperRightClickMenuItem] {
@@ -2315,6 +2381,10 @@ private final class SuperRightClickStore: ObservableObject {
         didSet { saveTemplates(); syncToSharedConfig() }
     }
 
+    @Published var openWithApps: [SuperRightClickOpenWithApp] {
+        didSet { saveOpenWithApps(); syncToSharedConfig() }
+    }
+
     var enabledMenuItems: [SuperRightClickMenuItem] {
         menuItems.filter(\.isEnabled)
     }
@@ -2323,12 +2393,17 @@ private final class SuperRightClickStore: ObservableObject {
         templates.filter(\.isEnabled)
     }
 
+    var enabledOpenWithApps: [SuperRightClickOpenWithApp] {
+        openWithApps.filter(\.isEnabled)
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         menuItems = Self.loadMenuItems(from: defaults)
         templates = Self.loadTemplates(from: defaults)
+        openWithApps = Self.loadOpenWithApps(from: defaults)
         // 初始化时同步配置到共享文件，确保 Finder 扩展能读取
         syncToSharedConfig()
     }
@@ -2345,6 +2420,11 @@ private final class SuperRightClickStore: ObservableObject {
     func setTemplate(_ templateID: String, isEnabled: Bool) {
         guard let index = templates.firstIndex(where: { $0.id == templateID }) else { return }
         templates[index].isEnabled = isEnabled
+    }
+
+    func setOpenWithApp(_ appID: String, isEnabled: Bool) {
+        guard let index = openWithApps.firstIndex(where: { $0.id == appID }) else { return }
+        openWithApps[index].isEnabled = isEnabled
     }
 
     func moveMenuItem(id: String, near targetID: String) {
@@ -2368,6 +2448,7 @@ private final class SuperRightClickStore: ObservableObject {
     func resetTemplates() {
         menuItems = Self.defaultMenuItems
         templates = Self.defaultTemplates
+        openWithApps = Self.defaultOpenWithApps
     }
 
     private func saveMenuItems() {
@@ -2385,6 +2466,15 @@ private final class SuperRightClickStore: ObservableObject {
             defaults.set(data, forKey: Keys.templates)
         } catch {
             NSLog("AirSentry super right click templates save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveOpenWithApps() {
+        do {
+            let data = try JSONEncoder().encode(openWithApps)
+            defaults.set(data, forKey: Keys.openWithApps)
+        } catch {
+            NSLog("AirSentry super right click openWithApps save failed: \(error.localizedDescription)")
         }
     }
 
@@ -2406,6 +2496,16 @@ private final class SuperRightClickStore: ObservableObject {
         }
 
         return mergedTemplates(decoded)
+    }
+
+    private static func loadOpenWithApps(from defaults: UserDefaults) -> [SuperRightClickOpenWithApp] {
+        guard let data = defaults.data(forKey: Keys.openWithApps),
+              let decoded = try? JSONDecoder().decode([SuperRightClickOpenWithApp].self, from: data),
+              !decoded.isEmpty else {
+            return defaultOpenWithApps
+        }
+
+        return mergedOpenWithApps(decoded)
     }
 
     private static func mergedMenuItems(_ decoded: [SuperRightClickMenuItem]) -> [SuperRightClickMenuItem] {
@@ -2433,12 +2533,23 @@ private final class SuperRightClickStore: ObservableObject {
         return preserved + missing
     }
 
+    private static func mergedOpenWithApps(_ decoded: [SuperRightClickOpenWithApp]) -> [SuperRightClickOpenWithApp] {
+        let knownApps = Dictionary(uniqueKeysWithValues: defaultOpenWithApps.map { ($0.id, $0) })
+        let decodedIDs = Set(decoded.map(\.id))
+        let preserved = decoded.compactMap { savedApp -> SuperRightClickOpenWithApp? in
+            guard var currentApp = knownApps[savedApp.id] else { return nil }
+            currentApp.isEnabled = savedApp.isEnabled
+            return currentApp
+        }
+        let missing = defaultOpenWithApps.filter { !decodedIDs.contains($0.id) }
+        return preserved + missing
+    }
+
     private static let defaultMenuItems: [SuperRightClickMenuItem] = [
         SuperRightClickMenuItem(id: newFileMenuItemID, title: "新建文件", subtitle: "Excel、PPT、Word 等格式", detail: "在 Finder 右键菜单中展开常用文件模板，格式顺序可单独拖拽调整。", systemImage: "doc.badge.plus", accent: .blue, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "openWith", title: "其他应用打开", subtitle: "快速选择指定应用", detail: "为文件或目录提供快捷打开方式，后续可在这里维护应用列表。", systemImage: "app.badge", accent: .purple, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "favoriteFolders", title: "常用目录", subtitle: "复制或跳转常用路径", detail: "把高频目录放进右键菜单，便于快速复制路径或在 Finder 中打开。", systemImage: "folder.badge.gearshape", accent: .orange, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "airdrop", title: "隔空投送", subtitle: "调用系统 AirDrop", detail: "把系统隔空投送动作放到统一菜单中，减少在 Finder 分享菜单里的查找成本。", systemImage: "airplayaudio", accent: .teal, hasChildren: false, isEnabled: true),
-        SuperRightClickMenuItem(id: "openTerminal", title: "打开终端", subtitle: "在当前目录启动 Terminal", detail: "快速打开终端并自动切换到当前所选目录，便于执行命令行操作。", systemImage: "terminal", accent: .gray, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "copyPath", title: "拷贝路径", subtitle: "复制完整文件路径", detail: "复制所选文件或目录的完整路径，方便在终端、编辑器和脚本中使用。", systemImage: "doc.on.clipboard", accent: .gray, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "copyName", title: "拷贝名称", subtitle: "复制文件名", detail: "仅复制所选项目名称，不包含父级目录路径。", systemImage: "tag", accent: .gray, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "showHidden", title: "显示隐藏", subtitle: "切换隐藏文件可见性", detail: "一键切换 Finder 中隐藏文件的显示状态。", systemImage: "eye", accent: .orange, hasChildren: false, isEnabled: false),
@@ -2457,9 +2568,17 @@ private final class SuperRightClickStore: ObservableObject {
         SuperRightClickTemplate(id: "html", name: "HTML 页面", fileExtension: "html", systemImage: "chevron.left.forwardslash.chevron.right", accent: .orange, isEnabled: false)
     ]
 
+    private static let defaultOpenWithApps: [SuperRightClickOpenWithApp] = [
+        SuperRightClickOpenWithApp(id: "terminal", name: "Terminal", bundleID: "com.apple.Terminal", systemImage: "terminal", isEnabled: true),
+        SuperRightClickOpenWithApp(id: "iterm", name: "iTerm", bundleID: "com.googlecode.iterm2", systemImage: "terminal.fill", isEnabled: true),
+        SuperRightClickOpenWithApp(id: "vscode", name: "VS Code", bundleID: "com.microsoft.VSCode", systemImage: "chevron.left.forwardslash.chevron.right", isEnabled: true),
+        SuperRightClickOpenWithApp(id: "sublime", name: "Sublime Text", bundleID: "com.sublimetext.4", systemImage: "doc.text", isEnabled: true)
+    ]
+
     private enum Keys {
         static let menuItems = "superRightClickMenuItems"
         static let templates = "superRightClickTemplates"
+        static let openWithApps = "superRightClickOpenWithApps"
     }
 
     private func syncToSharedConfig() {
@@ -2477,10 +2596,20 @@ private final class SuperRightClickStore: ObservableObject {
             )
         }
 
+        let openWithAppMetas = openWithApps.filter(\.isEnabled).map { app in
+            SuperRightClickSharedConfig.OpenWithAppMeta(
+                id: app.id,
+                name: app.name,
+                bundleID: app.bundleID,
+                systemImage: app.systemImage
+            )
+        }
+
         let config = SuperRightClickSharedConfig(
             enabledMenuItemIDs: enabledMenuItemIDs,
             enabledTemplateIDs: enabledTemplateIDs,
-            templates: templateMetas
+            templates: templateMetas,
+            openWithApps: openWithAppMetas
         )
         config.save()
     }

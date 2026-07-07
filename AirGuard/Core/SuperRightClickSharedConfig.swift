@@ -8,12 +8,22 @@ struct SuperRightClickSharedConfig: Codable {
     let enabledTemplateIDs: [String]
     /// 文件模板元数据（不含 contents，仅用于菜单显示）
     let templates: [TemplateMeta]
+    /// “其他应用打开”子菜单中的应用列表（按顺序）
+    let openWithApps: [OpenWithAppMeta]
 
     /// 模板元数据（轻量）
     struct TemplateMeta: Codable {
         let id: String
         let title: String
         let fileName: String
+        let systemImage: String
+    }
+
+    /// “其他应用打开”中的应用元数据
+    struct OpenWithAppMeta: Codable {
+        let id: String
+        let name: String
+        let bundleID: String
         let systemImage: String
     }
 
