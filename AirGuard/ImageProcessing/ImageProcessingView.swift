@@ -10,8 +10,6 @@ struct ImageProcessingView: View {
 
             HStack(alignment: .top, spacing: 16) {
                 queueSection
-                    .frame(width: 260)
-                imagePreviewSection
                     .frame(maxWidth: .infinity)
                 controlsSection
                     .frame(width: 300)
@@ -45,6 +43,13 @@ struct ImageProcessingView: View {
 
             HStack(spacing: 8) {
                 if store.hasImages {
+                    Button {
+                        store.appendImages()
+                    } label: {
+                        Label("追加图片", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+
                     Button {
                         store.clearImages()
                     } label: {
@@ -165,66 +170,6 @@ struct ImageProcessingView: View {
         .buttonStyle(.plain)
     }
 
-    private var imagePreviewSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(store.selectedItem?.displayName ?? "预览")
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                if let outputBytes = store.selectedItem?.outputBytes {
-                    Text(ByteFormatter.string(from: UInt64(outputBytes)))
-                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.blue)
-                }
-            }
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(0.045))
-
-                if let previewImage = store.selectedItem?.previewImage {
-                    Image(nsImage: previewImage)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(18)
-                } else {
-                    VStack(spacing: 10) {
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 34, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Text(store.hasImages ? "当前图片无法预览" : "选择多张图片开始处理")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 330)
-
-            if let item = store.selectedItem {
-                HStack(spacing: 18) {
-                    imageMetric("原图", size: item.originalPixelSize, bytes: item.originalBytes)
-                    imageMetric("导出", size: item.previewPixelSize, bytes: item.outputBytes)
-
-                    Spacer()
-
-                    if let compressionRatioText = item.compressionRatioText {
-                        VStack(alignment: .trailing, spacing: 3) {
-                            Text(compressionRatioText)
-                                .font(.system(size: 18, weight: .bold).monospacedDigit())
-                                .foregroundStyle(.green)
-                            Text("单张预计减少")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(18)
-        .imageProcessingCard()
-    }
 
     private var controlsSection: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -241,7 +186,7 @@ struct ImageProcessingView: View {
 
                 controlDivider
 
-                controlGroup(title: "压缩方式", icon: "zip") {
+                controlGroup(title: "压缩方式", icon: "doc.zipper") {
                     Picker("", selection: $store.compressionMode) {
                         ForEach(ImageProcessingCompressionMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)
@@ -274,17 +219,53 @@ struct ImageProcessingView: View {
                 controlDivider
 
                 controlGroup(title: "尺寸调整", icon: "aspectratio") {
-                    Toggle("限制最长边", isOn: $store.shouldResize)
-                        .toggleStyle(.checkbox)
+                    Picker("", selection: $store.resizeMode) {
+                        ForEach(ImageProcessingResizeMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
 
-                    valueSlider(
-                        title: "最长边",
-                        value: $store.longestSidePixels,
-                        range: 320...6000,
-                        step: 20,
-                        suffix: "px"
-                    )
-                    .disabled(!store.shouldResize)
+                    if store.resizeMode == .longestSide {
+                        valueSlider(
+                            title: "最长边",
+                            value: $store.longestSidePixels,
+                            range: 320...6000,
+                            step: 20,
+                            suffix: "px"
+                        )
+                    }
+
+                    if store.resizeMode == .exactSize {
+                        HStack(spacing: 8) {
+                            exactDimensionField(
+                                label: "宽",
+                                value: $store.exactWidth,
+                                locked: store.lockAspectRatio,
+                                linkedValue: $store.exactHeight,
+                                sourceImage: store.selectedItem?.sourceImage
+                            )
+                            Text("×")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            exactDimensionField(
+                                label: "高",
+                                value: $store.exactHeight,
+                                locked: store.lockAspectRatio,
+                                linkedValue: $store.exactWidth,
+                                sourceImage: store.selectedItem?.sourceImage,
+                                isHeight: true
+                            )
+                            Text("px")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Toggle("锁定宽高比", isOn: $store.lockAspectRatio)
+                            .toggleStyle(.checkbox)
+                            .font(.system(size: 12))
+                    }
                 }
 
                 controlDivider
@@ -393,16 +374,34 @@ struct ImageProcessingView: View {
         }
     }
 
-    private func imageMetric(_ title: String, size: CGSize?, bytes: Int?) -> some View {
+
+    private func exactDimensionField(
+        label: String,
+        value: Binding<Double>,
+        locked: Bool,
+        linkedValue: Binding<Double>,
+        sourceImage: NSImage?,
+        isHeight: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 12))
+            Text(label)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            Text(pixelText(size))
-                .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
-            Text(byteText(bytes))
-                .font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(.secondary)
+            TextField("", value: value, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12, weight: .medium).monospacedDigit())
+                .frame(width: 68)
+                .onChange(of: value.wrappedValue) { newValue in
+                    guard locked, let sourceImage else { return }
+                    let pixelSize = sourceImage.pixelSize
+                    guard pixelSize.width > 0, pixelSize.height > 0 else { return }
+                    let ratio = pixelSize.width / pixelSize.height
+                    if isHeight {
+                        linkedValue.wrappedValue = floor(newValue * ratio)
+                    } else {
+                        linkedValue.wrappedValue = floor(newValue / ratio)
+                    }
+                }
         }
     }
 
@@ -427,11 +426,6 @@ struct ImageProcessingView: View {
         let original = byteText(item.originalBytes)
         let output = byteText(item.outputBytes)
         return "\(original) -> \(output)"
-    }
-
-    private func pixelText(_ size: CGSize?) -> String {
-        guard let size else { return "-" }
-        return "\(Int(size.width)) x \(Int(size.height))"
     }
 
     private func byteText(_ bytes: Int?) -> String {

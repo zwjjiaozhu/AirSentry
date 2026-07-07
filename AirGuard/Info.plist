@@ -29,6 +29,8 @@
     </array>
     <key>CFBundleVersion</key>
     <string>3</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

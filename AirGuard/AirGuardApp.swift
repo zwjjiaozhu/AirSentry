@@ -117,6 +117,10 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        activateFinderExtensionIfNeeded()
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         DistributedNotificationCenter.default().removeObserver(
             self,
@@ -133,6 +137,80 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
             name: .airSentryFinderActionRequest,
             object: nil
         )
+    }
+
+    // MARK: - Finder Extension Auto-Activation
+
+    /// 在主应用启动时自动注册并激活 Finder Sync 扩展，
+    /// 解决双击打开应用或杀掉重启后扩展未被加载的问题。
+    private func activateFinderExtensionIfNeeded() {
+        // App Sandbox 环境下无法执行 pluginkit/lsregister，跳过
+        // App Store 版本依赖系统安装流程自动注册扩展
+        guard ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] == nil else {
+            NSLog("AirSentry: skipping Finder extension activation in sandboxed environment")
+            return
+        }
+
+        // 仅当应用安装于 /Applications 时才激活扩展，
+        // 避免从 Xcode DerivedData 或构建目录启动时产生重复注册条目
+        let bundlePath = Bundle.main.bundlePath
+        guard bundlePath.hasPrefix("/Applications/") else {
+            NSLog("AirSentry: skipping Finder extension activation (app not in /Applications: %{public}@)", bundlePath)
+            return
+        }
+
+        DispatchQueue.global(qos: .utility).async {
+            guard let pluginsURL = Bundle.main.builtInPlugInsURL,
+                  let extensionURL = Self.findAppExtension(in: pluginsURL) else {
+                NSLog("AirSentry: Finder extension not found in app bundle")
+                return
+            }
+
+            // 1. 向 LaunchServices 重新注册，确保系统识别到扩展二进制
+            let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+            if FileManager.default.fileExists(atPath: lsregister) {
+                let registerProc = Process()
+                registerProc.executableURL = URL(fileURLWithPath: lsregister)
+                registerProc.arguments = ["-f", Bundle.main.bundlePath]
+                try? registerProc.run()
+                registerProc.waitUntilExit()
+                NSLog("AirSentry: LaunchServices registration completed")
+            }
+
+            // 2. 读取扩展的 Bundle Identifier
+            guard let extBundle = Bundle(url: extensionURL),
+                  let bundleID = extBundle.bundleIdentifier else {
+                NSLog("AirSentry: could not read Finder extension bundle identifier")
+                return
+            }
+
+            // 3. 使用 pluginkit 启用扩展（幂等操作，已启用时无副作用）
+            let pluginkit = Process()
+            pluginkit.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
+            pluginkit.arguments = ["-e", "use", "-i", bundleID]
+            do {
+                try pluginkit.run()
+                pluginkit.waitUntilExit()
+                if pluginkit.terminationStatus == 0 {
+                    NSLog("AirSentry: Finder extension activated (bundleID=%{public}@)", bundleID)
+                } else {
+                    NSLog("AirSentry: pluginkit exited with status %d for bundleID=%{public}@",
+                          pluginkit.terminationStatus, bundleID)
+                }
+            } catch {
+                NSLog("AirSentry: failed to run pluginkit: %{public}@", error.localizedDescription)
+            }
+        }
+    }
+
+    /// 在 PlugIns 目录中查找 .appex 扩展包
+    private static func findAppExtension(in pluginsURL: URL) -> URL? {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(at: pluginsURL,
+                                                          includingPropertiesForKeys: nil) else {
+            return nil
+        }
+        return contents.first { $0.pathExtension == "appex" }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

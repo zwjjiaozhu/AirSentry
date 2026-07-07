@@ -38,6 +38,14 @@ enum ImageProcessingCompressionMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum ImageProcessingResizeMode: String, CaseIterable, Identifiable {
+    case none = "不缩放"
+    case longestSide = "限制最长边"
+    case exactSize = "指定尺寸"
+
+    var id: String { rawValue }
+}
+
 enum ImageProcessingCropMode: String, CaseIterable, Identifiable {
     case none = "不裁剪"
     case square = "1:1"
@@ -107,10 +115,19 @@ final class ImageProcessingStore: ObservableObject {
     @Published var targetSizeKB: Double = 500 {
         didSet { rebuildPreviews() }
     }
+    @Published var resizeMode: ImageProcessingResizeMode = .longestSide {
+        didSet { rebuildPreviews() }
+    }
     @Published var longestSidePixels: Double = 1600 {
         didSet { rebuildPreviews() }
     }
-    @Published var shouldResize = true {
+    @Published var exactWidth: Double = 1440 {
+        didSet { rebuildPreviews() }
+    }
+    @Published var exactHeight: Double = 900 {
+        didSet { rebuildPreviews() }
+    }
+    @Published var lockAspectRatio = true {
         didSet { rebuildPreviews() }
     }
     @Published var cropMode: ImageProcessingCropMode = .none {
@@ -156,7 +173,18 @@ final class ImageProcessingStore: ObservableObject {
         panel.canChooseFiles = true
 
         guard panel.runModal() == .OK else { return }
-        loadImages(from: panel.urls)
+        loadImages(from: panel.urls, append: false)
+    }
+
+    func appendImages() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        guard panel.runModal() == .OK else { return }
+        loadImages(from: panel.urls, append: true)
     }
 
     func remove(_ item: ImageProcessingItem) {
@@ -211,19 +239,25 @@ final class ImageProcessingStore: ObservableObject {
     func reset() {
         qualityPercent = 72
         targetSizeKB = 500
+        resizeMode = .longestSide
         longestSidePixels = 1600
-        shouldResize = true
+        exactWidth = 1440
+        exactHeight = 900
+        lockAspectRatio = true
         cropMode = .none
         outputFormat = .jpeg
         compressionMode = .quality
         rebuildPreviews()
     }
 
-    private func loadImages(from urls: [URL]) {
-        var loadedItems: [ImageProcessingItem] = []
+    private func loadImages(from urls: [URL], append: Bool) {
+        var loadedItems: [ImageProcessingItem] = append ? items : []
         var failures: [String] = []
 
         for url in urls {
+            // 追加模式下跳过已存在的文件
+            if append, items.contains(where: { $0.url == url }) { continue }
+
             guard let image = NSImage(contentsOf: url) else {
                 failures.append(url.lastPathComponent)
                 continue
@@ -243,8 +277,14 @@ final class ImageProcessingStore: ObservableObject {
         }
 
         items = loadedItems
-        selectedItemID = loadedItems.first?.id
-        statusMessage = loadedItems.isEmpty ? nil : "已载入 \(loadedItems.count) 张图片"
+        if !append || selectedItemID == nil {
+            selectedItemID = loadedItems.first?.id
+        }
+        if append {
+            statusMessage = "已追加，队列共 \(loadedItems.count) 张图片"
+        } else {
+            statusMessage = loadedItems.isEmpty ? nil : "已载入 \(loadedItems.count) 张图片"
+        }
         errorMessage = failures.isEmpty ? nil : "有 \(failures.count) 张图片无法读取：\(failures.prefix(3).joined(separator: "、"))"
         rebuildPreviews()
     }
@@ -273,8 +313,14 @@ final class ImageProcessingStore: ObservableObject {
             workingImage = try workingImage.centerCropped(to: cropMode)
         }
 
-        if shouldResize, longestSidePixels > 0 {
+        if resizeMode == .longestSide, longestSidePixels > 0 {
             workingImage = try workingImage.resizedToFit(longestSide: CGFloat(longestSidePixels))
+        } else if resizeMode == .exactSize, exactWidth > 0, exactHeight > 0 {
+            workingImage = try workingImage.resizedToExact(
+                width: CGFloat(exactWidth),
+                height: CGFloat(exactHeight),
+                lockAspectRatio: lockAspectRatio
+            )
         }
 
         let data: Data
@@ -322,7 +368,7 @@ private struct ImageProcessingResult {
     let data: Data
 }
 
-private extension NSImage {
+extension NSImage {
     var pixelSize: CGSize {
         if let representation = representations.max(by: { ($0.pixelsWide * $0.pixelsHigh) < ($1.pixelsWide * $1.pixelsHigh) }) {
             return CGSize(width: representation.pixelsWide, height: representation.pixelsHigh)
@@ -373,16 +419,105 @@ private extension NSImage {
             height: max(1, floor(pixelSize.height * scale))
         )
 
+        return try resized(to: targetSize)
+    }
+
+    func resizedToExact(width: CGFloat, height: CGFloat, lockAspectRatio: Bool) throws -> NSImage {
+        guard width > 0, height > 0 else { return self }
+        let targetSize = CGSize(width: floor(width), height: floor(height))
+
+        if lockAspectRatio {
+            return try resizedToFitThenCrop(targetSize: targetSize)
+        } else {
+            return try resized(to: targetSize)
+        }
+    }
+
+    private func resized(to targetSize: CGSize) throws -> NSImage {
         guard let cgImage = cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             throw ImageProcessingError.renderFailed
         }
 
-        let image = NSImage(size: targetSize)
-        image.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        NSImage(cgImage: cgImage, size: pixelSize).draw(in: CGRect(origin: .zero, size: targetSize))
-        image.unlockFocus()
-        return image
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+        guard width > 0, height > 0 else { throw ImageProcessingError.renderFailed }
+
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw ImageProcessingError.renderFailed
+        }
+
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        guard let result = context.makeImage() else {
+            throw ImageProcessingError.renderFailed
+        }
+
+        return NSImage(cgImage: result, size: targetSize)
+    }
+
+    private func resizedToFitThenCrop(targetSize: CGSize) throws -> NSImage {
+        guard let cgImage = cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            throw ImageProcessingError.renderFailed
+        }
+
+        let srcWidth = CGFloat(cgImage.width)
+        let srcHeight = CGFloat(cgImage.height)
+        let srcRatio = srcWidth / srcHeight
+        let dstRatio = targetSize.width / targetSize.height
+
+        let scale: CGFloat
+        if srcRatio > dstRatio {
+            scale = targetSize.height / srcHeight
+        } else {
+            scale = targetSize.width / srcWidth
+        }
+
+        let scaledWidth = srcWidth * scale
+        let scaledHeight = srcHeight * scale
+        let cropX = (scaledWidth - targetSize.width) / 2
+        let cropY = (scaledHeight - targetSize.height) / 2
+
+        let width = Int(targetSize.width)
+        let height = Int(targetSize.height)
+        guard width > 0, height > 0 else { throw ImageProcessingError.renderFailed }
+
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw ImageProcessingError.renderFailed
+        }
+
+        context.interpolationQuality = .high
+        context.draw(
+            cgImage,
+            in: CGRect(
+                x: -cropX,
+                y: -cropY,
+                width: scaledWidth,
+                height: scaledHeight
+            )
+        )
+
+        guard let result = context.makeImage() else {
+            throw ImageProcessingError.renderFailed
+        }
+
+        return NSImage(cgImage: result, size: targetSize)
     }
 
     func encoded(as format: ImageProcessingOutputFormat, quality: CGFloat) throws -> Data {
