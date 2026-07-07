@@ -10,6 +10,8 @@ struct SuperRightClickSharedConfig: Codable {
     let templates: [TemplateMeta]
     /// “其他应用打开”子菜单中的应用列表（按顺序）
     let openWithApps: [OpenWithAppMeta]
+    /// “常用目录”子菜单中的目录列表（按顺序）
+    let favoriteFolders: [FavoriteFolderMeta]
 
     /// 模板元数据（轻量）
     struct TemplateMeta: Codable {
@@ -24,6 +26,14 @@ struct SuperRightClickSharedConfig: Codable {
         let id: String
         let name: String
         let bundleID: String
+        let systemImage: String
+    }
+
+    /// “常用目录”中的目录元数据
+    struct FavoriteFolderMeta: Codable {
+        let id: String
+        let name: String
+        let path: String
         let systemImage: String
     }
 

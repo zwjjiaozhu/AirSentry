@@ -1614,6 +1614,8 @@ struct ToolboxView: View {
             superRightClickNewFileDetailSection
         } else if selectedSuperRightClickMenuItemID == SuperRightClickStore.openWithMenuItemID {
             superRightClickOpenWithDetailSection
+        } else if selectedSuperRightClickMenuItemID == SuperRightClickStore.favoriteFoldersMenuItemID {
+            superRightClickFavoriteFoldersDetailSection
         } else if let menuItem = superRightClickStore.menuItem(withID: selectedSuperRightClickMenuItemID) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("功能详情")
@@ -1740,6 +1742,61 @@ struct ToolboxView: View {
             Toggle("", isOn: Binding(
                 get: { app.isEnabled },
                 set: { superRightClickStore.setOpenWithApp(app.id, isEnabled: $0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private var superRightClickFavoriteFoldersDetailSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("常用目录")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Spacer()
+                Text("目录排序")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            VStack(spacing: 0) {
+                ForEach(Array(superRightClickStore.favoriteFolders.enumerated()), id: \.element.id) { index, folder in
+                    superRightClickFavoriteFolderRow(folder)
+
+                    if index < superRightClickStore.favoriteFolders.count - 1 {
+                        Divider().padding(.leading, 44)
+                    }
+                }
+            }
+        }
+    }
+
+    private func superRightClickFavoriteFolderRow(_ folder: SuperRightClickFavoriteFolder) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: folder.systemImage)
+                .font(.system(size: 16))
+                .foregroundStyle(.orange)
+                .frame(width: 22, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(folder.name)
+                    .font(.system(size: 13.5, weight: .medium))
+                Text(folder.path)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { folder.isEnabled },
+                set: { superRightClickStore.setFavoriteFolder(folder.id, isEnabled: $0) }
             ))
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -2367,10 +2424,19 @@ private struct SuperRightClickOpenWithApp: Identifiable, Codable, Equatable, Has
     var isEnabled: Bool
 }
 
+private struct SuperRightClickFavoriteFolder: Identifiable, Codable, Equatable, Hashable {
+    let id: String
+    let name: String
+    let path: String
+    let systemImage: String
+    var isEnabled: Bool
+}
+
 @MainActor
 private final class SuperRightClickStore: ObservableObject {
     static let newFileMenuItemID = "newFile"
     static let openWithMenuItemID = "openWith"
+    static let favoriteFoldersMenuItemID = "favoriteFolders"
     static let defaultSelectedMenuItemID = newFileMenuItemID
 
     @Published var menuItems: [SuperRightClickMenuItem] {
@@ -2385,6 +2451,10 @@ private final class SuperRightClickStore: ObservableObject {
         didSet { saveOpenWithApps(); syncToSharedConfig() }
     }
 
+    @Published var favoriteFolders: [SuperRightClickFavoriteFolder] {
+        didSet { saveFavoriteFolders(); syncToSharedConfig() }
+    }
+
     var enabledMenuItems: [SuperRightClickMenuItem] {
         menuItems.filter(\.isEnabled)
     }
@@ -2397,6 +2467,10 @@ private final class SuperRightClickStore: ObservableObject {
         openWithApps.filter(\.isEnabled)
     }
 
+    var enabledFavoriteFolders: [SuperRightClickFavoriteFolder] {
+        favoriteFolders.filter(\.isEnabled)
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -2404,6 +2478,7 @@ private final class SuperRightClickStore: ObservableObject {
         menuItems = Self.loadMenuItems(from: defaults)
         templates = Self.loadTemplates(from: defaults)
         openWithApps = Self.loadOpenWithApps(from: defaults)
+        favoriteFolders = Self.loadFavoriteFolders(from: defaults)
         // 初始化时同步配置到共享文件，确保 Finder 扩展能读取
         syncToSharedConfig()
     }
@@ -2425,6 +2500,11 @@ private final class SuperRightClickStore: ObservableObject {
     func setOpenWithApp(_ appID: String, isEnabled: Bool) {
         guard let index = openWithApps.firstIndex(where: { $0.id == appID }) else { return }
         openWithApps[index].isEnabled = isEnabled
+    }
+
+    func setFavoriteFolder(_ folderID: String, isEnabled: Bool) {
+        guard let index = favoriteFolders.firstIndex(where: { $0.id == folderID }) else { return }
+        favoriteFolders[index].isEnabled = isEnabled
     }
 
     func moveMenuItem(id: String, near targetID: String) {
@@ -2449,6 +2529,7 @@ private final class SuperRightClickStore: ObservableObject {
         menuItems = Self.defaultMenuItems
         templates = Self.defaultTemplates
         openWithApps = Self.defaultOpenWithApps
+        favoriteFolders = Self.defaultFavoriteFolders
     }
 
     private func saveMenuItems() {
@@ -2475,6 +2556,15 @@ private final class SuperRightClickStore: ObservableObject {
             defaults.set(data, forKey: Keys.openWithApps)
         } catch {
             NSLog("AirSentry super right click openWithApps save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveFavoriteFolders() {
+        do {
+            let data = try JSONEncoder().encode(favoriteFolders)
+            defaults.set(data, forKey: Keys.favoriteFolders)
+        } catch {
+            NSLog("AirSentry super right click favoriteFolders save failed: \(error.localizedDescription)")
         }
     }
 
@@ -2506,6 +2596,16 @@ private final class SuperRightClickStore: ObservableObject {
         }
 
         return mergedOpenWithApps(decoded)
+    }
+
+    private static func loadFavoriteFolders(from defaults: UserDefaults) -> [SuperRightClickFavoriteFolder] {
+        guard let data = defaults.data(forKey: Keys.favoriteFolders),
+              let decoded = try? JSONDecoder().decode([SuperRightClickFavoriteFolder].self, from: data),
+              !decoded.isEmpty else {
+            return defaultFavoriteFolders
+        }
+
+        return mergedFavoriteFolders(decoded)
     }
 
     private static func mergedMenuItems(_ decoded: [SuperRightClickMenuItem]) -> [SuperRightClickMenuItem] {
@@ -2545,6 +2645,18 @@ private final class SuperRightClickStore: ObservableObject {
         return preserved + missing
     }
 
+    private static func mergedFavoriteFolders(_ decoded: [SuperRightClickFavoriteFolder]) -> [SuperRightClickFavoriteFolder] {
+        let knownFolders = Dictionary(uniqueKeysWithValues: defaultFavoriteFolders.map { ($0.id, $0) })
+        let decodedIDs = Set(decoded.map(\.id))
+        let preserved = decoded.compactMap { savedFolder -> SuperRightClickFavoriteFolder? in
+            guard var currentFolder = knownFolders[savedFolder.id] else { return nil }
+            currentFolder.isEnabled = savedFolder.isEnabled
+            return currentFolder
+        }
+        let missing = defaultFavoriteFolders.filter { !decodedIDs.contains($0.id) }
+        return preserved + missing
+    }
+
     private static let defaultMenuItems: [SuperRightClickMenuItem] = [
         SuperRightClickMenuItem(id: newFileMenuItemID, title: "新建文件", subtitle: "Excel、PPT、Word 等格式", detail: "在 Finder 右键菜单中展开常用文件模板，格式顺序可单独拖拽调整。", systemImage: "doc.badge.plus", accent: .blue, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "openWith", title: "其他应用打开", subtitle: "快速选择指定应用", detail: "为文件或目录提供快捷打开方式，后续可在这里维护应用列表。", systemImage: "app.badge", accent: .purple, hasChildren: true, isEnabled: true),
@@ -2575,10 +2687,18 @@ private final class SuperRightClickStore: ObservableObject {
         SuperRightClickOpenWithApp(id: "sublime", name: "Sublime Text", bundleID: "com.sublimetext.4", systemImage: "doc.text", isEnabled: true)
     ]
 
+    private static let defaultFavoriteFolders: [SuperRightClickFavoriteFolder] = [
+        SuperRightClickFavoriteFolder(id: "desktop", name: "桌面", path: "~/Desktop", systemImage: "desktopcomputer", isEnabled: true),
+        SuperRightClickFavoriteFolder(id: "documents", name: "文稿", path: "~/Documents", systemImage: "doc", isEnabled: true),
+        SuperRightClickFavoriteFolder(id: "downloads", name: "下载", path: "~/Downloads", systemImage: "tray.and.arrow.down", isEnabled: true),
+        SuperRightClickFavoriteFolder(id: "applications", name: "应用程序", path: "/Applications", systemImage: "app", isEnabled: true)
+    ]
+
     private enum Keys {
         static let menuItems = "superRightClickMenuItems"
         static let templates = "superRightClickTemplates"
         static let openWithApps = "superRightClickOpenWithApps"
+        static let favoriteFolders = "superRightClickFavoriteFolders"
     }
 
     private func syncToSharedConfig() {
@@ -2605,11 +2725,21 @@ private final class SuperRightClickStore: ObservableObject {
             )
         }
 
+        let favoriteFolderMetas = favoriteFolders.filter(\.isEnabled).map { folder in
+            SuperRightClickSharedConfig.FavoriteFolderMeta(
+                id: folder.id,
+                name: folder.name,
+                path: folder.path,
+                systemImage: folder.systemImage
+            )
+        }
+
         let config = SuperRightClickSharedConfig(
             enabledMenuItemIDs: enabledMenuItemIDs,
             enabledTemplateIDs: enabledTemplateIDs,
             templates: templateMetas,
-            openWithApps: openWithAppMetas
+            openWithApps: openWithAppMetas,
+            favoriteFolders: favoriteFolderMetas
         )
         config.save()
     }

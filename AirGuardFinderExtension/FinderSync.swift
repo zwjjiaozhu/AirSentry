@@ -20,6 +20,13 @@ final class FinderSync: FIFinderSync {
         let bundleID: String
         let systemImage: String
     }
+
+    /// “常用目录”中的目录元数据
+    private struct FavoriteFolderMeta {
+        let name: String
+        let path: String
+        let systemImage: String
+    }
     
     /// 默认模板元数据
     private let defaultTemplateMetas: [TemplateMeta] = [
@@ -40,6 +47,14 @@ final class FinderSync: FIFinderSync {
         OpenWithAppMeta(name: "VS Code", bundleID: "com.microsoft.VSCode", systemImage: "chevron.left.forwardslash.chevron.right"),
         OpenWithAppMeta(name: "Sublime Text", bundleID: "com.sublimetext.4", systemImage: "doc.text")
     ]
+
+    /// 默认的常用目录列表
+    private let defaultFavoriteFolders: [FavoriteFolderMeta] = [
+        FavoriteFolderMeta(name: "桌面", path: "~/Desktop", systemImage: "desktopcomputer"),
+        FavoriteFolderMeta(name: "文稿", path: "~/Documents", systemImage: "doc"),
+        FavoriteFolderMeta(name: "下载", path: "~/Downloads", systemImage: "tray.and.arrow.down"),
+        FavoriteFolderMeta(name: "应用程序", path: "/Applications", systemImage: "app")
+    ]
     
     /// 默认启用的菜单项 ID
     private let defaultEnabledMenuItemIDs: Set<String> = ["newFile", "copyPath", "copyName"]
@@ -49,6 +64,7 @@ final class FinderSync: FIFinderSync {
     private var cachedEnabledMenuItemIDs: Set<String>?
     private var cachedTemplateMetas: [TemplateMeta]?
     private var cachedOpenWithApps: [OpenWithAppMeta]?
+    private var cachedFavoriteFolders: [FavoriteFolderMeta]?
     private var lastConfigLoadTime: Date = .distantPast
     private let configCacheDuration: TimeInterval = 2.0
     
@@ -77,13 +93,14 @@ final class FinderSync: FIFinderSync {
     // MARK: - 配置加载（从 JSON 文件读取）
 
     /// 加载轻量配置（缓存 2 秒，避免频繁读取）
-    private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta], openWithApps: [OpenWithAppMeta]) {
+    private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta], openWithApps: [OpenWithAppMeta], favoriteFolders: [FavoriteFolderMeta]) {
         let now = Date()
         if now.timeIntervalSince(lastConfigLoadTime) < configCacheDuration,
            let cachedIDs = cachedEnabledMenuItemIDs,
            let cachedTemplates = cachedTemplateMetas,
-           let cachedApps = cachedOpenWithApps {
-            return (cachedIDs, cachedTemplates, cachedApps)
+           let cachedApps = cachedOpenWithApps,
+           let cachedFolders = cachedFavoriteFolders {
+            return (cachedIDs, cachedTemplates, cachedApps, cachedFolders)
         }
 
         let config = SuperRightClickSharedConfig.load()
@@ -91,6 +108,7 @@ final class FinderSync: FIFinderSync {
         let enabledIDs: Set<String>
         let templates: [TemplateMeta]
         let openWithApps: [OpenWithAppMeta]
+        let favoriteFolders: [FavoriteFolderMeta]
 
         if let config = config {
             enabledIDs = Set(config.enabledMenuItemIDs)
@@ -100,18 +118,23 @@ final class FinderSync: FIFinderSync {
             openWithApps = config.openWithApps.map { meta in
                 OpenWithAppMeta(name: meta.name, bundleID: meta.bundleID, systemImage: meta.systemImage)
             }
+            favoriteFolders = config.favoriteFolders.map { meta in
+                FavoriteFolderMeta(name: meta.name, path: meta.path, systemImage: meta.systemImage)
+            }
         } else {
             enabledIDs = defaultEnabledMenuItemIDs
             templates = defaultTemplateMetas
             openWithApps = defaultOpenWithApps
+            favoriteFolders = defaultFavoriteFolders
         }
 
         cachedEnabledMenuItemIDs = enabledIDs
         cachedTemplateMetas = templates.isEmpty ? defaultTemplateMetas : templates
         cachedOpenWithApps = openWithApps.isEmpty ? defaultOpenWithApps : openWithApps
+        cachedFavoriteFolders = favoriteFolders.isEmpty ? defaultFavoriteFolders : favoriteFolders
         lastConfigLoadTime = now
 
-        return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas, cachedOpenWithApps ?? defaultOpenWithApps)
+        return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas, cachedOpenWithApps ?? defaultOpenWithApps, cachedFavoriteFolders ?? defaultFavoriteFolders)
     }
     
     // MARK: - 菜单构建（轻量，不访问文件系统）
@@ -124,7 +147,7 @@ final class FinderSync: FIFinderSync {
         }
         
         // 仅读取轻量配置，不访问文件系统
-        let (enabledIDs, templateMetas, openWithApps) = loadLightweightConfig()
+        let (enabledIDs, templateMetas, openWithApps, favoriteFolders) = loadLightweightConfig()
         
         let menu = NSMenu(title: "AirSentry")
         let rootItem = NSMenuItem(title: "AirSentry", action: nil, keyEquivalent: "")
@@ -171,23 +194,24 @@ final class FinderSync: FIFinderSync {
         }
         
         // 3. 常用目录（同组，无分隔线）
-        if enabledIDs.contains("favoriteFolders") {
+        if enabledIDs.contains("favoriteFolders") && !favoriteFolders.isEmpty {
             let foldersItem = NSMenuItem(title: "常用目录", action: nil, keyEquivalent: "")
             foldersItem.image = menuImage(systemName: "folder.badge.gearshape")
             let foldersSubmenu = NSMenu(title: "常用目录")
-            for (name, path, icon) in [
-                ("桌面", "~/Desktop", "desktopcomputer"),
-                ("文稿", "~/Documents", "doc"),
-                ("下载", "~/Downloads", "tray.and.arrow.down"),
-                ("应用程序", "/Applications", "app"),
-                ("拷贝当前路径", "", "doc.on.clipboard")
-            ] {
-                let item = NSMenuItem(title: name, action: #selector(favoriteFolderAction(_:)), keyEquivalent: "")
+            for folder in favoriteFolders {
+                let item = NSMenuItem(title: folder.name, action: #selector(favoriteFolderAction(_:)), keyEquivalent: "")
                 item.target = self
-                item.image = menuImage(systemName: icon)
-                item.representedObject = path
+                item.image = menuImage(systemName: folder.systemImage)
+                item.representedObject = folder.path
                 foldersSubmenu.addItem(item)
             }
+            // 添加“拷贝当前路径”选项
+            let copyPathItem = NSMenuItem(title: "拷贝当前路径", action: #selector(favoriteFolderAction(_:)), keyEquivalent: "")
+            copyPathItem.target = self
+            copyPathItem.image = menuImage(systemName: "doc.on.clipboard")
+            copyPathItem.representedObject = ""
+            foldersSubmenu.addItem(NSMenuItem.separator())
+            foldersSubmenu.addItem(copyPathItem)
             foldersItem.submenu = foldersSubmenu
             submenu.addItem(foldersItem)
         }
@@ -228,7 +252,7 @@ final class FinderSync: FIFinderSync {
         FinderExtensionLog.info("createNewFile called, title=\(sender.title)")
         
         // Finder Sync 不保留 representedObject，改用 title 查找模板
-        let (_, templateMetas, _) = loadLightweightConfig()
+        let (_, templateMetas, _, _) = loadLightweightConfig()
         guard let meta = templateMetas.first(where: { $0.title == sender.title }) else {
             FinderExtensionLog.info("FAIL: no template for title=\(sender.title), available=\(templateMetas.map(\.title).joined(separator: ","))")
             NSSound.beep()
@@ -272,7 +296,7 @@ final class FinderSync: FIFinderSync {
     
     @objc private func openWithApp(_ sender: NSMenuItem) {
         // 用 title 查找 bundleID（Finder Sync 不保留 representedObject）
-        let (_, _, openWithApps) = loadLightweightConfig()
+        let (_, _, openWithApps, _) = loadLightweightConfig()
         let bundleID = openWithApps.first { $0.name == sender.title }?.bundleID ?? ""
         guard let targetURL = FIFinderSyncController.default().selectedItemURLs()?.first else {
             NSSound.beep()
