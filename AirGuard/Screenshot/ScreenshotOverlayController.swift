@@ -152,6 +152,7 @@ private struct ScreenshotOverlayView: View {
     @State private var resizingTextStartPoint: CGPoint?
     @State private var resizingTextStartSize: CGSize?
     @State private var resizingTextStartFontSize: CGFloat?
+    @State private var resizingTextHandle: TextResizeHandle?
     @State private var scalingTextAnnotationID: UUID?
     @State private var scalingTextStartSize: CGSize?
     @State private var scalingTextStartFontSize: CGFloat?
@@ -161,6 +162,7 @@ private struct ScreenshotOverlayView: View {
     @State private var mosaicSampler: ScreenshotOverlayMosaicSampler?
     @FocusState private var focusedTextAnnotationID: UUID?
     @State private var pendingFocusAnnotationID: UUID?
+    private let textBorderHitPadding: CGFloat = 8
 
     // Accessibility 控件检测相关状态
     @State private var controlHoverTarget: ScreenshotCaptureTarget?
@@ -353,9 +355,6 @@ private struct ScreenshotOverlayView: View {
                     .fill(Color.white.opacity(0.001))
                     .frame(width: selection.width, height: selection.height)
                     .position(x: selection.midX, y: selection.midY)
-                    .onHover { hovering in
-                        updateTextCursor(hovering && selectedTool == .text)
-                    }
                     .gesture(annotationGesture(in: selection))
             }
 
@@ -493,7 +492,10 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func drawSelectionOutline(for annotation: ScreenshotAnnotation, in context: inout GraphicsContext) {
-        guard selectedAnnotationID == annotation.id,
+        // 文本框的选中虚线由 TextField 自己的 overlay 绘制。
+        // 如果这里也绘制一次，文本标注会出现两层虚线。
+        guard annotation.tool != .text,
+              selectedAnnotationID == annotation.id,
               let rect = annotationBounds(annotation)?.insetBy(dx: -4, dy: -4) else { return }
         var path = Path()
         path.addRect(rect)
@@ -529,7 +531,10 @@ private struct ScreenshotOverlayView: View {
                         )
                         .overlay {
                             if selectedAnnotationID == annotation.id {
-                                textSelectionControls(for: annotation)
+                                ZStack {
+                                    textBorderDragLayer(for: annotation, in: selection)
+                                    textSelectionControls(for: annotation)
+                                }
                             }
                         }
                         .position(x: origin.x + textBounds(for: annotation).width / 2,
@@ -539,16 +544,46 @@ private struct ScreenshotOverlayView: View {
                         }
                         .onAppear {
                             if annotation.id == pendingFocusAnnotationID {
-                                focusedTextAnnotationID = annotation.id
-                                pendingFocusAnnotationID = nil
+                                DispatchQueue.main.async {
+                                    selectedAnnotationID = annotation.id
+                                    focusedTextAnnotationID = annotation.id
+                                    pendingFocusAnnotationID = nil
+                                }
                             }
                         }
-                        .simultaneousGesture(textMoveGesture(annotationID: annotation.id, in: selection))
                 }
             }
         }
         .frame(width: selection.width, height: selection.height)
         .position(x: selection.midX, y: selection.midY)
+    }
+
+    private func textBorderDragLayer(for annotation: ScreenshotAnnotation, in selection: CGRect) -> some View {
+        let size = textBounds(for: annotation)
+        let hit = textBorderHitPadding
+
+        return ZStack {
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: size.width + hit * 2, height: hit * 2)
+                .position(x: size.width / 2, y: 0)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: size.width + hit * 2, height: hit * 2)
+                .position(x: size.width / 2, y: size.height)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: hit * 2, height: size.height + hit * 2)
+                .position(x: 0, y: size.height / 2)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.001))
+                .frame(width: hit * 2, height: size.height + hit * 2)
+                .position(x: size.width, y: size.height / 2)
+        }
+        .gesture(textMoveGesture(annotationID: annotation.id, in: selection))
     }
 
     private func annotationGesture(in selection: CGRect) -> some Gesture {
@@ -769,9 +804,42 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func updateSelectionCursor(at point: CGPoint) {
-        // 文本模式由 updateTextCursor 管理
         if selectedTool == .text || focusedTextAnnotationID != nil {
-            popSelectionCursor()
+            resetTextCursor()
+
+            guard let selection = selectedRect, selection.contains(point) else {
+                popSelectionCursor()
+                return
+            }
+
+            let localPoint = CGPoint(
+                x: point.x - selection.minX,
+                y: point.y - selection.minY
+            )
+
+            if resizingTextAnnotationID != nil {
+                if let handle = resizingTextHandle {
+                    pushSelectionCursor(handle.cursor)
+                }
+                return
+            }
+
+            if movingTextAnnotationStartPoint != nil {
+                pushSelectionCursor(.closedHand)
+                return
+            }
+
+            if let handle = selectedTextResizeHandleHit(at: localPoint) {
+                pushSelectionCursor(handle.cursor)
+                return
+            }
+
+            if selectedTextAnnotationBorderHit(at: localPoint) != nil {
+                pushSelectionCursor(.openHand)
+                return
+            }
+
+            pushSelectionCursor(.iBeam)
             return
         }
 
@@ -944,13 +1012,16 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func textSelectionControls(for annotation: ScreenshotAnnotation) -> some View {
-        ZStack {
+        let bounds = CGRect(origin: .zero, size: textBounds(for: annotation))
+
+        return ZStack {
             ForEach(TextResizeHandle.allCases) { handle in
                 Circle()
                     .fill(Color.blue)
                     .frame(width: 10, height: 10)
                     .overlay(Circle().stroke(.white, lineWidth: 1.2))
-                    .position(handle.point(in: CGRect(origin: .zero, size: textBounds(for: annotation))))
+                    .contentShape(Circle().inset(by: -8))
+                    .position(handle.point(in: bounds))
                     .gesture(textResizeGesture(annotationID: annotation.id, handle: handle))
             }
 
@@ -964,21 +1035,14 @@ private struct ScreenshotOverlayView: View {
                     .background(Color.blue, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
             .buttonStyle(.plain)
-            .position(x: textBounds(for: annotation).width + 8, y: -8)
-
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 18, height: 18)
-                .background(Color.blue, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .position(x: textBounds(for: annotation).width + 8, y: textBounds(for: annotation).height + 8)
-                .gesture(textScaleGesture(annotationID: annotation.id))
+            .position(x: bounds.width + 8, y: -8)
         }
         .allowsHitTesting(true)
     }
 
     private func textResizeGesture(annotationID: UUID, handle: TextResizeHandle) -> some Gesture {
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+        // 使用 global 坐标，避免拉伸时 TextField/手柄自身移动导致 local 坐标系跟着变化。
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
                 guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
                       annotations[index].tool == .text,
@@ -987,30 +1051,29 @@ private struct ScreenshotOverlayView: View {
                 if resizingTextAnnotationID != annotationID {
                     resizingTextAnnotationID = annotationID
                     resizingTextStartPoint = origin
-                    resizingTextStartSize = annotations[index].textBoxSize
+                    resizingTextStartSize = textBounds(for: annotations[index])
                     resizingTextStartFontSize = annotations[index].fontSize
+                    resizingTextHandle = handle
                     selectedAnnotationID = annotationID
-                    focusedTextAnnotationID = annotationID
+                    focusedTextAnnotationID = nil
                 }
 
                 guard let startPoint = resizingTextStartPoint,
                       let startSize = resizingTextStartSize,
                       let startFontSize = resizingTextStartFontSize else { return }
 
-                let scale = handle.scale(
+                let result = handle.resized(
+                    origin: startPoint,
                     size: startSize,
-                    translation: value.translation
+                    translation: value.translation,
+                    bounds: selectionBoundsForTextResize()
                 )
+                let scale = handle.scale(startSize: startSize, newSize: result.size)
                 let fontSize = max(12, min(72, startFontSize * scale))
-                let size = textBoxSize(text: annotations[index].text, fontSize: fontSize)
-                let scaledOrigin = handle.originForScaledText(
-                    startOrigin: startPoint,
-                    startSize: startSize,
-                    newSize: size
-                )
-                annotations[index].points = [scaledOrigin]
+
+                annotations[index].points = [result.origin]
+                annotations[index].textBoxSize = result.size
                 annotations[index].fontSize = fontSize
-                annotations[index].textBoxSize = size
                 selectedFontSize = fontSize
             }
             .onEnded { _ in
@@ -1018,6 +1081,7 @@ private struct ScreenshotOverlayView: View {
                 resizingTextStartPoint = nil
                 resizingTextStartSize = nil
                 resizingTextStartFontSize = nil
+                resizingTextHandle = nil
             }
     }
 
@@ -1055,7 +1119,8 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func textMoveGesture(annotationID: UUID, in selection: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: 4, coordinateSpace: .local)
+        // 使用 global 坐标，避免拖动时 TextField 自身移动导致 local 坐标系跟着变化，出现抖动。
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .onChanged { value in
                 guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
                       annotations[index].tool == .text,
@@ -1064,7 +1129,7 @@ private struct ScreenshotOverlayView: View {
                 if movingTextAnnotationStartPoint == nil {
                     movingTextAnnotationStartPoint = origin
                     selectedAnnotationID = annotationID
-                    focusedTextAnnotationID = annotationID
+                    focusedTextAnnotationID = nil
                 }
 
                 guard let startPoint = movingTextAnnotationStartPoint else { return }
@@ -1359,8 +1424,8 @@ private struct ScreenshotOverlayView: View {
         )
         annotations.append(annotation)
         selectedAnnotationID = annotation.id
+        focusedTextAnnotationID = nil
         // 记录待聚焦的批注 ID，在 TextField 的 onAppear 中设置焦点
-        // 避免 DispatchQueue.main.async 无法取消导致的竞态条件
         pendingFocusAnnotationID = annotation.id
         redoAnnotations.removeAll()
     }
@@ -1500,6 +1565,56 @@ private struct ScreenshotOverlayView: View {
         DispatchQueue.main.async {
             annotations.removeAll { idsToRemove.contains($0.id) }
         }
+    }
+
+    private func textFrame(for annotation: ScreenshotAnnotation) -> CGRect? {
+        guard annotation.tool == .text,
+              let origin = annotation.points.first else { return nil }
+
+        return CGRect(origin: origin, size: textBounds(for: annotation))
+    }
+
+    private func isTextBorderHit(annotation: ScreenshotAnnotation, at localPoint: CGPoint) -> Bool {
+        guard selectedAnnotationID == annotation.id,
+              let rect = textFrame(for: annotation) else { return false }
+
+        let outer = rect.insetBy(dx: -textBorderHitPadding, dy: -textBorderHitPadding)
+        let inner = rect.insetBy(dx: textBorderHitPadding, dy: textBorderHitPadding)
+        return outer.contains(localPoint) && !inner.contains(localPoint)
+    }
+
+    private func selectedTextAnnotationBorderHit(at localPoint: CGPoint) -> UUID? {
+        guard let selectedAnnotationID,
+              let annotation = annotations.first(where: { $0.id == selectedAnnotationID }),
+              annotation.tool == .text,
+              isTextBorderHit(annotation: annotation, at: localPoint) else {
+            return nil
+        }
+
+        return selectedAnnotationID
+    }
+
+
+    private func selectedTextResizeHandleHit(at localPoint: CGPoint) -> TextResizeHandle? {
+        guard let selectedAnnotationID,
+              let annotation = annotations.first(where: { $0.id == selectedAnnotationID }),
+              annotation.tool == .text,
+              let rect = textFrame(for: annotation) else { return nil }
+
+        let hitRadius: CGFloat = 13
+        return TextResizeHandle.allCases.first { handle in
+            let point = handle.point(in: rect)
+            let dx = localPoint.x - point.x
+            let dy = localPoint.y - point.y
+            return dx * dx + dy * dy <= hitRadius * hitRadius
+        }
+    }
+
+    private func selectionBoundsForTextResize() -> CGRect {
+        guard let selectedRect else {
+            return CGRect(x: 0, y: 0, width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        }
+        return CGRect(origin: .zero, size: selectedRect.size)
     }
 
     private func annotationID(at point: CGPoint) -> UUID? {
@@ -2684,99 +2799,123 @@ private enum AnnotationResizeHandle: CaseIterable, Identifiable {
     }
 }
 
+
+private extension NSCursor {
+    static let diagonalResizeNWSE: NSCursor = {
+        if let image = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: nil) {
+            image.size = NSSize(width: 18, height: 18)
+            return NSCursor(image: image, hotSpot: NSPoint(x: 9, y: 9))
+        }
+        return .crosshair
+    }()
+
+    static let diagonalResizeNESW: NSCursor = {
+        if let image = NSImage(systemSymbolName: "arrow.up.right.and.arrow.down.left", accessibilityDescription: nil) {
+            image.size = NSSize(width: 18, height: 18)
+            return NSCursor(image: image, hotSpot: NSPoint(x: 9, y: 9))
+        }
+        return .crosshair
+    }()
+}
+
 private enum TextResizeHandle: CaseIterable, Identifiable {
     case topLeft
+    case top
     case topRight
+    case left
+    case right
     case bottomLeft
+    case bottom
     case bottomRight
 
     var id: Self { self }
+
+    var cursor: NSCursor {
+        switch self {
+        case .topLeft, .bottomRight:
+            return NSCursor.diagonalResizeNWSE
+        case .topRight, .bottomLeft:
+            return NSCursor.diagonalResizeNESW
+        case .top, .bottom:
+            return NSCursor.resizeUpDown
+        case .left, .right:
+            return NSCursor.resizeLeftRight
+        }
+    }
 
     func point(in rect: CGRect) -> CGPoint {
         switch self {
         case .topLeft:
             return CGPoint(x: rect.minX, y: rect.minY)
+        case .top:
+            return CGPoint(x: rect.midX, y: rect.minY)
         case .topRight:
             return CGPoint(x: rect.maxX, y: rect.minY)
+        case .left:
+            return CGPoint(x: rect.minX, y: rect.midY)
+        case .right:
+            return CGPoint(x: rect.maxX, y: rect.midY)
         case .bottomLeft:
             return CGPoint(x: rect.minX, y: rect.maxY)
+        case .bottom:
+            return CGPoint(x: rect.midX, y: rect.maxY)
         case .bottomRight:
             return CGPoint(x: rect.maxX, y: rect.maxY)
         }
     }
 
-    func resized(origin: CGPoint, size: CGSize, translation: CGSize) -> TextResizeResult {
+    func resized(origin: CGPoint, size: CGSize, translation: CGSize, bounds: CGRect) -> TextResizeResult {
         let minimumWidth: CGFloat = 72
         let minimumHeight: CGFloat = 26
-        var newOrigin = origin
-        var newSize = size
+        var minX = origin.x
+        var minY = origin.y
+        var maxX = origin.x + size.width
+        var maxY = origin.y + size.height
 
         switch self {
         case .topLeft:
-            newOrigin.x = origin.x + min(translation.width, size.width - minimumWidth)
-            newOrigin.y = origin.y + min(translation.height, size.height - minimumHeight)
-            newSize.width = max(minimumWidth, size.width - translation.width)
-            newSize.height = max(minimumHeight, size.height - translation.height)
+            minX = (origin.x + translation.width).clamped(to: bounds.minX...(maxX - minimumWidth))
+            minY = (origin.y + translation.height).clamped(to: bounds.minY...(maxY - minimumHeight))
+        case .top:
+            minY = (origin.y + translation.height).clamped(to: bounds.minY...(maxY - minimumHeight))
         case .topRight:
-            newOrigin.y = origin.y + min(translation.height, size.height - minimumHeight)
-            newSize.width = max(minimumWidth, size.width + translation.width)
-            newSize.height = max(minimumHeight, size.height - translation.height)
+            maxX = (maxX + translation.width).clamped(to: (minX + minimumWidth)...bounds.maxX)
+            minY = (origin.y + translation.height).clamped(to: bounds.minY...(maxY - minimumHeight))
+        case .left:
+            minX = (origin.x + translation.width).clamped(to: bounds.minX...(maxX - minimumWidth))
+        case .right:
+            maxX = (maxX + translation.width).clamped(to: (minX + minimumWidth)...bounds.maxX)
         case .bottomLeft:
-            newOrigin.x = origin.x + min(translation.width, size.width - minimumWidth)
-            newSize.width = max(minimumWidth, size.width - translation.width)
-            newSize.height = max(minimumHeight, size.height + translation.height)
+            minX = (origin.x + translation.width).clamped(to: bounds.minX...(maxX - minimumWidth))
+            maxY = (maxY + translation.height).clamped(to: (minY + minimumHeight)...bounds.maxY)
+        case .bottom:
+            maxY = (maxY + translation.height).clamped(to: (minY + minimumHeight)...bounds.maxY)
         case .bottomRight:
-            newSize.width = max(minimumWidth, size.width + translation.width)
-            newSize.height = max(minimumHeight, size.height + translation.height)
+            maxX = (maxX + translation.width).clamped(to: (minX + minimumWidth)...bounds.maxX)
+            maxY = (maxY + translation.height).clamped(to: (minY + minimumHeight)...bounds.maxY)
         }
 
-        return TextResizeResult(origin: newOrigin, size: newSize)
+        return TextResizeResult(
+            origin: CGPoint(x: minX, y: minY),
+            size: CGSize(width: maxX - minX, height: maxY - minY)
+        )
     }
 
-    func scale(size: CGSize, translation: CGSize) -> CGFloat {
-        let widthScale: CGFloat
-        let heightScale: CGFloat
+    func scale(startSize: CGSize, newSize: CGSize) -> CGFloat {
+        let widthScale = newSize.width / max(startSize.width, 1)
+        let heightScale = newSize.height / max(startSize.height, 1)
 
         switch self {
-        case .topLeft:
-            widthScale = (size.width - translation.width) / max(size.width, 1)
-            heightScale = (size.height - translation.height) / max(size.height, 1)
-        case .topRight:
-            widthScale = (size.width + translation.width) / max(size.width, 1)
-            heightScale = (size.height - translation.height) / max(size.height, 1)
-        case .bottomLeft:
-            widthScale = (size.width - translation.width) / max(size.width, 1)
-            heightScale = (size.height + translation.height) / max(size.height, 1)
-        case .bottomRight:
-            widthScale = (size.width + translation.width) / max(size.width, 1)
-            heightScale = (size.height + translation.height) / max(size.height, 1)
-        }
-
-        let candidate = abs(widthScale - 1) > abs(heightScale - 1) ? widthScale : heightScale
-        return max(0.45, min(3.0, candidate))
-    }
-
-    func originForScaledText(startOrigin: CGPoint, startSize: CGSize, newSize: CGSize) -> CGPoint {
-        switch self {
-        case .topLeft:
-            return CGPoint(
-                x: startOrigin.x + startSize.width - newSize.width,
-                y: startOrigin.y + startSize.height - newSize.height
-            )
-        case .topRight:
-            return CGPoint(
-                x: startOrigin.x,
-                y: startOrigin.y + startSize.height - newSize.height
-            )
-        case .bottomLeft:
-            return CGPoint(
-                x: startOrigin.x + startSize.width - newSize.width,
-                y: startOrigin.y
-            )
-        case .bottomRight:
-            return startOrigin
+        case .left, .right:
+            return widthScale
+        case .top, .bottom:
+            return heightScale
+        default:
+            // 四角拖动时，用变化更明显的方向作为字体缩放比例，拖横向或纵向都能明显反馈。
+            return abs(widthScale - 1) > abs(heightScale - 1) ? widthScale : heightScale
         }
     }
+
 }
 
 private struct TextResizeResult {
