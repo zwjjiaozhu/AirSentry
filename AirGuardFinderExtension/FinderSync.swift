@@ -210,7 +210,6 @@ final class FinderSync: FIFinderSync {
             copyPathItem.target = self
             copyPathItem.image = menuImage(systemName: "doc.on.clipboard")
             copyPathItem.representedObject = ""
-            foldersSubmenu.addItem(NSMenuItem.separator())
             foldersSubmenu.addItem(copyPathItem)
             foldersItem.submenu = foldersSubmenu
             submenu.addItem(foldersItem)

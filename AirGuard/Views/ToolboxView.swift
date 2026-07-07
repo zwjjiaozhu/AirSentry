@@ -1750,15 +1750,25 @@ struct ToolboxView: View {
         .padding(.vertical, 10)
     }
 
+    @State private var showAddFavoriteFolderSheet = false
+    @State private var newFolderPath = ""
+    @State private var newFolderName = ""
+    @State private var newFolderIcon = "folder"
+
     private var superRightClickFavoriteFoldersDetailSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("常用目录")
                     .font(.system(size: 13.5, weight: .semibold))
                 Spacer()
-                Text("目录排序")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                Button {
+                    showAddFavoriteFolderSheet = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -1775,6 +1785,99 @@ struct ToolboxView: View {
                 }
             }
         }
+        .sheet(isPresented: $showAddFavoriteFolderSheet) {
+            addFavoriteFolderSheet
+        }
+    }
+
+    private var addFavoriteFolderSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("添加常用目录")
+                .font(.system(size: 16, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("目录路径")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                HStack {
+                    TextField("选择目录…", text: $newFolderPath)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(true)
+                    Button("浏览") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.allowsMultipleSelection = false
+                        panel.prompt = "选择"
+                        if panel.runModal() == .OK, let url = panel.url {
+                            newFolderPath = url.path
+                            if newFolderName.isEmpty {
+                                newFolderName = url.lastPathComponent
+                            }
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("显示名称")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                TextField("名称", text: $newFolderName)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("图标 (SF Symbol)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    ForEach(["folder", "folder.fill", "externaldrive", "externaldrive.fill", "desktopcomputer", "doc", "tray.and.arrow.down", "app", "star", "heart"], id: \.self) { icon in
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(newFolderIcon == icon ? Color.orange.opacity(0.2) : Color.clear)
+                                .frame(width: 32, height: 32)
+                            Image(systemName: icon)
+                                .font(.system(size: 14))
+                                .foregroundStyle(newFolderIcon == icon ? .orange : .secondary)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            newFolderIcon = icon
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("取消") {
+                    resetAddFolderForm()
+                    showAddFavoriteFolderSheet = false
+                }
+                Button("添加") {
+                    if !newFolderPath.isEmpty && !newFolderName.isEmpty {
+                        superRightClickStore.addFavoriteFolder(
+                            path: newFolderPath,
+                            name: newFolderName,
+                            systemImage: newFolderIcon
+                        )
+                        resetAddFolderForm()
+                        showAddFavoriteFolderSheet = false
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(newFolderPath.isEmpty || newFolderName.isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private func resetAddFolderForm() {
+        newFolderPath = ""
+        newFolderName = ""
+        newFolderIcon = "folder"
     }
 
     private func superRightClickFavoriteFolderRow(_ folder: SuperRightClickFavoriteFolder) -> some View {
@@ -1793,6 +1896,17 @@ struct ToolboxView: View {
             }
 
             Spacer()
+
+            if folder.id.hasPrefix("custom_") {
+                Button {
+                    superRightClickStore.removeFavoriteFolder(folder.id)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
 
             Toggle("", isOn: Binding(
                 get: { folder.isEnabled },
@@ -2505,6 +2619,16 @@ private final class SuperRightClickStore: ObservableObject {
     func setFavoriteFolder(_ folderID: String, isEnabled: Bool) {
         guard let index = favoriteFolders.firstIndex(where: { $0.id == folderID }) else { return }
         favoriteFolders[index].isEnabled = isEnabled
+    }
+
+    func addFavoriteFolder(path: String, name: String, systemImage: String) {
+        let id = "custom_\(UUID().uuidString.prefix(8).lowercased())"
+        let folder = SuperRightClickFavoriteFolder(id: id, name: name, path: path, systemImage: systemImage, isEnabled: true)
+        favoriteFolders.append(folder)
+    }
+
+    func removeFavoriteFolder(_ folderID: String) {
+        favoriteFolders.removeAll { $0.id == folderID }
     }
 
     func moveMenuItem(id: String, near targetID: String) {
