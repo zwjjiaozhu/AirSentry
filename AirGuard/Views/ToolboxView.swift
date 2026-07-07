@@ -20,6 +20,7 @@ struct ToolboxView: View {
     @State private var isRecordingTranslationShortcut = false
     @State private var selectedSuperRightClickMenuItemID: String = SuperRightClickStore.defaultSelectedMenuItemID
     @State private var draggedSuperRightClickMenuItemID: String?
+    @StateObject private var pinDelegate = PinToolbarDelegate()
     @State private var draggedSuperRightClickTemplateID: String?
     @State private var localSortOption: AppUninstallerStore.SortOption = .name
     @State private var uninstallerIconCache: [String: NSImage] = [:]
@@ -32,6 +33,8 @@ struct ToolboxView: View {
         }
         .frame(minWidth: 820, minHeight: 580)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { setupTitleBarPinButton() }
+        .onChange(of: pinDelegate.isPinned) { _ in updatePinToolbarItem() }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("AirSentry.SelectSuperRightClickToolboxSection"))) { _ in
             selectedTool = .superRightClick
         }
@@ -160,6 +163,52 @@ struct ToolboxView: View {
                 endPoint: .bottomTrailing
             )
         )
+    }
+
+    private func togglePinOnTop() {
+        guard let window = NSApp.windows.first(where: {
+            $0.title.contains("工具箱") || $0.title.contains("AirSentry")
+        }) else { return }
+        pinDelegate.isPinned.toggle()
+        window.level = pinDelegate.isPinned ? .floating : .normal
+    }
+
+    private func setupTitleBarPinButton() {
+        pinDelegate.toggleAction = { togglePinOnTop() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            guard let window = NSApp.windows.first(where: {
+                $0.title.contains("工具箱") || $0.title.contains("AirSentry")
+            }) else { return }
+
+            let toolbar: NSToolbar
+            if let existing = window.toolbar {
+                toolbar = existing
+            } else {
+                toolbar = NSToolbar(identifier: "ToolboxToolbar")
+                toolbar.displayMode = .iconOnly
+                window.toolbar = toolbar
+            }
+
+            guard !toolbar.items.contains(where: { $0.itemIdentifier.rawValue == "PinOnTop" }) else { return }
+
+            toolbar.delegate = pinDelegate
+            toolbar.insertItem(withItemIdentifier: NSToolbarItem.Identifier("PinOnTop"), at: toolbar.items.count)
+        }
+    }
+
+    private func updatePinToolbarItem() {
+        guard let window = NSApp.windows.first(where: {
+            $0.title.contains("工具箱") || $0.title.contains("AirSentry")
+        }),
+        let toolbar = window.toolbar,
+        let item = toolbar.items.first(where: { $0.itemIdentifier.rawValue == "PinOnTop" }),
+        let button = item.view as? NSButton else { return }
+        let name = pinDelegate.isPinned ? "pin.fill" : "pin"
+        if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil) {
+            img.isTemplate = true
+            button.image = img
+        }
+        button.toolTip = pinDelegate.isPinned ? "取消置顶" : "置顶窗口"
     }
 
     @ViewBuilder
@@ -3197,5 +3246,52 @@ private struct ToolboxCardModifier: ViewModifier {
 
     private var strokeColor: Color {
         colorScheme == .dark ? Color.white.opacity(0.10) : Color.primary.opacity(0.08)
+    }
+}
+
+final class PinToolbarDelegate: NSObject, NSToolbarDelegate, ObservableObject {
+    @Published var isPinned = false
+    var toggleAction: (() -> Void)?
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard itemIdentifier.rawValue == "PinOnTop" else { return nil }
+
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 28, height: 24))
+        button.bezelStyle = .texturedRounded
+        button.setButtonType(.toggle)
+        button.isBordered = false
+        button.isTransparent = false
+        button.wantsLayer = true
+        let name = isPinned ? "pin.fill" : "pin"
+        if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil) {
+            img.isTemplate = true
+            button.image = img
+        }
+        button.imagePosition = .imageOnly
+        button.toolTip = isPinned ? "取消置顶" : "置顶窗口"
+        button.state = isPinned ? .on : .off
+        button.target = self
+        button.action = #selector(pinTapped(_:))
+        item.view = button
+        return item
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [NSToolbarItem.Identifier("PinOnTop")]
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [NSToolbarItem.Identifier("PinOnTop")]
+    }
+
+    @objc private func pinTapped(_ sender: NSButton) {
+        toggleAction?()
+        let name = sender.state == .on ? "pin.fill" : "pin"
+        if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil) {
+            img.isTemplate = true
+            sender.image = img
+        }
+        sender.toolTip = sender.state == .on ? "取消置顶" : "置顶窗口"
     }
 }
