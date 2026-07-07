@@ -160,6 +160,8 @@ private struct ScreenshotOverlayView: View {
     @State private var selectionCursorPushed: NSCursor?
     @State private var hoveredTargetID: ScreenshotCaptureTarget.ID?
     @State private var mosaicSampler: ScreenshotOverlayMosaicSampler?
+    @State private var colorPanelObserver: NSObjectProtocol?
+    @State private var isShortcutHintHiddenByHover = false
     @FocusState private var focusedTextAnnotationID: UUID?
     @State private var pendingFocusAnnotationID: UUID?
     private let textBorderHitPadding: CGFloat = 8
@@ -205,11 +207,13 @@ private struct ScreenshotOverlayView: View {
                             setTextColor: updateSelectedTextColor,
                             setFontName: updateSelectedFontName,
                             setTextBold: updateSelectedTextBold,
-                            setTextItalic: updateSelectedTextItalic
+                            setTextItalic: updateSelectedTextItalic,
+                            openTextColorPanel: openTextColorPanel
                         ) { toolbarAction in
                             handleToolbarAction(toolbarAction, selection: selection)
                         }
                         .position(toolbarPosition(for: selection, in: proxy.size))
+                        .zIndex(20)
                     }
                 } else if let target = hoveredTarget {
                     // 悬停窗口时挖出高亮区域，恢复原始亮度
@@ -224,11 +228,27 @@ private struct ScreenshotOverlayView: View {
                     targetHighlightLayer()
                 }
 
-                ScreenshotShortcutHintPanel()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, 22)
-                    .padding(.bottom, 24)
-                    .allowsHitTesting(false)
+                ZStack(alignment: .bottomTrailing) {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.001))
+                        .frame(width: 280, height: 310)
+                        .onHover { hovering in
+                            isShortcutHintHiddenByHover = hovering
+                        }
+
+                    ScreenshotShortcutHintPanel()
+                        .opacity(isShortcutHintHiddenByHover ? 0 : 1)
+                        .scaleEffect(isShortcutHintHiddenByHover ? 0.96 : 1)
+                        .animation(.easeOut(duration: 0.12), value: isShortcutHintHiddenByHover)
+                        .allowsHitTesting(false)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: shortcutHintAlignment(for: activeSelectionRect(in: proxy.size), in: proxy.size)
+                )
+                .padding(shortcutHintPadding(for: activeSelectionRect(in: proxy.size), in: proxy.size))
+                .zIndex(0)
             }
             .ignoresSafeArea()
             .contentShape(Rectangle())
@@ -255,6 +275,12 @@ private struct ScreenshotOverlayView: View {
                 popSelectionCursor()
                 movingAnnotationStartPoints = nil
                 resizingAnnotationStartPoints = nil
+
+                NSColorPanel.shared.orderOut(nil)
+                if let colorPanelObserver {
+                    NotificationCenter.default.removeObserver(colorPanelObserver)
+                    self.colorPanelObserver = nil
+                }
             }
             .onAppear {
                 if mosaicSampler == nil, let screenImage {
@@ -1290,6 +1316,62 @@ private struct ScreenshotOverlayView: View {
         return CGPoint(x: x, y: y)
     }
 
+
+    private func shortcutHintAlignment(for selection: CGRect?, in size: CGSize) -> Alignment {
+        shortcutHintPlacement(for: selection, in: size).alignment
+    }
+
+    private func shortcutHintPadding(for selection: CGRect?, in size: CGSize) -> EdgeInsets {
+        shortcutHintPlacement(for: selection, in: size).padding
+    }
+
+    private func shortcutHintPlacement(for selection: CGRect?, in size: CGSize) -> (alignment: Alignment, padding: EdgeInsets) {
+        let marginX: CGFloat = 22
+        let marginY: CGFloat = 24
+        let panelSize = CGSize(width: 286, height: 252)
+
+        struct Candidate {
+            let alignment: Alignment
+            let padding: EdgeInsets
+            let rect: CGRect
+        }
+
+        let candidates = [
+            Candidate(
+                alignment: .bottomTrailing,
+                padding: EdgeInsets(top: 0, leading: 0, bottom: marginY, trailing: marginX),
+                rect: CGRect(x: size.width - marginX - panelSize.width, y: size.height - marginY - panelSize.height, width: panelSize.width, height: panelSize.height)
+            ),
+            Candidate(
+                alignment: .topTrailing,
+                padding: EdgeInsets(top: marginY, leading: 0, bottom: 0, trailing: marginX),
+                rect: CGRect(x: size.width - marginX - panelSize.width, y: marginY, width: panelSize.width, height: panelSize.height)
+            ),
+            Candidate(
+                alignment: .bottomLeading,
+                padding: EdgeInsets(top: 0, leading: marginX, bottom: marginY, trailing: 0),
+                rect: CGRect(x: marginX, y: size.height - marginY - panelSize.height, width: panelSize.width, height: panelSize.height)
+            ),
+            Candidate(
+                alignment: .topLeading,
+                padding: EdgeInsets(top: marginY, leading: marginX, bottom: 0, trailing: 0),
+                rect: CGRect(x: marginX, y: marginY, width: panelSize.width, height: panelSize.height)
+            )
+        ]
+
+        guard let selection else { return (candidates[0].alignment, candidates[0].padding) }
+        let protectedRect = selection.insetBy(dx: -12, dy: -12)
+
+        if let candidate = candidates.first(where: { !$0.rect.intersects(protectedRect) }) {
+            return (candidate.alignment, candidate.padding)
+        }
+
+        let best = candidates.min { first, second in
+            first.rect.intersection(protectedRect).area < second.rect.intersection(protectedRect).area
+        } ?? candidates[0]
+        return (best.alignment, best.padding)
+    }
+
     private func handleKeyDown(_ event: NSEvent, in size: CGSize) {
         if event.keyCode == 53 {
             cancel()
@@ -1479,6 +1561,37 @@ private struct ScreenshotOverlayView: View {
         }
     }
 
+    private func openTextColorPanel() {
+        let panel = NSColorPanel.shared
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.color = NSColor(selectedTextColor)
+
+        // 截图遮罩窗口是 .screenSaver 层级，系统调色盘默认会被遮住，这里强制置顶到遮罩之上。
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+
+        if let colorPanelObserver {
+            NotificationCenter.default.removeObserver(colorPanelObserver)
+            self.colorPanelObserver = nil
+        }
+
+        colorPanelObserver = NotificationCenter.default.addObserver(
+            forName: NSColorPanel.colorDidChangeNotification,
+            object: panel,
+            queue: .main
+        ) { _ in
+            let color = Color(panel.color)
+            selectedTextColor = color
+            updateSelectedTextColor(color)
+        }
+
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
+    }
+
     private func updateSelectedFontName(_ fontName: String) {
         selectedFontName = fontName
         updateSelectedAnnotation { annotation in
@@ -1653,6 +1766,42 @@ private struct ScreenshotOverlayView: View {
     }
 }
 
+private extension CGRect {
+    var area: CGFloat {
+        guard !isNull, !isEmpty else { return 0 }
+        return width * height
+    }
+}
+
+private struct ScreenshotTextPaletteColor: Identifiable {
+    let id: String
+    let title: String
+    let color: Color
+    let nsColor: NSColor
+
+    static let common: [ScreenshotTextPaletteColor] = [
+        ScreenshotTextPaletteColor(id: "red", title: "红色", color: .red, nsColor: .systemRed),
+        ScreenshotTextPaletteColor(id: "yellow", title: "黄色", color: .yellow, nsColor: .systemYellow),
+        ScreenshotTextPaletteColor(id: "blue", title: "蓝色", color: .blue, nsColor: .systemBlue),
+        ScreenshotTextPaletteColor(id: "green", title: "绿色", color: .green, nsColor: .systemGreen),
+        ScreenshotTextPaletteColor(id: "white", title: "白色", color: .white, nsColor: .white),
+        ScreenshotTextPaletteColor(id: "black", title: "黑色", color: .black, nsColor: .black)
+    ]
+
+    var borderColor: Color {
+        id == "white" ? Color.black.opacity(0.35) : Color.white.opacity(0.72)
+    }
+
+    func matches(_ other: Color) -> Bool {
+        let lhs = nsColor.usingColorSpace(.sRGB) ?? nsColor
+        let rhs = NSColor(other).usingColorSpace(.sRGB) ?? NSColor(other)
+        return abs(lhs.redComponent - rhs.redComponent) < 0.02 &&
+            abs(lhs.greenComponent - rhs.greenComponent) < 0.02 &&
+            abs(lhs.blueComponent - rhs.blueComponent) < 0.02 &&
+            abs(lhs.alphaComponent - rhs.alphaComponent) < 0.02
+    }
+}
+
 private struct ScreenshotSelectionToolbar: View {
     @Binding var selectedTool: ScreenshotAnnotationTool?
     @Binding var selectedColor: ScreenshotAnnotationColor
@@ -1672,6 +1821,7 @@ private struct ScreenshotSelectionToolbar: View {
     let setFontName: (String) -> Void
     let setTextBold: (Bool) -> Void
     let setTextItalic: (Bool) -> Void
+    let openTextColorPanel: () -> Void
     let action: (ScreenshotToolbarAction) -> Void
     @State private var hoveredTooltip: String?
     @State private var hoveredItemID: String?
@@ -1761,22 +1911,40 @@ private struct ScreenshotSelectionToolbar: View {
                                 hoveredTooltip = hovering ? "字体大小" : nil
                             }
 
-                            ColorPicker("", selection: Binding(
-                                get: { selectedTextColor },
-                                set: { setTextColor($0) }
-                            ))
-                            .labelsHidden()
-                            .frame(width: 34, height: 34)
-                            .background(alignment: .bottom) {
-                                Rectangle()
-                                    .fill(Color.blue.opacity(0.95))
-                                    .frame(height: 2)
-                                    .opacity(hoveredItemID == "text-color" ? 1 : 0)
-                                    .padding(.horizontal, 4)
+                            ForEach(ScreenshotTextPaletteColor.common) { item in
+                                Button {
+                                    setTextColor(item.color)
+                                } label: {
+                                    toolbarItemFrame(id: "text-palette-\(item.id)", isSelected: item.matches(selectedTextColor)) {
+                                        Circle()
+                                            .fill(item.color)
+                                            .frame(width: 15, height: 15)
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(item.borderColor, lineWidth: item.matches(selectedTextColor) ? 2 : 1.2)
+                                            )
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .onHover { hovering in
+                                    hoveredItemID = hovering ? "text-palette-\(item.id)" : nil
+                                    hoveredTooltip = hovering ? "字体颜色：\(item.title)" : nil
+                                }
                             }
+
+                            Button {
+                                openTextColorPanel()
+                            } label: {
+                                toolbarItemFrame(id: "text-color-picker", isSelected: false) {
+                                    Image(systemName: "paintpalette")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.black.opacity(0.72))
+                                }
+                            }
+                            .buttonStyle(.plain)
                             .onHover { hovering in
-                                hoveredItemID = hovering ? "text-color" : nil
-                                hoveredTooltip = hovering ? "字体颜色" : nil
+                                hoveredItemID = hovering ? "text-color-picker" : nil
+                                hoveredTooltip = hovering ? "更多颜色" : nil
                             }
 
                             Menu {
