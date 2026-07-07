@@ -174,6 +174,17 @@ struct ImageProcessingView: View {
     private var controlsSection: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
+                // 模式切换
+                Picker("", selection: $store.processingMode) {
+                    ForEach(ImageProcessingMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                controlDivider
+
                 controlGroup(title: "输出格式", icon: "doc.badge.gearshape") {
                     Picker("", selection: $store.outputFormat) {
                         ForEach(ImageProcessingOutputFormat.allCases) { format in
@@ -186,85 +197,89 @@ struct ImageProcessingView: View {
 
                 controlDivider
 
-                controlGroup(title: "压缩方式", icon: "doc.zipper") {
-                    Picker("", selection: $store.compressionMode) {
-                        ForEach(ImageProcessingCompressionMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                // 压缩模式：显示压缩相关控件
+                if store.processingMode == .compress {
+                    controlGroup(title: "压缩方式", icon: "doc.zipper") {
+                        Picker("", selection: $store.compressionMode) {
+                            ForEach(ImageProcessingCompressionMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .disabled(!store.outputFormat.supportsQuality)
-
-                    if store.compressionMode == .targetSize, store.outputFormat.supportsQuality {
-                        valueSlider(
-                            title: "目标大小",
-                            value: $store.targetSizeKB,
-                            range: 50...5000,
-                            step: 50,
-                            suffix: "KB"
-                        )
-                    } else {
-                        valueSlider(
-                            title: "质量",
-                            value: $store.qualityPercent,
-                            range: 5...100,
-                            step: 1,
-                            suffix: "%"
-                        )
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                         .disabled(!store.outputFormat.supportsQuality)
+
+                        if store.compressionMode == .targetSize, store.outputFormat.supportsQuality {
+                            valueSlider(
+                                title: "目标大小",
+                                value: $store.targetSizeKB,
+                                range: 50...5000,
+                                step: 50,
+                                suffix: "KB"
+                            )
+                        } else {
+                            valueSlider(
+                                title: "质量",
+                                value: $store.qualityPercent,
+                                range: 5...100,
+                                step: 1,
+                                suffix: "%"
+                            )
+                            .disabled(!store.outputFormat.supportsQuality)
+                        }
                     }
                 }
 
-                controlDivider
-
-                controlGroup(title: "尺寸调整", icon: "aspectratio") {
-                    Picker("", selection: $store.resizeMode) {
-                        ForEach(ImageProcessingResizeMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                // 调尺寸模式：显示尺寸相关控件
+                if store.processingMode == .resize {
+                    controlGroup(title: "尺寸调整", icon: "aspectratio") {
+                        Picker("", selection: $store.resizeMode) {
+                            ForEach(ImageProcessingResizeMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
 
-                    if store.resizeMode == .longestSide {
-                        valueSlider(
-                            title: "最长边",
-                            value: $store.longestSidePixels,
-                            range: 320...6000,
-                            step: 20,
-                            suffix: "px"
-                        )
-                    }
-
-                    if store.resizeMode == .exactSize {
-                        HStack(spacing: 8) {
-                            exactDimensionField(
-                                label: "宽",
-                                value: $store.exactWidth,
-                                locked: store.lockAspectRatio,
-                                linkedValue: $store.exactHeight,
-                                sourceImage: store.selectedItem?.sourceImage
+                        if store.resizeMode == .longestSide {
+                            valueSlider(
+                                title: "最长边",
+                                value: $store.longestSidePixels,
+                                range: 320...6000,
+                                step: 20,
+                                suffix: "px"
                             )
-                            Text("×")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            exactDimensionField(
-                                label: "高",
-                                value: $store.exactHeight,
-                                locked: store.lockAspectRatio,
-                                linkedValue: $store.exactWidth,
-                                sourceImage: store.selectedItem?.sourceImage,
-                                isHeight: true
-                            )
-                            Text("px")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
                         }
 
-                        Toggle("锁定宽高比", isOn: $store.lockAspectRatio)
-                            .toggleStyle(.checkbox)
-                            .font(.system(size: 12))
+                        if store.resizeMode == .exactSize {
+                            HStack(spacing: 8) {
+                                exactDimensionField(
+                                    label: "宽",
+                                    value: $store.exactWidth,
+                                    locked: store.lockAspectRatio,
+                                    linkedValue: $store.exactHeight,
+                                    sourceImage: store.selectedItem?.sourceImage
+                                )
+                                Text("×")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                exactDimensionField(
+                                    label: "高",
+                                    value: $store.exactHeight,
+                                    locked: store.lockAspectRatio,
+                                    linkedValue: $store.exactWidth,
+                                    sourceImage: store.selectedItem?.sourceImage,
+                                    isHeight: true
+                                )
+                                Text("px")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Toggle("锁定宽高比", isOn: $store.lockAspectRatio)
+                                .toggleStyle(.checkbox)
+                                .font(.system(size: 12))
+                        }
                     }
                 }
 
@@ -277,6 +292,24 @@ struct ImageProcessingView: View {
                         }
                     }
                     .labelsHidden()
+                }
+
+                controlDivider
+
+                controlGroup(title: "导出方式", icon: "square.and.arrow.down") {
+                    Picker("", selection: $store.exportNaming) {
+                        ForEach(ImageProcessingExportNaming.allCases) { naming in
+                            Text(naming.rawValue).tag(naming)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    if store.exportNaming == .overwrite {
+                        Text("覆盖原文件，扩展名随输出格式变化")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 controlDivider

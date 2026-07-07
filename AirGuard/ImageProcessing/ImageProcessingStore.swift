@@ -68,6 +68,20 @@ enum ImageProcessingCropMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum ImageProcessingMode: String, CaseIterable, Identifiable {
+    case compress = "压缩"
+    case resize = "调尺寸"
+
+    var id: String { rawValue }
+}
+
+enum ImageProcessingExportNaming: String, CaseIterable, Identifiable {
+    case addSuffix = "添加后缀"
+    case overwrite = "覆盖原文件"
+
+    var id: String { rawValue }
+}
+
 struct ImageProcessingItem: Identifiable {
     let id = UUID()
     let url: URL
@@ -103,6 +117,9 @@ final class ImageProcessingStore: ObservableObject {
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
 
+    @Published var processingMode: ImageProcessingMode = .compress {
+        didSet { rebuildPreviews() }
+    }
     @Published var outputFormat: ImageProcessingOutputFormat = .jpeg {
         didSet { rebuildPreviews() }
     }
@@ -113,6 +130,9 @@ final class ImageProcessingStore: ObservableObject {
         didSet { rebuildPreviews() }
     }
     @Published var targetSizeKB: Double = 500 {
+        didSet { rebuildPreviews() }
+    }
+    @Published var exportNaming: ImageProcessingExportNaming = .addSuffix {
         didSet { rebuildPreviews() }
     }
     @Published var resizeMode: ImageProcessingResizeMode = .longestSide {
@@ -208,6 +228,14 @@ final class ImageProcessingStore: ObservableObject {
             return
         }
 
+        if exportNaming == .overwrite {
+            exportOverwrite()
+        } else {
+            exportToDirectory()
+        }
+    }
+
+    private func exportToDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -236,6 +264,27 @@ final class ImageProcessingStore: ObservableObject {
         errorMessage = failureMessages.first
     }
 
+    private func exportOverwrite() {
+        var successCount = 0
+        var failureMessages: [String] = []
+
+        for item in items {
+            do {
+                let result = try render(item.sourceImage)
+                // 覆盖原文件：保持原文件名，扩展名随输出格式变化
+                let originalBase = item.url.deletingPathExtension()
+                let outputURL = originalBase.appendingPathExtension(outputFormat.fileExtension)
+                try result.data.write(to: outputURL, options: .atomic)
+                successCount += 1
+            } catch {
+                failureMessages.append("\(item.displayName)：\(error.localizedDescription)")
+            }
+        }
+
+        statusMessage = "已覆盖 \(successCount) 张图片"
+        errorMessage = failureMessages.first
+    }
+
     func reset() {
         qualityPercent = 72
         targetSizeKB = 500
@@ -247,6 +296,7 @@ final class ImageProcessingStore: ObservableObject {
         cropMode = .none
         outputFormat = .jpeg
         compressionMode = .quality
+        exportNaming = .addSuffix
         rebuildPreviews()
     }
 
@@ -313,30 +363,40 @@ final class ImageProcessingStore: ObservableObject {
             workingImage = try workingImage.centerCropped(to: cropMode)
         }
 
-        if resizeMode == .longestSide, longestSidePixels > 0 {
-            workingImage = try workingImage.resizedToFit(longestSide: CGFloat(longestSidePixels))
-        } else if resizeMode == .exactSize, exactWidth > 0, exactHeight > 0 {
-            workingImage = try workingImage.resizedToExact(
-                width: CGFloat(exactWidth),
-                height: CGFloat(exactHeight),
-                lockAspectRatio: lockAspectRatio
-            )
-        }
+        switch processingMode {
+        case .compress:
+            // 压缩模式：只做裁剪 + 编码压缩，不改尺寸
+            let data: Data
+            if compressionMode == .targetSize, outputFormat.supportsQuality {
+                data = try workingImage.encoded(
+                    as: outputFormat,
+                    fittingTargetBytes: max(1, Int(targetSizeKB * 1024))
+                )
+            } else {
+                data = try workingImage.encoded(
+                    as: outputFormat,
+                    quality: CGFloat(qualityPercent / 100)
+                )
+            }
+            return ImageProcessingResult(image: workingImage, data: data)
 
-        let data: Data
-        if compressionMode == .targetSize, outputFormat.supportsQuality {
-            data = try workingImage.encoded(
-                as: outputFormat,
-                fittingTargetBytes: max(1, Int(targetSizeKB * 1024))
-            )
-        } else {
-            data = try workingImage.encoded(
+        case .resize:
+            // 调尺寸模式：裁剪 + 缩放，编码保持高质量
+            if resizeMode == .longestSide, longestSidePixels > 0 {
+                workingImage = try workingImage.resizedToFit(longestSide: CGFloat(longestSidePixels))
+            } else if resizeMode == .exactSize, exactWidth > 0, exactHeight > 0 {
+                workingImage = try workingImage.resizedToExact(
+                    width: CGFloat(exactWidth),
+                    height: CGFloat(exactHeight),
+                    lockAspectRatio: lockAspectRatio
+                )
+            }
+            let data = try workingImage.encoded(
                 as: outputFormat,
                 quality: CGFloat(qualityPercent / 100)
             )
+            return ImageProcessingResult(image: workingImage, data: data)
         }
-
-        return ImageProcessingResult(image: workingImage, data: data)
     }
 
     private func updateStatusAfterQueueChange() {

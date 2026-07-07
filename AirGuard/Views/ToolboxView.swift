@@ -546,6 +546,14 @@ struct ToolboxView: View {
 
             Spacer()
 
+            Toggle("显示菜单栏", isOn: Binding(
+                get: { superRightClickStore.showMenuBar },
+                set: { superRightClickStore.setShowMenuBar($0) }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .help("关闭后 Finder 右键菜单中不再显示 AirSentry 子菜单。")
+
             Button {
                 superRightClickStore.resetTemplates()
             } label: {
@@ -2618,6 +2626,10 @@ private final class SuperRightClickStore: ObservableObject {
         didSet { saveFavoriteFolders(); syncToSharedConfig() }
     }
 
+    @Published var showMenuBar: Bool {
+        didSet { saveShowMenuBar(); syncToSharedConfig() }
+    }
+
     var enabledMenuItems: [SuperRightClickMenuItem] {
         menuItems.filter(\.isEnabled)
     }
@@ -2642,6 +2654,7 @@ private final class SuperRightClickStore: ObservableObject {
         templates = Self.loadTemplates(from: defaults)
         openWithApps = Self.loadOpenWithApps(from: defaults)
         favoriteFolders = Self.loadFavoriteFolders(from: defaults)
+        showMenuBar = Self.loadShowMenuBar(from: defaults)
         // 初始化时同步配置到共享文件，确保 Finder 扩展能读取
         syncToSharedConfig()
     }
@@ -2703,6 +2716,11 @@ private final class SuperRightClickStore: ObservableObject {
         templates = Self.defaultTemplates
         openWithApps = Self.defaultOpenWithApps
         favoriteFolders = Self.defaultFavoriteFolders
+        showMenuBar = true
+    }
+
+    func setShowMenuBar(_ value: Bool) {
+        showMenuBar = value
     }
 
     private func saveMenuItems() {
@@ -2739,6 +2757,10 @@ private final class SuperRightClickStore: ObservableObject {
         } catch {
             NSLog("AirSentry super right click favoriteFolders save failed: \(error.localizedDescription)")
         }
+    }
+
+    private func saveShowMenuBar() {
+        defaults.set(showMenuBar, forKey: Keys.showMenuBar)
     }
 
     private static func loadMenuItems(from defaults: UserDefaults) -> [SuperRightClickMenuItem] {
@@ -2779,6 +2801,12 @@ private final class SuperRightClickStore: ObservableObject {
         }
 
         return mergedFavoriteFolders(decoded)
+    }
+
+    private static func loadShowMenuBar(from defaults: UserDefaults) -> Bool {
+        // 默认为 true：首次使用时显示菜单栏
+        guard defaults.object(forKey: Keys.showMenuBar) != nil else { return true }
+        return defaults.bool(forKey: Keys.showMenuBar)
     }
 
     private static func mergedMenuItems(_ decoded: [SuperRightClickMenuItem]) -> [SuperRightClickMenuItem] {
@@ -2872,6 +2900,7 @@ private final class SuperRightClickStore: ObservableObject {
         static let templates = "superRightClickTemplates"
         static let openWithApps = "superRightClickOpenWithApps"
         static let favoriteFolders = "superRightClickFavoriteFolders"
+        static let showMenuBar = "superRightClickShowMenuBar"
     }
 
     private func syncToSharedConfig() {
@@ -2912,7 +2941,8 @@ private final class SuperRightClickStore: ObservableObject {
             enabledTemplateIDs: enabledTemplateIDs,
             templates: templateMetas,
             openWithApps: openWithAppMetas,
-            favoriteFolders: favoriteFolderMetas
+            favoriteFolders: favoriteFolderMetas,
+            showMenuBar: showMenuBar
         )
         config.save()
     }

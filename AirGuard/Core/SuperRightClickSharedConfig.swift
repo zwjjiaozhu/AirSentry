@@ -10,8 +10,10 @@ struct SuperRightClickSharedConfig: Codable {
     let templates: [TemplateMeta]
     /// “其他应用打开”子菜单中的应用列表（按顺序）
     let openWithApps: [OpenWithAppMeta]
-    /// “常用目录”子菜单中的目录列表（按顺序）
+    /// "常用目录"子菜单中的目录列表（按顺序）
     let favoriteFolders: [FavoriteFolderMeta]
+    /// 是否在右键菜单中显示菜单栏（AirSentry 子菜单）
+    let showMenuBar: Bool
 
     /// 模板元数据（轻量）
     struct TemplateMeta: Codable {

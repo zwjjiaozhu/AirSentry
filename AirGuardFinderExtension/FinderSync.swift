@@ -65,6 +65,7 @@ final class FinderSync: FIFinderSync {
     private var cachedTemplateMetas: [TemplateMeta]?
     private var cachedOpenWithApps: [OpenWithAppMeta]?
     private var cachedFavoriteFolders: [FavoriteFolderMeta]?
+    private var cachedShowMenuBar: Bool?
     private var lastConfigLoadTime: Date = .distantPast
     private let configCacheDuration: TimeInterval = 2.0
     
@@ -93,14 +94,15 @@ final class FinderSync: FIFinderSync {
     // MARK: - 配置加载（从 JSON 文件读取）
 
     /// 加载轻量配置（缓存 2 秒，避免频繁读取）
-    private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta], openWithApps: [OpenWithAppMeta], favoriteFolders: [FavoriteFolderMeta]) {
+    private func loadLightweightConfig() -> (enabledIDs: Set<String>, templates: [TemplateMeta], openWithApps: [OpenWithAppMeta], favoriteFolders: [FavoriteFolderMeta], showMenuBar: Bool) {
         let now = Date()
         if now.timeIntervalSince(lastConfigLoadTime) < configCacheDuration,
            let cachedIDs = cachedEnabledMenuItemIDs,
            let cachedTemplates = cachedTemplateMetas,
            let cachedApps = cachedOpenWithApps,
-           let cachedFolders = cachedFavoriteFolders {
-            return (cachedIDs, cachedTemplates, cachedApps, cachedFolders)
+           let cachedFolders = cachedFavoriteFolders,
+           let cachedShowMenuBar = cachedShowMenuBar {
+            return (cachedIDs, cachedTemplates, cachedApps, cachedFolders, cachedShowMenuBar)
         }
 
         let config = SuperRightClickSharedConfig.load()
@@ -109,6 +111,7 @@ final class FinderSync: FIFinderSync {
         let templates: [TemplateMeta]
         let openWithApps: [OpenWithAppMeta]
         let favoriteFolders: [FavoriteFolderMeta]
+        let showMenuBar: Bool
 
         if let config = config {
             enabledIDs = Set(config.enabledMenuItemIDs)
@@ -121,20 +124,23 @@ final class FinderSync: FIFinderSync {
             favoriteFolders = config.favoriteFolders.map { meta in
                 FavoriteFolderMeta(name: meta.name, path: meta.path, systemImage: meta.systemImage)
             }
+            showMenuBar = config.showMenuBar
         } else {
             enabledIDs = defaultEnabledMenuItemIDs
             templates = defaultTemplateMetas
             openWithApps = defaultOpenWithApps
             favoriteFolders = defaultFavoriteFolders
+            showMenuBar = true
         }
 
         cachedEnabledMenuItemIDs = enabledIDs
         cachedTemplateMetas = templates.isEmpty ? defaultTemplateMetas : templates
         cachedOpenWithApps = openWithApps.isEmpty ? defaultOpenWithApps : openWithApps
         cachedFavoriteFolders = favoriteFolders.isEmpty ? defaultFavoriteFolders : favoriteFolders
+        cachedShowMenuBar = showMenuBar
         lastConfigLoadTime = now
 
-        return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas, cachedOpenWithApps ?? defaultOpenWithApps, cachedFavoriteFolders ?? defaultFavoriteFolders)
+        return (enabledIDs, cachedTemplateMetas ?? defaultTemplateMetas, cachedOpenWithApps ?? defaultOpenWithApps, cachedFavoriteFolders ?? defaultFavoriteFolders, cachedShowMenuBar ?? true)
     }
     
     // MARK: - 菜单构建（轻量，不访问文件系统）
@@ -147,7 +153,13 @@ final class FinderSync: FIFinderSync {
         }
         
         // 仅读取轻量配置，不访问文件系统
-        let (enabledIDs, templateMetas, openWithApps, favoriteFolders) = loadLightweightConfig()
+        let (enabledIDs, templateMetas, openWithApps, favoriteFolders, showMenuBar) = loadLightweightConfig()
+        
+        // 如果用户关闭了菜单栏显示，直接返回空菜单
+        guard showMenuBar else {
+            FinderExtensionLog.info("showMenuBar is off, returning nil menu")
+            return nil
+        }
         
         let menu = NSMenu(title: "AirSentry")
         let rootItem = NSMenuItem(title: "AirSentry", action: nil, keyEquivalent: "")
@@ -251,7 +263,7 @@ final class FinderSync: FIFinderSync {
         FinderExtensionLog.info("createNewFile called, title=\(sender.title)")
         
         // Finder Sync 不保留 representedObject，改用 title 查找模板
-        let (_, templateMetas, _, _) = loadLightweightConfig()
+        let (_, templateMetas, _, _, _) = loadLightweightConfig()
         guard let meta = templateMetas.first(where: { $0.title == sender.title }) else {
             FinderExtensionLog.info("FAIL: no template for title=\(sender.title), available=\(templateMetas.map(\.title).joined(separator: ","))")
             NSSound.beep()
@@ -295,7 +307,7 @@ final class FinderSync: FIFinderSync {
     
     @objc private func openWithApp(_ sender: NSMenuItem) {
         // 用 title 查找 bundleID（Finder Sync 不保留 representedObject）
-        let (_, _, openWithApps, _) = loadLightweightConfig()
+        let (_, _, openWithApps, _, _) = loadLightweightConfig()
         let bundleID = openWithApps.first { $0.name == sender.title }?.bundleID ?? ""
         guard let targetURL = FIFinderSyncController.default().selectedItemURLs()?.first else {
             NSSound.beep()
