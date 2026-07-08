@@ -231,15 +231,13 @@ private struct ScreenshotOverlayView: View {
                 ZStack(alignment: .bottomTrailing) {
                     Rectangle()
                         .fill(Color.white.opacity(0.001))
-                        .frame(width: 280, height: 310)
+                        .frame(width: 340, height: 360)
                         .onHover { hovering in
                             isShortcutHintHiddenByHover = hovering
                         }
 
                     ScreenshotShortcutHintPanel()
                         .opacity(isShortcutHintHiddenByHover ? 0 : 1)
-                        .scaleEffect(isShortcutHintHiddenByHover ? 0.96 : 1)
-                        .animation(.easeOut(duration: 0.12), value: isShortcutHintHiddenByHover)
                         .allowsHitTesting(false)
                 }
                 .frame(
