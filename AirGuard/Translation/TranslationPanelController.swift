@@ -8,6 +8,9 @@ final class TranslationPanelController {
     private var panel: TranslationPanel?
     private var showObserver: NSObjectProtocol?
 
+    private let preferredPanelSize = NSSize(width: 380, height: 620)
+    private let minimumPanelSize = NSSize(width: 320, height: 340)
+
     init(settings: AppSettings, store: TranslationStore) {
         self.settings = settings
         self.store = store
@@ -16,7 +19,7 @@ final class TranslationPanelController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.show()
             }
         }
@@ -43,24 +46,38 @@ final class TranslationPanelController {
             }
             let hostingController = NSHostingController(rootView: contentView)
             let panel = TranslationPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
-                styleMask: [.titled, .fullSizeContentView],
+                contentRect: NSRect(origin: .zero, size: preferredPanelSize),
+                styleMask: [.titled, .fullSizeContentView, .resizable],
                 backing: .buffered,
                 defer: false
             )
             panel.title = "翻译"
-            panel.titleVisibility = .visible
+            panel.titleVisibility = .hidden
             panel.titlebarAppearsTransparent = true
+            if #available(macOS 11.0, *) {
+                panel.titlebarSeparatorStyle = .none
+            }
+            panel.standardWindowButton(.closeButton)?.isHidden = true
+            panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            panel.standardWindowButton(.zoomButton)?.isHidden = true
             panel.isFloatingPanel = true
             panel.level = .floating
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .managed]
+            panel.isExcludedFromWindowsMenu = false
+            panel.hidesOnDeactivate = false
+            panel.contentMinSize = minimumPanelSize
+            panel.minSize = minimumPanelSize
+            panel.maxSize = NSSize(width: 1400, height: 1000)
+            panel.isMovableByWindowBackground = true
             panel.contentViewController = hostingController
+            panel.setContentSize(preferredPanelSize)
             self.panel = panel
         }
 
         guard let panel else { return }
         store.prepareForPresentation()
         panel.level = store.isPinned ? .floating : .normal
+        restorePreferredSizeIfNeeded(panel)
         panel.layoutIfNeeded()
         positionPanel(panel)
         NSApp.activate(ignoringOtherApps: true)
@@ -70,6 +87,12 @@ final class TranslationPanelController {
 
     func hide() {
         panel?.orderOut(nil)
+    }
+
+    private func restorePreferredSizeIfNeeded(_ panel: NSPanel) {
+        let currentSize = panel.frame.size
+        guard currentSize.width < 520 || currentSize.height < 460 else { return }
+        panel.setContentSize(preferredPanelSize)
     }
 
     private func positionPanel(_ panel: NSPanel) {

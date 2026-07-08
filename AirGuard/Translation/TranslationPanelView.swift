@@ -6,24 +6,41 @@ struct TranslationPanelView: View {
     @ObservedObject var store: TranslationStore
     @ObservedObject var settings: AppSettings
     let close: () -> Void
+
     @FocusState private var inputFocused: Bool
+    @State private var favoritedEngines: Set<TranslationEngine> = []
+    @State private var collapsedEngines: Set<TranslationEngine> = []
+    @StateObject private var speechSpeaker = TranslationSpeechSpeaker()
 
     var body: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 14) {
+            panelBackground
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 9) {
                 topBar
                 inputEditor
                 resultList
-                bottomBar
+                shortcutHint
             }
-            .padding(18)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            .ignoresSafeArea(.container, edges: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if #available(macOS 15.0, *) {
                 AppleSystemTranslationBridge(store: store)
             }
         }
-        .frame(minWidth: 720, minHeight: 560)
-        .background(.regularMaterial)
+        .frame(
+            minWidth: 320,
+            idealWidth: 380,
+            maxWidth: .infinity,
+            minHeight: 340,
+            idealHeight: 620,
+            maxHeight: .infinity
+        )
         .onAppear {
             if settings.translationAutoFocusesInput {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -38,151 +55,270 @@ struct TranslationPanelView: View {
     }
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                Text("翻译")
-                    .font(.system(size: 22, weight: .bold))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("翻译")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+
+                    Text("多引擎实时对比翻译")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
-                topIconButton(store.isPinned ? "pin.fill" : "pin", store.isPinned ? "取消置顶" : "置顶") {
-                    store.isPinned.toggle()
+                HStack(spacing: 4) {
+                    topIconButton(store.isPinned ? "pin.fill" : "pin", store.isPinned ? "取消置顶" : "置顶") {
+                        store.isPinned.toggle()
+                    }
+                    topIconButton("doc.on.doc", "复制最佳结果") {
+                        store.copyBestResult()
+                    }
+                    topIconButton("trash", "清空") {
+                        store.clear()
+                    }
+                    topIconButton("gearshape", "设置") {
+                        NotificationCenter.default.post(name: .openTranslationSettings, object: nil)
+                    }
+                    topIconButton("xmark", "关闭", action: close)
                 }
-                topIconButton("doc.on.doc", "复制结果") {
-                    store.copyBestResult()
-                }
-                topIconButton("trash", "清空") {
-                    store.clear()
-                }
-                topIconButton("gearshape", "设置") {
-                    NotificationCenter.default.post(name: .openTranslationSettings, object: nil)
-                }
-                topIconButton("xmark", "关闭", action: close)
             }
 
-            HStack(spacing: 10) {
-                compactPicker(selection: $store.sourceLanguage, options: TranslationLanguage.sourceOptions) { $0.title }
-                    .frame(width: 145)
+            compactConfigBar
+        }
+    }
+
+    private var compactConfigBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                compactMenuPicker(
+                    selection: $store.sourceLanguage,
+                    options: TranslationLanguage.sourceOptions,
+                    accent: .blue
+                ) { $0.title }
+                .frame(width: 82)
 
                 Button {
                     store.swapLanguages()
                 } label: {
                     Image(systemName: "arrow.left.arrow.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 34, height: 30)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(store.sourceLanguage == .automatic ? .tertiary : .secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(store.sourceLanguage == .automatic ? .tertiary : .secondary)
-                .background(controlBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .disabled(store.sourceLanguage == .automatic)
                 .help("交换语言")
 
-                compactPicker(selection: $store.targetLanguage, options: TranslationLanguage.targetOptions) { $0.title }
-                    .frame(width: 145)
+                compactMenuPicker(
+                    selection: $store.targetLanguage,
+                    options: TranslationLanguage.targetOptions,
+                    accent: .red
+                ) { $0.title }
+                .frame(width: 82)
 
-                HStack(spacing: 6) {
-                    Image(systemName: "rectangle.3.group")
+                Divider()
+                    .frame(height: 16)
+                    .padding(.horizontal, 2)
+
+                HStack(spacing: 5) {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 11.5, weight: .semibold))
+                    Text("\(store.activeEngines.count) 引擎")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("\(store.activeEngines.count) 个引擎")
-                        .font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.tertiary)
                 }
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .frame(height: 30)
-                .background(controlBackground, in: Capsule())
-
-                Spacer()
+                .padding(.horizontal, 8)
+                .frame(height: 28)
             }
+            .padding(2)
+            .background(.white.opacity(0.62), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.035), radius: 10, y: 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func compactPicker<T: Identifiable & Hashable>(
+    private func compactMenuPicker<T: Identifiable & Hashable>(
         selection: Binding<T>,
         options: [T],
+        accent: Color,
         title: @escaping (T) -> String
     ) -> some View {
-        Picker("", selection: selection) {
+        Menu {
             ForEach(options) { option in
-                Text(title(option)).tag(option)
+                Button(title(option)) {
+                    selection.wrappedValue = option
+                }
             }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: accent.opacity(0.35), radius: 4, y: 1)
+
+                Text(title(selection.wrappedValue))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .contentShape(Capsule())
         }
-        .labelsHidden()
-        .controlSize(.regular)
-        .background(controlBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .buttonStyle(.plain)
     }
 
     private func topIconButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 30, height: 30)
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 28, height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.035), radius: 8, y: 3)
         .help(title)
     }
 
     private var inputEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("输入文本")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(store.characterCountText)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(.secondary.opacity(0.72))
-            }
-
+        ZStack(alignment: .bottomTrailing) {
             TextEditor(text: $store.sourceText)
-                .font(.system(size: 18))
+                .font(.system(size: 12.8, weight: .regular))
+                .lineSpacing(3)
                 .scrollContentBackground(.hidden)
                 .focused($inputFocused)
-                .padding(14)
-                .frame(minHeight: 150, maxHeight: 190)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.86), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 10)
+                .frame(maxWidth: .infinity, minHeight: 58, idealHeight: 74, maxHeight: 96)
+
+            inputFloatingActions
+                .padding(.trailing, 7)
+                .padding(.bottom, 6)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(inputFocused ? Color.blue.opacity(0.34) : Color.primary.opacity(0.075), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.045), radius: 14, y: 6)
+    }
+
+    private var inputFloatingActions: some View {
+        HStack(spacing: 5) {
+            Text(store.characterCountText.replacingOccurrences(of: " / ", with: "/"))
+                .font(.system(size: 10.8, weight: .semibold))
+                .foregroundStyle(.secondary.opacity(0.68))
+                .monospacedDigit()
+
+            inputActionButton("sparkles", "翻译") {
+                store.translate()
+            }
+            .keyboardShortcut(.return, modifiers: [.command])
+
+            inputActionButton("doc.on.clipboard", "粘贴") {
+                store.pasteFromClipboard()
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.primary.opacity(0.055), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.035), radius: 7, y: 3)
+    }
+
+    private func inputActionButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(title == "翻译" ? Color.blue : Color.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .background(.white.opacity(0.70), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.065), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.025), radius: 5, y: 2)
+        .help(title)
     }
 
     private var resultList: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
+            LazyVStack(spacing: 8) {
                 ForEach(store.results) { result in
                     resultCard(result)
                 }
 
                 if store.results.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "text.bubble")
-                            .font(.system(size: 28))
-                            .foregroundStyle(.secondary)
-                        Text("输入文本后按下翻译")
-                            .font(.system(size: 13.5, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 150)
+                    emptyState
                 }
             }
-            .padding(1)
+            .padding(.vertical, 1)
         }
-        .frame(minHeight: 220)
+        .frame(minHeight: 120, maxHeight: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text("输入文本后按下翻译")
+                .font(.system(size: 13.5, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 150)
+        .background(.white.opacity(0.42), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 
     private func resultCard(_ result: TranslationResultItem) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: result.engine.systemImage)
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 20, height: 20)
-                    .foregroundStyle(engineAccent(result.engine))
+        let isCollapsed = collapsedEngines.contains(result.engine)
+        let isFavorited = favoritedEngines.contains(result.engine)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                engineIcon(result.engine)
+
                 Text(result.engine.shortTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .layoutPriority(1)
 
                 statusBadge(for: result)
 
@@ -190,68 +326,114 @@ struct TranslationPanelView: View {
 
                 if let duration = result.duration {
                     Text(String(format: "%.1fs", duration))
-                        .font(.system(size: 11.5, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .padding(.trailing, 2)
                 }
 
-                Button {
-                    retry(result.engine)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .frame(width: 24, height: 24)
+                engineActionButton(isFavorited ? "star.fill" : "star", isFavorited ? "取消收藏" : "收藏") {
+                    toggle(result.engine, in: &favoritedEngines)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("重试")
+                .foregroundStyle(isFavorited ? .yellow : .secondary)
 
-                Button {
-                    store.copy(result.text)
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .frame(width: 24, height: 24)
+                engineActionButton("speaker.wave.2", "朗读") {
+                    speak(result.text)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
                 .disabled(result.text.isEmpty)
-                .help("复制")
-            }
 
-            Group {
-                switch result.state {
-                case .idle:
-                    Text("等待翻译")
-                        .foregroundStyle(.secondary)
-                case .translating:
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("正在翻译")
-                            .foregroundStyle(.secondary)
+                engineActionButton("doc.on.doc", "复制") {
+                    store.copy(result.text)
+                }
+                .disabled(result.text.isEmpty)
+
+                engineActionButton(isCollapsed ? "chevron.down" : "chevron.up", isCollapsed ? "展开" : "折叠") {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        toggle(result.engine, in: &collapsedEngines)
                     }
-                case .succeeded:
-                    Text(result.text)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.primary)
-                case .failed(let message):
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 15, weight: .semibold))
-                            .padding(.top, 1)
-                        Text(message)
-                    }
-                    .foregroundStyle(.orange)
                 }
             }
-            .font(.system(size: 16))
-            .lineSpacing(3)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+
+            if !isCollapsed {
+                Divider()
+                    .padding(.horizontal, 10)
+
+                resultBody(result)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .padding(16)
-        .background(cardBackground(for: result), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(cardBackground(for: result), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(cardStroke(for: result), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.04), radius: 14, y: 6)
+    }
+
+    @ViewBuilder
+    private func resultBody(_ result: TranslationResultItem) -> some View {
+        Group {
+            switch result.state {
+            case .idle:
+                Text("等待翻译")
+                    .foregroundStyle(.secondary)
+            case .translating:
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在翻译")
+                        .foregroundStyle(.secondary)
+                }
+            case .succeeded:
+                Text(result.text)
+                    .textSelection(.enabled)
+                    .foregroundStyle(.primary)
+            case .failed(let message):
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 15, weight: .semibold))
+                        .padding(.top, 2)
+                    Text(message)
+                }
+                .foregroundStyle(.orange)
+            }
+        }
+        .font(.system(size: 14.5))
+        .lineSpacing(3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func engineIcon(_ engine: TranslationEngine) -> some View {
+        Image(systemName: engine.systemImage)
+            .font(.system(size: 13.5, weight: .semibold))
+            .foregroundStyle(engineAccent(engine))
+            .frame(width: 26, height: 26)
+            .background(engineAccent(engine).opacity(0.10), in: Circle())
+            .overlay(
+                Circle()
+                    .stroke(engineAccent(engine).opacity(0.15), lineWidth: 1)
+            )
+    }
+
+    private func engineActionButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12.5, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.075), lineWidth: 1)
+        )
+        .help(title)
     }
 
     private func statusBadge(for result: TranslationResultItem) -> some View {
@@ -273,58 +455,61 @@ struct TranslationPanelView: View {
         }
 
         return Text(title)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
             .background(color.opacity(0.12), in: Capsule())
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: 10) {
-            Button {
-                store.pasteFromClipboard()
-            } label: {
-                Label("粘贴", systemImage: "doc.on.clipboard")
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                store.translate()
-            } label: {
-                Label("翻译", systemImage: "sparkles")
-                    .frame(minWidth: 112)
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.return, modifiers: [.command])
-
+    private var shortcutHint: some View {
+        HStack {
             Spacer()
-
             Text("⌘↩ 翻译")
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(.secondary.opacity(0.78))
         }
+        .padding(.top, -2)
     }
 
     private func retry(_ engine: TranslationEngine) {
         store.translate()
     }
 
-    private func cardBackground(for result: TranslationResultItem) -> Color {
-        if case .succeeded = result.state {
-            return Color(nsColor: .textBackgroundColor).opacity(0.90)
+    private func speak(_ text: String) {
+        speechSpeaker.speak(text)
+    }
+
+    private func toggle(_ engine: TranslationEngine, in set: inout Set<TranslationEngine>) {
+        if set.contains(engine) {
+            set.remove(engine)
+        } else {
+            set.insert(engine)
         }
-        return Color(nsColor: .textBackgroundColor).opacity(0.84)
+    }
+
+    private func cardBackground(for result: TranslationResultItem) -> Color {
+        switch result.state {
+        case .failed:
+            return Color(nsColor: .textBackgroundColor).opacity(0.84)
+        case .succeeded:
+            return Color(nsColor: .textBackgroundColor).opacity(0.92)
+        case .translating:
+            return Color(nsColor: .textBackgroundColor).opacity(0.88)
+        case .idle:
+            return Color(nsColor: .textBackgroundColor).opacity(0.80)
+        }
     }
 
     private func cardStroke(for result: TranslationResultItem) -> Color {
-        if case .failed = result.state {
-            return Color.orange.opacity(0.36)
-        }
-        if case .translating = result.state {
+        switch result.state {
+        case .failed:
+            return Color.orange.opacity(0.16)
+        case .translating:
             return Color.blue.opacity(0.20)
+        default:
+            return Color.primary.opacity(0.065)
         }
-        return Color.primary.opacity(0.07)
     }
 
     private func engineAccent(_ engine: TranslationEngine) -> Color {
@@ -337,8 +522,29 @@ struct TranslationPanelView: View {
         }
     }
 
-    private var controlBackground: Color {
-        Color.primary.opacity(0.065)
+    private var panelBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(nsColor: .windowBackgroundColor).opacity(0.92),
+                Color.primary.opacity(0.035)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .background(.regularMaterial)
+    }
+}
+
+@MainActor
+private final class TranslationSpeechSpeaker: ObservableObject {
+    private let synthesizer = NSSpeechSynthesizer()
+
+    func speak(_ text: String) {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking()
+        }
+        synthesizer.startSpeaking(text)
     }
 }
 
