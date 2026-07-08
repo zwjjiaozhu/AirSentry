@@ -3,6 +3,7 @@ import SwiftUI
 import Translation
 
 struct TranslationPanelView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var store: TranslationStore
     @ObservedObject var settings: AppSettings
     let close: () -> Void
@@ -10,7 +11,19 @@ struct TranslationPanelView: View {
     @FocusState private var inputFocused: Bool
     @State private var favoritedEngines: Set<TranslationEngine> = []
     @State private var collapsedEngines: Set<TranslationEngine> = []
+    @State private var resultContentHeights: [TranslationEngine: CGFloat] = [:]
+    @State private var resizingStartHeights: [TranslationEngine: CGFloat] = [:]
+    @State private var contentRevealProgress: [TranslationEngine: CGFloat] = [:]
+    @State private var contentOpacity: [TranslationEngine: CGFloat] = [:]
     @StateObject private var speechSpeaker = TranslationSpeechSpeaker()
+
+    private let defaultResultContentHeight: CGFloat = 128
+    private let minResultContentHeight: CGFloat = 74
+    private let maxResultContentHeight: CGFloat = 420
+    private let expandAnimation: Animation = .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.32)
+    private let contentFadeAnimation: Animation = .easeOut(duration: 0.16).delay(0.035)
+    private let collapseAnimation: Animation = .timingCurve(0.4, 0.0, 0.2, 1.0, duration: 0.22)
+    private let chevronAnimation: Animation = .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.24)
 
     var body: some View {
         ZStack {
@@ -55,24 +68,15 @@ struct TranslationPanelView: View {
     }
 
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("翻译")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-
-                    Text("多引擎实时对比翻译")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .center, spacing: 7) {
+                topIconButton(store.isPinned ? "pin.fill" : "pin", store.isPinned ? "取消置顶" : "置顶") {
+                    store.isPinned.toggle()
                 }
 
                 Spacer()
 
                 HStack(spacing: 4) {
-                    topIconButton(store.isPinned ? "pin.fill" : "pin", store.isPinned ? "取消置顶" : "置顶") {
-                        store.isPinned.toggle()
-                    }
                     topIconButton("doc.on.doc", "复制最佳结果") {
                         store.copyBestResult()
                     }
@@ -88,6 +92,7 @@ struct TranslationPanelView: View {
 
             compactConfigBar
         }
+        .background(WindowDragRegion())
     }
 
     private var compactConfigBar: some View {
@@ -138,12 +143,12 @@ struct TranslationPanelView: View {
                 .frame(height: 28)
             }
             .padding(2)
-            .background(.white.opacity(0.62), in: Capsule())
+            .background(controlFill, in: Capsule())
             .overlay(
                 Capsule()
                     .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.035), radius: 10, y: 4)
+            .shadow(color: softShadow, radius: 10, y: 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -194,12 +199,12 @@ struct TranslationPanelView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
-        .background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .background(controlFill, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.035), radius: 8, y: 3)
+        .shadow(color: softShadow, radius: 8, y: 3)
         .help(title)
     }
 
@@ -220,12 +225,12 @@ struct TranslationPanelView: View {
                 .padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(inputFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(inputFocused ? Color.blue.opacity(0.34) : Color.primary.opacity(0.075), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.045), radius: 14, y: 6)
+        .shadow(color: cardShadow, radius: 14, y: 6)
     }
 
     private var inputFloatingActions: some View {
@@ -251,7 +256,7 @@ struct TranslationPanelView: View {
             Capsule()
                 .stroke(Color.primary.opacity(0.055), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.035), radius: 7, y: 3)
+        .shadow(color: softShadow, radius: 7, y: 3)
     }
 
     private func inputActionButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
@@ -263,12 +268,12 @@ struct TranslationPanelView: View {
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
-        .background(.white.opacity(0.70), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(floatingButtonFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.primary.opacity(0.065), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.025), radius: 5, y: 2)
+        .shadow(color: softShadow, radius: 5, y: 2)
         .help(title)
     }
 
@@ -298,7 +303,7 @@ struct TranslationPanelView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 150)
-        .background(.white.opacity(0.42), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(emptyFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.primary.opacity(0.06), lineWidth: 1)
@@ -308,6 +313,9 @@ struct TranslationPanelView: View {
     private func resultCard(_ result: TranslationResultItem) -> some View {
         let isCollapsed = collapsedEngines.contains(result.engine)
         let isFavorited = favoritedEngines.contains(result.engine)
+        let visibleHeight = resultContentHeight(for: result.engine)
+        let revealProgress = contentRevealProgress[result.engine] ?? (isCollapsed ? 0 : 1)
+        let bodyOpacity = contentOpacity[result.engine] ?? (isCollapsed ? 0 : 1)
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
@@ -320,15 +328,16 @@ struct TranslationPanelView: View {
                     .minimumScaleFactor(0.72)
                     .layoutPriority(1)
 
-                statusBadge(for: result)
+                statusIcon(for: result)
 
-                Spacer()
+                Spacer(minLength: 6)
 
                 if let duration = result.duration {
                     Text(String(format: "%.1fs", duration))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
+                        .lineLimit(1)
                         .padding(.trailing, 2)
                 }
 
@@ -347,31 +356,113 @@ struct TranslationPanelView: View {
                 }
                 .disabled(result.text.isEmpty)
 
-                engineActionButton(isCollapsed ? "chevron.down" : "chevron.up", isCollapsed ? "展开" : "折叠") {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        toggle(result.engine, in: &collapsedEngines)
-                    }
+                engineActionButton("chevron.right", isCollapsed ? "展开" : "折叠") {
+                    toggleCollapse(result.engine)
                 }
+                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                .animation(chevronAnimation, value: isCollapsed)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
-
-            if !isCollapsed {
-                Divider()
-                    .padding(.horizontal, 10)
-
-                resultBody(result)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                toggleCollapse(result.engine)
             }
+
+            resultContentArea(
+                result,
+                visibleHeight: visibleHeight,
+                isCollapsed: isCollapsed,
+                revealProgress: revealProgress,
+                bodyOpacity: bodyOpacity
+            )
         }
         .background(cardBackground(for: result), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(cardStroke(for: result), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.04), radius: 14, y: 6)
+        .shadow(color: cardShadow, radius: 14, y: 6)
+    }
+
+    private func resultContentArea(
+        _ result: TranslationResultItem,
+        visibleHeight: CGFloat,
+        isCollapsed: Bool,
+        revealProgress: CGFloat,
+        bodyOpacity: CGFloat
+    ) -> some View {
+        let clampedProgress = min(max(revealProgress, 0), 1)
+        let animatedHeight = max(0, visibleHeight * clampedProgress)
+        let clampedOpacity = min(max(bodyOpacity, 0), 1)
+
+        return VStack(spacing: 0) {
+            resultContentView(result)
+                .id(result.engine)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(clampedOpacity)
+
+            resizeHandle(for: result.engine)
+                .opacity(clampedProgress > 0.96 ? 1 : 0)
+                .allowsHitTesting(!isCollapsed && clampedProgress > 0.96)
+        }
+        .frame(height: animatedHeight)
+        .mask(alignment: .top) {
+            Rectangle()
+                .frame(height: max(0, visibleHeight * clampedProgress))
+        }
+        .opacity(clampedProgress <= 0.01 ? 0 : 1)
+        .allowsHitTesting(!isCollapsed && clampedProgress > 0.98)
+        .clipped()
+        .animation(expandAnimation, value: revealProgress)
+    }
+
+    @ViewBuilder
+    private func resultContentView(_ result: TranslationResultItem) -> some View {
+        switch result.state {
+        case .succeeded:
+            SelectableResultTextView(text: result.text) {
+                store.copy(result.text)
+            }
+        default:
+            ScrollView {
+                resultBody(result)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func resultContentHeight(for engine: TranslationEngine) -> CGFloat {
+        resultContentHeights[engine] ?? defaultResultContentHeight
+    }
+
+    private func resizeHandle(for engine: TranslationEngine) -> some View {
+        ResultResizeHandle(
+            onDragBegan: {
+                resizingStartHeights[engine] = resultContentHeight(for: engine)
+            },
+            onDragChanged: { deltaY in
+                let startHeight = resizingStartHeights[engine] ?? resultContentHeight(for: engine)
+                let nextHeight = min(
+                    max(startHeight + deltaY, minResultContentHeight),
+                    maxResultContentHeight
+                )
+
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    resultContentHeights[engine] = nextHeight
+                }
+            },
+            onDragEnded: {
+                resizingStartHeights[engine] = nil
+            }
+        )
+        .frame(height: 14)
+        .frame(maxWidth: .infinity)
+        .help("拖拽调整内容高度")
     }
 
     @ViewBuilder
@@ -390,8 +481,12 @@ struct TranslationPanelView: View {
                 }
             case .succeeded:
                 Text(result.text)
-                    .textSelection(.enabled)
                     .foregroundStyle(.primary)
+                    .contextMenu {
+                        Button("复制") {
+                            store.copy(result.text)
+                        }
+                    }
             case .failed(let message):
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
@@ -422,44 +517,46 @@ struct TranslationPanelView: View {
     private func engineActionButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 12.5, weight: .semibold))
-                .frame(width: 26, height: 26)
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .background(.white.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.075), lineWidth: 1)
-        )
         .help(title)
     }
 
-    private func statusBadge(for result: TranslationResultItem) -> some View {
-        let title: String
-        let color: Color
+    @ViewBuilder
+    private func statusIcon(for result: TranslationResultItem) -> some View {
         switch result.state {
         case .idle:
-            title = "待命"
-            color = .secondary
+            Image(systemName: "circle.dotted")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(.secondary.opacity(0.70))
+                .frame(width: 18, height: 18)
+                .help("待命")
         case .translating:
-            title = "进行中"
-            color = .blue
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.58)
+                .frame(width: 18, height: 18)
+                .help("正在翻译")
         case .succeeded:
-            title = "完成"
-            color = .green
+            EmptyView()
         case .failed:
-            title = "提示"
-            color = .orange
+            Button {
+                retry(result.engine)
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .background(Color.orange.opacity(0.10), in: Circle())
+            .help("重新翻译")
         }
-
-        return Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2.5)
-            .background(color.opacity(0.12), in: Capsule())
     }
 
     private var shortcutHint: some View {
@@ -478,6 +575,51 @@ struct TranslationPanelView: View {
 
     private func speak(_ text: String) {
         speechSpeaker.speak(text)
+    }
+
+    private func toggleCollapse(_ engine: TranslationEngine) {
+        if collapsedEngines.contains(engine) {
+            expandEngine(engine)
+        } else {
+            collapseEngine(engine)
+        }
+    }
+
+    private func expandEngine(_ engine: TranslationEngine) {
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            collapsedEngines.remove(engine)
+            contentRevealProgress[engine] = 0
+            contentOpacity[engine] = 0
+        }
+
+        DispatchQueue.main.async {
+            withAnimation(expandAnimation) {
+                contentRevealProgress[engine] = 1
+            }
+            withAnimation(contentFadeAnimation) {
+                contentOpacity[engine] = 1
+            }
+        }
+    }
+
+    private func collapseEngine(_ engine: TranslationEngine) {
+        withAnimation(.easeOut(duration: 0.08)) {
+            contentOpacity[engine] = 0
+        }
+        withAnimation(collapseAnimation) {
+            contentRevealProgress[engine] = 0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.23) {
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                collapsedEngines.insert(engine)
+                contentOpacity[engine] = 0
+            }
+        }
     }
 
     private func toggle(_ engine: TranslationEngine, in set: inout Set<TranslationEngine>) {
@@ -522,16 +664,43 @@ struct TranslationPanelView: View {
         }
     }
 
+    private var controlFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.62)
+    }
+
+    private var inputFill: Color {
+        colorScheme == .dark ? Color(nsColor: .controlBackgroundColor).opacity(0.68) : Color.white.opacity(0.78)
+    }
+
+    private var floatingButtonFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.70)
+    }
+
+    private var emptyFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.055) : Color.white.opacity(0.42)
+    }
+
+    private var softShadow: Color {
+        colorScheme == .dark ? Color.black.opacity(0.22) : Color.black.opacity(0.035)
+    }
+
+    private var cardShadow: Color {
+        colorScheme == .dark ? Color.black.opacity(0.26) : Color.black.opacity(0.045)
+    }
+
     private var panelBackground: some View {
         LinearGradient(
-            colors: [
+            colors: colorScheme == .dark ? [
+                Color(nsColor: .windowBackgroundColor).opacity(0.96),
+                Color.white.opacity(0.035)
+            ] : [
                 Color(nsColor: .windowBackgroundColor).opacity(0.92),
                 Color.primary.opacity(0.035)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-        .background(.regularMaterial)
+        .background(colorScheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(.regularMaterial))
     }
 }
 
@@ -548,6 +717,201 @@ private final class TranslationSpeechSpeaker: ObservableObject {
     }
 }
 
+
+private struct ResultResizeHandle: NSViewRepresentable {
+    var onDragBegan: () -> Void
+    var onDragChanged: (CGFloat) -> Void
+    var onDragEnded: () -> Void
+
+    func makeNSView(context: Context) -> ResizeHandleView {
+        let view = ResizeHandleView()
+        view.onDragBegan = onDragBegan
+        view.onDragChanged = onDragChanged
+        view.onDragEnded = onDragEnded
+        return view
+    }
+
+    func updateNSView(_ nsView: ResizeHandleView, context: Context) {
+        nsView.onDragBegan = onDragBegan
+        nsView.onDragChanged = onDragChanged
+        nsView.onDragEnded = onDragEnded
+    }
+
+    final class ResizeHandleView: NSView {
+        var onDragBegan: (() -> Void)?
+        var onDragChanged: ((CGFloat) -> Void)?
+        var onDragEnded: (() -> Void)?
+
+        private var startLocationInWindow: NSPoint?
+        private var isDragging = false
+        private let handleLayer = CALayer()
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer?.masksToBounds = false
+
+            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.18).cgColor
+            handleLayer.cornerRadius = 1.5
+            layer?.addSublayer(handleLayer)
+
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: .zero,
+                    options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                    owner: self,
+                    userInfo: nil
+                )
+            )
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func layout() {
+            super.layout()
+            let handleSize = NSSize(width: 30, height: 3)
+            handleLayer.frame = CGRect(
+                x: (bounds.width - handleSize.width) / 2,
+                y: (bounds.height - handleSize.height) / 2,
+                width: handleSize.width,
+                height: handleSize.height
+            )
+        }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .resizeUpDown)
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            NSCursor.resizeUpDown.push()
+            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.30).cgColor
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            if !isDragging {
+                NSCursor.pop()
+                handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.18).cgColor
+            }
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            isDragging = true
+            startLocationInWindow = event.locationInWindow
+            NSCursor.resizeUpDown.set()
+            handleLayer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.55).cgColor
+            onDragBegan?()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let startLocationInWindow else { return }
+            // NSEvent window coordinates grow upward; dragging down should increase the SwiftUI height,
+            // so invert the delta to match DragGesture's positive-down convention.
+            let deltaY = startLocationInWindow.y - event.locationInWindow.y
+            onDragChanged?(deltaY)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            finishDragging()
+        }
+
+        override func mouseCancelled(with event: NSEvent) {
+            finishDragging()
+        }
+
+        private func finishDragging() {
+            isDragging = false
+            startLocationInWindow = nil
+            onDragEnded?()
+            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.18).cgColor
+        }
+    }
+}
+
+
+private struct WindowDragRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        DragRegionView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class DragRegionView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+
+        override func mouseDragged(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
+    }
+}
+
+
+private struct SelectableResultTextView: NSViewRepresentable {
+    let text: String
+    var onCopy: (() -> Void)?
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
+        textView.textColor = .labelColor
+        textView.font = .systemFont(ofSize: 14.5)
+        textView.textContainerInset = NSSize(width: 12, height: 10)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.autoresizingMask = [.width]
+        textView.string = text
+        textView.allowsUndo = false
+        textView.menu = makeContextMenu()
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        textView.textColor = .labelColor
+        textView.font = .systemFont(ofSize: 14.5)
+
+        if textView.string != text {
+            textView.string = text
+        }
+
+        textView.textContainer?.containerSize = NSSize(
+            width: max(scrollView.contentSize.width, 1),
+            height: CGFloat.greatestFiniteMagnitude
+        )
+    }
+
+    private func makeContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
+        return menu
+    }
+}
+
 @available(macOS 15.0, *)
 private struct AppleSystemTranslationBridge: View {
     @ObservedObject var store: TranslationStore
@@ -557,15 +921,24 @@ private struct AppleSystemTranslationBridge: View {
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
+            .id(handledRequestID)
             .translationTask(configuration) { session in
                 await translate(with: session)
             }
             .onChange(of: store.appleTranslationRequestID) { requestID in
                 guard let requestID, requestID != handledRequestID else { return }
                 handledRequestID = requestID
-                var nextConfiguration = makeConfiguration()
-                nextConfiguration.invalidate()
-                configuration = nextConfiguration
+
+                // Apple Translation 的 Configuration 在源/目标语言不变时，
+                // 只重新赋一个“相同配置”不一定会触发新的 translationTask。
+                // 先置空，再下一轮 RunLoop 重新挂载并 invalidate，确保连续点击翻译也会重新执行。
+                configuration = nil
+                Task { @MainActor in
+                    await Task.yield()
+                    configuration = makeConfiguration()
+                    await Task.yield()
+                    configuration?.invalidate()
+                }
             }
     }
 

@@ -54,9 +54,6 @@ final class TranslationPanelController {
             panel.title = "翻译"
             panel.titleVisibility = .hidden
             panel.titlebarAppearsTransparent = true
-            if #available(macOS 11.0, *) {
-                panel.titlebarSeparatorStyle = .none
-            }
             panel.standardWindowButton(.closeButton)?.isHidden = true
             panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
             panel.standardWindowButton(.zoomButton)?.isHidden = true
@@ -68,7 +65,7 @@ final class TranslationPanelController {
             panel.contentMinSize = minimumPanelSize
             panel.minSize = minimumPanelSize
             panel.maxSize = NSSize(width: 1400, height: 1000)
-            panel.isMovableByWindowBackground = true
+            panel.isMovableByWindowBackground = false
             panel.contentViewController = hostingController
             panel.setContentSize(preferredPanelSize)
             self.panel = panel
