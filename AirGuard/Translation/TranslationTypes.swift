@@ -21,7 +21,7 @@ enum TranslationEngine: String, CaseIterable, Codable, Identifiable {
 
     var shortTitle: String {
         switch self {
-        case .appleSystem: "Apple 系统翻译"
+        case .appleSystem: "Apple翻译"
         case .openAI: "OpenAI"
         case .deepL: "DeepL"
         case .google: "Google"

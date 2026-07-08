@@ -17,8 +17,8 @@ struct TranslationPanelView: View {
     @State private var contentOpacity: [TranslationEngine: CGFloat] = [:]
     @StateObject private var speechSpeaker = TranslationSpeechSpeaker()
 
-    private let defaultResultContentHeight: CGFloat = 128
-    private let minResultContentHeight: CGFloat = 74
+    private let defaultResultContentHeight: CGFloat = 122
+    private let minResultContentHeight: CGFloat = 56
     private let maxResultContentHeight: CGFloat = 420
     private let expandAnimation: Animation = .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.32)
     private let contentFadeAnimation: Animation = .easeOut(duration: 0.16).delay(0.035)
@@ -77,12 +77,6 @@ struct TranslationPanelView: View {
                 Spacer()
 
                 HStack(spacing: 4) {
-                    topIconButton("doc.on.doc", "复制最佳结果") {
-                        store.copyBestResult()
-                    }
-                    topIconButton("trash", "清空") {
-                        store.clear()
-                    }
                     topIconButton("gearshape", "设置") {
                         NotificationCenter.default.post(name: .openTranslationSettings, object: nil)
                     }
@@ -234,46 +228,37 @@ struct TranslationPanelView: View {
     }
 
     private var inputFloatingActions: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Text(store.characterCountText.replacingOccurrences(of: " / ", with: "/"))
-                .font(.system(size: 10.8, weight: .semibold))
-                .foregroundStyle(.secondary.opacity(0.68))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary.opacity(0.65))
                 .monospacedDigit()
+
+            inputActionButton("doc.on.clipboard", "粘贴") {
+                store.pasteFromClipboard()
+            }
+
+            inputActionButton("trash", "清空") {
+                store.clear()
+            }
 
             inputActionButton("sparkles", "翻译") {
                 store.translate()
             }
             .keyboardShortcut(.return, modifiers: [.command])
-
-            inputActionButton("doc.on.clipboard", "粘贴") {
-                store.pasteFromClipboard()
-            }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(Color.primary.opacity(0.055), lineWidth: 1)
-        )
-        .shadow(color: softShadow, radius: 7, y: 3)
     }
 
     private func inputActionButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 11.5, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(title == "翻译" ? Color.blue : Color.secondary)
-                .frame(width: 24, height: 24)
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(floatingButtonFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.primary.opacity(0.065), lineWidth: 1)
-        )
-        .shadow(color: softShadow, radius: 5, y: 2)
+        .pointingHandCursor()
         .help(title)
     }
 
@@ -313,7 +298,7 @@ struct TranslationPanelView: View {
     private func resultCard(_ result: TranslationResultItem) -> some View {
         let isCollapsed = collapsedEngines.contains(result.engine)
         let isFavorited = favoritedEngines.contains(result.engine)
-        let visibleHeight = resultContentHeight(for: result.engine)
+        let visibleHeight = resultContentHeight(for: result)
         let revealProgress = contentRevealProgress[result.engine] ?? (isCollapsed ? 0 : 1)
         let bodyOpacity = contentOpacity[result.engine] ?? (isCollapsed ? 0 : 1)
 
@@ -346,10 +331,12 @@ struct TranslationPanelView: View {
                 }
                 .foregroundStyle(isFavorited ? .yellow : .secondary)
 
-                engineActionButton("speaker.wave.2", "朗读") {
-                    speak(result.text)
+                engineSpeakerButton(
+                    isPlaying: speechSpeaker.speakingEngine == result.engine,
+                    isDisabled: result.text.isEmpty
+                ) {
+                    speak(result.text, engine: result.engine)
                 }
-                .disabled(result.text.isEmpty)
 
                 engineActionButton("doc.on.doc", "复制") {
                     store.copy(result.text)
@@ -374,7 +361,8 @@ struct TranslationPanelView: View {
                 visibleHeight: visibleHeight,
                 isCollapsed: isCollapsed,
                 revealProgress: revealProgress,
-                bodyOpacity: bodyOpacity
+                bodyOpacity: bodyOpacity,
+                showsResizeHandle: shouldShowResizeHandle(for: result)
             )
         }
         .background(cardBackground(for: result), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -390,7 +378,8 @@ struct TranslationPanelView: View {
         visibleHeight: CGFloat,
         isCollapsed: Bool,
         revealProgress: CGFloat,
-        bodyOpacity: CGFloat
+        bodyOpacity: CGFloat,
+        showsResizeHandle: Bool
     ) -> some View {
         let clampedProgress = min(max(revealProgress, 0), 1)
         let animatedHeight = max(0, visibleHeight * clampedProgress)
@@ -402,9 +391,11 @@ struct TranslationPanelView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(clampedOpacity)
 
-            resizeHandle(for: result.engine)
-                .opacity(clampedProgress > 0.96 ? 1 : 0)
-                .allowsHitTesting(!isCollapsed && clampedProgress > 0.96)
+            if showsResizeHandle {
+                resizeHandle(for: result.engine)
+                    .opacity(clampedProgress > 0.96 ? 1 : 0)
+                    .allowsHitTesting(!isCollapsed && clampedProgress > 0.96)
+            }
         }
         .frame(height: animatedHeight)
         .mask(alignment: .top) {
@@ -428,14 +419,46 @@ struct TranslationPanelView: View {
             ScrollView {
                 resultBody(result)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
+    private func resultContentHeight(for result: TranslationResultItem) -> CGFloat {
+        if let customHeight = resultContentHeights[result.engine] {
+            return customHeight
+        }
+
+        switch result.state {
+        case .succeeded:
+            let textLength = result.text.trimmingCharacters(in: .whitespacesAndNewlines).count
+            if textLength <= 12 {
+                return 54
+            }
+            if textLength <= 48 {
+                return 70
+            }
+            if textLength <= 120 {
+                return 96
+            }
+            return defaultResultContentHeight
+        case .failed:
+            return 54
+        case .idle:
+            return 44
+        case .translating:
+            return 48
+        }
+    }
+
     private func resultContentHeight(for engine: TranslationEngine) -> CGFloat {
         resultContentHeights[engine] ?? defaultResultContentHeight
+    }
+
+    private func shouldShowResizeHandle(for result: TranslationResultItem) -> Bool {
+        guard case .succeeded = result.state else { return false }
+        return result.text.trimmingCharacters(in: .whitespacesAndNewlines).count > 48 || resultContentHeights[result.engine] != nil
     }
 
     private func resizeHandle(for engine: TranslationEngine) -> some View {
@@ -523,18 +546,28 @@ struct TranslationPanelView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
+        .pointingHandCursor()
         .help(title)
+    }
+
+    private func engineSpeakerButton(isPlaying: Bool, isDisabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            AnimatedSpeakerIcon(isPlaying: isPlaying)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isPlaying ? .blue : .secondary)
+        .disabled(isDisabled)
+        .pointingHandCursor()
+        .help(isPlaying ? "停止朗读" : "朗读")
     }
 
     @ViewBuilder
     private func statusIcon(for result: TranslationResultItem) -> some View {
         switch result.state {
         case .idle:
-            Image(systemName: "circle.dotted")
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(.secondary.opacity(0.70))
-                .frame(width: 18, height: 18)
-                .help("待命")
+            EmptyView()
         case .translating:
             ProgressView()
                 .controlSize(.small)
@@ -555,6 +588,7 @@ struct TranslationPanelView: View {
             }
             .buttonStyle(.plain)
             .background(Color.orange.opacity(0.10), in: Circle())
+            .pointingHandCursor()
             .help("重新翻译")
         }
     }
@@ -573,8 +607,8 @@ struct TranslationPanelView: View {
         store.translate()
     }
 
-    private func speak(_ text: String) {
-        speechSpeaker.speak(text)
+    private func speak(_ text: String, engine: TranslationEngine) {
+        speechSpeaker.toggle(text, engine: engine)
     }
 
     private func toggleCollapse(_ engine: TranslationEngine) {
@@ -646,7 +680,7 @@ struct TranslationPanelView: View {
     private func cardStroke(for result: TranslationResultItem) -> Color {
         switch result.state {
         case .failed:
-            return Color.orange.opacity(0.16)
+            return Color.orange.opacity(0.10)
         case .translating:
             return Color.blue.opacity(0.20)
         default:
@@ -705,15 +739,101 @@ struct TranslationPanelView: View {
 }
 
 @MainActor
-private final class TranslationSpeechSpeaker: ObservableObject {
+private final class TranslationSpeechSpeaker: NSObject, ObservableObject, NSSpeechSynthesizerDelegate {
+    @Published var speakingEngine: TranslationEngine?
+
     private let synthesizer = NSSpeechSynthesizer()
 
-    func speak(_ text: String) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    override init() {
+        super.init()
+        synthesizer.delegate = self
+    }
+
+    func toggle(_ text: String, engine: TranslationEngine) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
+
+        if synthesizer.isSpeaking, speakingEngine == engine {
+            synthesizer.stopSpeaking()
+            speakingEngine = nil
+            return
+        }
+
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking()
         }
-        synthesizer.startSpeaking(text)
+
+        speakingEngine = engine
+        synthesizer.startSpeaking(trimmedText)
+    }
+
+    nonisolated func speechSynthesizer(_ sender: NSSpeechSynthesizer, didFinishSpeaking finishedSpeaking: Bool) {
+        Task { @MainActor in
+            self.speakingEngine = nil
+        }
+    }
+}
+
+private struct AnimatedSpeakerIcon: View {
+    let isPlaying: Bool
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            if isPlaying {
+                Circle()
+                    .stroke(Color.blue.opacity(pulse ? 0.18 : 0.46), lineWidth: 1.5)
+                    .scaleEffect(pulse ? 1.22 : 0.78)
+                    .opacity(pulse ? 0.15 : 0.65)
+
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .scaleEffect(pulse ? 1.04 : 0.96)
+            } else {
+                Image(systemName: "speaker.wave.2")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+        }
+        .onAppear {
+            guard isPlaying else { return }
+            pulse = false
+            withAnimation(.easeInOut(duration: 0.78).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+        .onChange(of: isPlaying) { playing in
+            if playing {
+                pulse = false
+                withAnimation(.easeInOut(duration: 0.78).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            } else {
+                pulse = false
+            }
+        }
+    }
+}
+
+private struct PointingHandCursorModifier: ViewModifier {
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content.onHover { inside in
+            if inside {
+                guard !isHovering else { return }
+                NSCursor.pointingHand.push()
+                isHovering = true
+            } else if isHovering {
+                NSCursor.pop()
+                isHovering = false
+            }
+        }
+    }
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursorModifier())
     }
 }
 
@@ -744,6 +864,7 @@ private struct ResultResizeHandle: NSViewRepresentable {
 
         private var startLocationInWindow: NSPoint?
         private var isDragging = false
+        private var didPushCursor = false
         private let handleLayer = CALayer()
 
         override init(frame frameRect: NSRect) {
@@ -751,18 +872,11 @@ private struct ResultResizeHandle: NSViewRepresentable {
             wantsLayer = true
             layer?.masksToBounds = false
 
-            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.18).cgColor
+            handleLayer.backgroundColor = NSColor.clear.cgColor
             handleLayer.cornerRadius = 1.5
             layer?.addSublayer(handleLayer)
 
-            addTrackingArea(
-                NSTrackingArea(
-                    rect: .zero,
-                    options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                    owner: self,
-                    userInfo: nil
-                )
-            )
+            addHoverTrackingArea()
         }
 
         required init?(coder: NSCoder) {
@@ -780,20 +894,65 @@ private struct ResultResizeHandle: NSViewRepresentable {
             )
         }
 
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.invalidateCursorRects(for: self)
+        }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach { removeTrackingArea($0) }
+            addHoverTrackingArea()
+        }
+
+        private func addHoverTrackingArea() {
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: .zero,
+                    options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+                    owner: self,
+                    userInfo: nil
+                )
+            )
+        }
+
         override func resetCursorRects() {
+            discardCursorRects()
             addCursorRect(bounds, cursor: .resizeUpDown)
         }
 
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            true
+        }
+
         override func mouseEntered(with event: NSEvent) {
-            NSCursor.resizeUpDown.push()
-            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.30).cgColor
+            showHoverState()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            showHoverState()
         }
 
         override func mouseExited(with event: NSEvent) {
-            if !isDragging {
-                NSCursor.pop()
-                handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.18).cgColor
+            guard !isDragging else { return }
+            hideHoverState()
+        }
+
+        private func showHoverState() {
+            if !didPushCursor {
+                NSCursor.resizeUpDown.push()
+                didPushCursor = true
             }
+            NSCursor.resizeUpDown.set()
+            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.30).cgColor
+        }
+
+        private func hideHoverState() {
+            if didPushCursor {
+                NSCursor.pop()
+                didPushCursor = false
+            }
+            handleLayer.backgroundColor = NSColor.clear.cgColor
         }
 
         override func mouseDown(with event: NSEvent) {
@@ -824,7 +983,12 @@ private struct ResultResizeHandle: NSViewRepresentable {
             isDragging = false
             startLocationInWindow = nil
             onDragEnded?()
-            handleLayer.backgroundColor = NSColor.labelColor.withAlphaComponent(0.18).cgColor
+
+            if let window, bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)) {
+                showHoverState()
+            } else {
+                hideHoverState()
+            }
         }
     }
 }
