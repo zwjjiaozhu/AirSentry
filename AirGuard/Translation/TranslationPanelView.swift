@@ -15,6 +15,7 @@ struct TranslationPanelView: View {
     @State private var resizingStartHeights: [TranslationEngine: CGFloat] = [:]
     @State private var contentRevealProgress: [TranslationEngine: CGFloat] = [:]
     @State private var contentOpacity: [TranslationEngine: CGFloat] = [:]
+    @State private var selectedEngines: Set<TranslationEngine> = []
     @StateObject private var speechSpeaker = TranslationSpeechSpeaker()
 
     private let defaultResultContentHeight: CGFloat = 122
@@ -55,6 +56,7 @@ struct TranslationPanelView: View {
             maxHeight: .infinity
         )
         .onAppear {
+            syncSelectedEnginesFromSettings()
             if settings.translationAutoFocusesInput {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     inputFocused = true
@@ -64,6 +66,9 @@ struct TranslationPanelView: View {
         }
         .onChange(of: store.isPinned) { pinned in
             NSApp.keyWindow?.level = pinned ? .floating : .normal
+        }
+        .onChange(of: settings.translationEngines) { _ in
+            syncSelectedEnginesFromSettings()
         }
     }
 
@@ -123,18 +128,7 @@ struct TranslationPanelView: View {
                     .frame(height: 16)
                     .padding(.horizontal, 2)
 
-                HStack(spacing: 5) {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 11.5, weight: .semibold))
-                    Text("\(store.activeEngines.count) 引擎")
-                        .font(.system(size: 12, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .frame(height: 28)
+                engineSelectorMenu
             }
             .padding(2)
             .background(controlFill, in: Capsule())
@@ -145,6 +139,89 @@ struct TranslationPanelView: View {
             .shadow(color: softShadow, radius: 10, y: 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var engineSelectorMenu: some View {
+        Menu {
+            ForEach(availableEngines, id: \.self) { engine in
+                Toggle(isOn: engineSelectionBinding(for: engine)) {
+                    Label(engine.shortTitle, systemImage: engine.systemImage)
+                }
+                .disabled(selectedEngineSet.count <= 1 && selectedEngineSet.contains(engine))
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 11.5, weight: .semibold))
+                Text("\(selectedEngineSet.count) 引擎")
+                    .font(.system(size: 12, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .iconHoverEffect(
+            hoverColor: .blue,
+            showsBackground: false,
+            cornerRadius: 8,
+            defaultColor: .secondary
+        )
+        .help("选择翻译引擎")
+    }
+
+    private var availableEngines: [TranslationEngine] {
+        [.appleSystem, .openAI, .deepL, .google, .customAPI]
+    }
+
+    private var selectedEngineSet: Set<TranslationEngine> {
+        selectedEngines.isEmpty ? selectedEngineSetFromSettings() : selectedEngines
+    }
+
+    private func selectedEngineSetFromSettings() -> Set<TranslationEngine> {
+        let configured = settings.translationEngines
+        return Set(configured.isEmpty ? [.appleSystem] : configured)
+    }
+
+    private func syncSelectedEnginesFromSettings() {
+        selectedEngines = selectedEngineSetFromSettings()
+    }
+
+    private func engineSelectionBinding(for engine: TranslationEngine) -> Binding<Bool> {
+        Binding(
+            get: { selectedEngineSet.contains(engine) },
+            set: { isSelected in
+                setEngine(engine, isSelected: isSelected)
+            }
+        )
+    }
+
+    private func setEngine(_ engine: TranslationEngine, isSelected: Bool) {
+        var selected = selectedEngineSet
+
+        if isSelected {
+            selected.insert(engine)
+        } else {
+            guard selected.count > 1 else { return }
+            selected.remove(engine)
+        }
+
+        selectedEngines = selected
+        settings.translationEngines = availableEngines.filter { selected.contains($0) }
+        refreshResultsForEngineSelection()
+    }
+
+    private func refreshResultsForEngineSelection() {
+        let trimmedText = store.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedText.isEmpty {
+            store.resetResults()
+        } else {
+            store.translate()
+        }
     }
 
     private func compactMenuPicker<T: Identifiable & Hashable>(
@@ -188,7 +265,6 @@ struct TranslationPanelView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
                 .frame(width: 28, height: 28)
                 .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
@@ -199,6 +275,11 @@ struct TranslationPanelView: View {
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
         .shadow(color: softShadow, radius: 8, y: 3)
+        .iconHoverEffect(
+            hoverColor: title == "关闭" ? .red : (title.contains("置顶") ? .blue : .primary),
+            showsBackground: true,
+            cornerRadius: 9
+        )
         .help(title)
     }
 
@@ -253,12 +334,16 @@ struct TranslationPanelView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(title == "翻译" ? Color.blue : Color.secondary)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .pointingHandCursor()
+        .iconHoverEffect(
+            hoverColor: title == "翻译" ? .blue : (title == "清空" ? .red : .primary),
+            showsBackground: false,
+            cornerRadius: 6,
+            defaultColor: title == "翻译" ? .blue : .secondary
+        )
         .help(title)
     }
 
@@ -326,10 +411,14 @@ struct TranslationPanelView: View {
                         .padding(.trailing, 2)
                 }
 
-                engineActionButton(isFavorited ? "star.fill" : "star", isFavorited ? "取消收藏" : "收藏") {
+                engineActionButton(
+                    isFavorited ? "star.fill" : "star",
+                    isFavorited ? "取消收藏" : "收藏",
+                    defaultColor: isFavorited ? .yellow : .secondary,
+                    hoverColor: .yellow
+                ) {
                     toggle(result.engine, in: &favoritedEngines)
                 }
-                .foregroundStyle(isFavorited ? .yellow : .secondary)
 
                 engineSpeakerButton(
                     isPlaying: speechSpeaker.speakingEngine == result.engine,
@@ -537,7 +626,13 @@ struct TranslationPanelView: View {
             )
     }
 
-    private func engineActionButton(_ systemImage: String, _ title: String, action: @escaping () -> Void) -> some View {
+    private func engineActionButton(
+        _ systemImage: String,
+        _ title: String,
+        defaultColor: Color = .secondary,
+        hoverColor: Color? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
@@ -545,8 +640,12 @@ struct TranslationPanelView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .pointingHandCursor()
+        .iconHoverEffect(
+            hoverColor: hoverColor ?? (title == "复制" ? .blue : .primary),
+            showsBackground: false,
+            cornerRadius: 6,
+            defaultColor: defaultColor
+        )
         .help(title)
     }
 
@@ -557,9 +656,14 @@ struct TranslationPanelView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(isPlaying ? .blue : .secondary)
         .disabled(isDisabled)
-        .pointingHandCursor()
+        .opacity(isDisabled ? 0.36 : 1)
+        .iconHoverEffect(
+            hoverColor: .blue,
+            showsBackground: false,
+            cornerRadius: 6,
+            defaultColor: isPlaying ? .blue : .secondary
+        )
         .help(isPlaying ? "停止朗读" : "朗读")
     }
 
@@ -768,7 +872,7 @@ private final class TranslationSpeechSpeaker: NSObject, ObservableObject, NSSpee
     }
 
     nonisolated func speechSynthesizer(_ sender: NSSpeechSynthesizer, didFinishSpeaking finishedSpeaking: Bool) {
-        Task { @MainActor in
+        DispatchQueue.main.async {
             self.speakingEngine = nil
         }
     }
@@ -814,6 +918,42 @@ private struct AnimatedSpeakerIcon: View {
     }
 }
 
+
+private struct IconHoverEffectModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovering = false
+
+    let hoverColor: Color
+    let showsBackground: Bool
+    let cornerRadius: CGFloat
+    let defaultColor: Color
+
+    private var hoverFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.045)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(isHovering ? hoverColor : defaultColor)
+            .scaleEffect(isHovering ? 1.06 : 1.0)
+            .background {
+                if showsBackground && isHovering {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(hoverFill)
+                }
+            }
+            .animation(.easeOut(duration: 0.14), value: isHovering)
+            .onHover { inside in
+                isHovering = inside
+                if inside {
+                    NSCursor.pointingHand.set()
+                } else {
+                    NSCursor.arrow.set()
+                }
+            }
+    }
+}
+
 private struct PointingHandCursorModifier: ViewModifier {
     @State private var isHovering = false
 
@@ -834,6 +974,22 @@ private struct PointingHandCursorModifier: ViewModifier {
 private extension View {
     func pointingHandCursor() -> some View {
         modifier(PointingHandCursorModifier())
+    }
+
+    func iconHoverEffect(
+        hoverColor: Color,
+        showsBackground: Bool,
+        cornerRadius: CGFloat,
+        defaultColor: Color = .secondary
+    ) -> some View {
+        modifier(
+            IconHoverEffectModifier(
+                hoverColor: hoverColor,
+                showsBackground: showsBackground,
+                cornerRadius: cornerRadius,
+                defaultColor: defaultColor
+            )
+        )
     }
 }
 
@@ -1097,10 +1253,8 @@ private struct AppleSystemTranslationBridge: View {
                 // 只重新赋一个“相同配置”不一定会触发新的 translationTask。
                 // 先置空，再下一轮 RunLoop 重新挂载并 invalidate，确保连续点击翻译也会重新执行。
                 configuration = nil
-                Task { @MainActor in
-                    await Task.yield()
+                DispatchQueue.main.async {
                     configuration = makeConfiguration()
-                    await Task.yield()
                     configuration?.invalidate()
                 }
             }
