@@ -9,13 +9,13 @@ struct TranslationPanelView: View {
     let close: () -> Void
 
     @FocusState private var inputFocused: Bool
-    @State private var favoritedEngines: Set<TranslationEngine> = []
-    @State private var collapsedEngines: Set<TranslationEngine> = []
-    @State private var resultContentHeights: [TranslationEngine: CGFloat] = [:]
-    @State private var resizingStartHeights: [TranslationEngine: CGFloat] = [:]
-    @State private var contentRevealProgress: [TranslationEngine: CGFloat] = [:]
-    @State private var contentOpacity: [TranslationEngine: CGFloat] = [:]
-    @State private var selectedEngines: Set<TranslationEngine> = []
+    @State private var favoritedEngines: Set<TranslationEngineIdentifier> = []
+    @State private var collapsedEngines: Set<TranslationEngineIdentifier> = []
+    @State private var resultContentHeights: [TranslationEngineIdentifier: CGFloat] = [:]
+    @State private var resizingStartHeights: [TranslationEngineIdentifier: CGFloat] = [:]
+    @State private var contentRevealProgress: [TranslationEngineIdentifier: CGFloat] = [:]
+    @State private var contentOpacity: [TranslationEngineIdentifier: CGFloat] = [:]
+    @State private var selectedEngineIDs: Set<TranslationEngineIdentifier> = []
     @StateObject private var speechSpeaker = TranslationSpeechSpeaker()
 
     private let defaultResultContentHeight: CGFloat = 122
@@ -68,6 +68,9 @@ struct TranslationPanelView: View {
             NSApp.keyWindow?.level = pinned ? .floating : .normal
         }
         .onChange(of: settings.translationEngines) { _ in
+            syncSelectedEnginesFromSettings()
+        }
+        .onChange(of: settings.customTranslationEngines) { _ in
             syncSelectedEnginesFromSettings()
         }
     }
@@ -143,17 +146,38 @@ struct TranslationPanelView: View {
 
     private var engineSelectorMenu: some View {
         Menu {
-            ForEach(availableEngines, id: \.self) { engine in
-                Toggle(isOn: engineSelectionBinding(for: engine)) {
-                    Label(engine.shortTitle, systemImage: engine.systemImage)
+            Section("系统引擎") {
+                ForEach(builtinSources, id: \.id) { source in
+                    Toggle(isOn: sourceSelectionBinding(for: source)) {
+                        Label(source.shortTitle, systemImage: source.systemImage)
+                    }
+                    .disabled(selectedEngineIDSet.count <= 1 && selectedEngineIDSet.contains(source.id))
                 }
-                .disabled(selectedEngineSet.count <= 1 && selectedEngineSet.contains(engine))
+            }
+
+            if !settings.customTranslationEngines.isEmpty {
+                Section("我的引擎") {
+                    ForEach(customSources, id: \.id) { source in
+                        Toggle(isOn: sourceSelectionBinding(for: source)) {
+                            Label(source.shortTitle, systemImage: source.systemImage)
+                        }
+                        .disabled(selectedEngineIDSet.count <= 1 && selectedEngineIDSet.contains(source.id))
+                    }
+                }
+            }
+
+            Divider()
+
+            Button {
+                NotificationCenter.default.post(name: .openTranslationSettings, object: nil)
+            } label: {
+                Label("管理翻译引擎", systemImage: "gearshape")
             }
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "square.grid.2x2")
                     .font(.system(size: 11.5, weight: .semibold))
-                Text("\(selectedEngineSet.count) 引擎")
+                Text("\(selectedEngineIDSet.count) 引擎")
                     .font(.system(size: 12, weight: .semibold))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .bold))
@@ -174,44 +198,70 @@ struct TranslationPanelView: View {
         .help("选择翻译引擎")
     }
 
-    private var availableEngines: [TranslationEngine] {
-        [.appleSystem, .openAI, .deepL, .google, .customAPI]
+    private var builtinSources: [TranslationResultSource] {
+        TranslationEngine.allCases.map { .builtin($0) }
     }
 
-    private var selectedEngineSet: Set<TranslationEngine> {
-        selectedEngines.isEmpty ? selectedEngineSetFromSettings() : selectedEngines
+    private var customSources: [TranslationResultSource] {
+        settings.customTranslationEngines.map { .custom($0) }
     }
 
-    private func selectedEngineSetFromSettings() -> Set<TranslationEngine> {
-        let configured = settings.translationEngines
-        return Set(configured.isEmpty ? [.appleSystem] : configured)
+    private var availableSources: [TranslationResultSource] {
+        builtinSources + customSources
+    }
+
+    private var selectedEngineIDSet: Set<TranslationEngineIdentifier> {
+        selectedEngineIDs.isEmpty ? selectedEngineIDSetFromSettings() : selectedEngineIDs
+    }
+
+    private func selectedEngineIDSetFromSettings() -> Set<TranslationEngineIdentifier> {
+        var ids = Set(settings.translationEngines.map { TranslationEngineIdentifier.builtin($0) })
+        for engine in settings.customTranslationEngines where engine.enabled {
+            ids.insert(.custom(engine.id))
+        }
+        return ids.isEmpty ? [.builtin(.appleSystem)] : ids
     }
 
     private func syncSelectedEnginesFromSettings() {
-        selectedEngines = selectedEngineSetFromSettings()
+        selectedEngineIDs = selectedEngineIDSetFromSettings()
     }
 
-    private func engineSelectionBinding(for engine: TranslationEngine) -> Binding<Bool> {
+    private func sourceSelectionBinding(for source: TranslationResultSource) -> Binding<Bool> {
         Binding(
-            get: { selectedEngineSet.contains(engine) },
+            get: { selectedEngineIDSet.contains(source.id) },
             set: { isSelected in
-                setEngine(engine, isSelected: isSelected)
+                setSource(source, isSelected: isSelected)
             }
         )
     }
 
-    private func setEngine(_ engine: TranslationEngine, isSelected: Bool) {
-        var selected = selectedEngineSet
+    private func setSource(_ source: TranslationResultSource, isSelected: Bool) {
+        var selected = selectedEngineIDSet
 
         if isSelected {
-            selected.insert(engine)
+            selected.insert(source.id)
         } else {
             guard selected.count > 1 else { return }
-            selected.remove(engine)
+            selected.remove(source.id)
         }
 
-        selectedEngines = selected
-        settings.translationEngines = availableEngines.filter { selected.contains($0) }
+        if selected.isEmpty {
+            selected.insert(.builtin(.appleSystem))
+        }
+
+        selectedEngineIDs = selected
+        settings.translationEngines = TranslationEngine.allCases.filter { selected.contains(.builtin($0)) }
+        settings.customTranslationEngines = settings.customTranslationEngines.map { engine in
+            var updated = engine
+            updated.enabled = selected.contains(.custom(engine.id))
+            return updated
+        }
+
+        if settings.translationEngines.isEmpty && settings.customTranslationEngines.allSatisfy({ !$0.enabled }) {
+            settings.translationEngines = [.appleSystem]
+            selectedEngineIDs.insert(.builtin(.appleSystem))
+        }
+
         refreshResultsForEngineSelection()
     }
 
@@ -381,17 +431,17 @@ struct TranslationPanelView: View {
     }
 
     private func resultCard(_ result: TranslationResultItem) -> some View {
-        let isCollapsed = collapsedEngines.contains(result.engine)
-        let isFavorited = favoritedEngines.contains(result.engine)
+        let isCollapsed = collapsedEngines.contains(result.id)
+        let isFavorited = favoritedEngines.contains(result.id)
         let visibleHeight = resultContentHeight(for: result)
-        let revealProgress = contentRevealProgress[result.engine] ?? (isCollapsed ? 0 : 1)
-        let bodyOpacity = contentOpacity[result.engine] ?? (isCollapsed ? 0 : 1)
+        let revealProgress = contentRevealProgress[result.id] ?? (isCollapsed ? 0 : 1)
+        let bodyOpacity = contentOpacity[result.id] ?? (isCollapsed ? 0 : 1)
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                engineIcon(result.engine)
+                engineIcon(result.source)
 
-                Text(result.engine.shortTitle)
+                Text(result.source.shortTitle)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -417,14 +467,14 @@ struct TranslationPanelView: View {
                     defaultColor: isFavorited ? .yellow : .secondary,
                     hoverColor: .yellow
                 ) {
-                    toggle(result.engine, in: &favoritedEngines)
+                    toggle(result.id, in: &favoritedEngines)
                 }
 
                 engineSpeakerButton(
-                    isPlaying: speechSpeaker.speakingEngine == result.engine,
+                    isPlaying: speechSpeaker.speakingEngine == result.id,
                     isDisabled: result.text.isEmpty
                 ) {
-                    speak(result.text, engine: result.engine)
+                    speak(result.text, engine: result.id)
                 }
 
                 engineActionButton("doc.on.doc", "复制") {
@@ -433,7 +483,7 @@ struct TranslationPanelView: View {
                 .disabled(result.text.isEmpty)
 
                 engineActionButton("chevron.right", isCollapsed ? "展开" : "折叠") {
-                    toggleCollapse(result.engine)
+                    toggleCollapse(result.id)
                 }
                 .rotationEffect(.degrees(isCollapsed ? 0 : 90))
                 .animation(chevronAnimation, value: isCollapsed)
@@ -442,7 +492,7 @@ struct TranslationPanelView: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
-                toggleCollapse(result.engine)
+                toggleCollapse(result.id)
             }
 
             resultContentArea(
@@ -476,12 +526,12 @@ struct TranslationPanelView: View {
 
         return VStack(spacing: 0) {
             resultContentView(result)
-                .id(result.engine)
+                 .id(result.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(clampedOpacity)
 
             if showsResizeHandle {
-                resizeHandle(for: result.engine)
+                resizeHandle(for: result.id)
                     .opacity(clampedProgress > 0.96 ? 1 : 0)
                     .allowsHitTesting(!isCollapsed && clampedProgress > 0.96)
             }
@@ -515,7 +565,7 @@ struct TranslationPanelView: View {
     }
 
     private func resultContentHeight(for result: TranslationResultItem) -> CGFloat {
-        if let customHeight = resultContentHeights[result.engine] {
+        if let customHeight = resultContentHeights[result.id] {
             return customHeight
         }
 
@@ -541,22 +591,22 @@ struct TranslationPanelView: View {
         }
     }
 
-    private func resultContentHeight(for engine: TranslationEngine) -> CGFloat {
-        resultContentHeights[engine] ?? defaultResultContentHeight
+    private func resultContentHeight(for id: TranslationEngineIdentifier) -> CGFloat {
+        resultContentHeights[id] ?? defaultResultContentHeight
     }
 
     private func shouldShowResizeHandle(for result: TranslationResultItem) -> Bool {
         guard case .succeeded = result.state else { return false }
-        return result.text.trimmingCharacters(in: .whitespacesAndNewlines).count > 48 || resultContentHeights[result.engine] != nil
+        return result.text.trimmingCharacters(in: .whitespacesAndNewlines).count > 48 || resultContentHeights[result.id] != nil
     }
 
-    private func resizeHandle(for engine: TranslationEngine) -> some View {
+    private func resizeHandle(for id: TranslationEngineIdentifier) -> some View {
         ResultResizeHandle(
             onDragBegan: {
-                resizingStartHeights[engine] = resultContentHeight(for: engine)
+                resizingStartHeights[id] = resultContentHeight(for: id)
             },
             onDragChanged: { deltaY in
-                let startHeight = resizingStartHeights[engine] ?? resultContentHeight(for: engine)
+                let startHeight = resizingStartHeights[id] ?? resultContentHeight(for: id)
                 let nextHeight = min(
                     max(startHeight + deltaY, minResultContentHeight),
                     maxResultContentHeight
@@ -565,11 +615,11 @@ struct TranslationPanelView: View {
                 var transaction = Transaction()
                 transaction.animation = nil
                 withTransaction(transaction) {
-                    resultContentHeights[engine] = nextHeight
+                    resultContentHeights[id] = nextHeight
                 }
             },
             onDragEnded: {
-                resizingStartHeights[engine] = nil
+                resizingStartHeights[id] = nil
             }
         )
         .frame(height: 14)
@@ -614,15 +664,15 @@ struct TranslationPanelView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func engineIcon(_ engine: TranslationEngine) -> some View {
-        Image(systemName: engine.systemImage)
+    private func engineIcon(_ source: TranslationResultSource) -> some View {
+        Image(systemName: source.systemImage)
             .font(.system(size: 13.5, weight: .semibold))
-            .foregroundStyle(engineAccent(engine))
+            .foregroundStyle(engineAccent(source))
             .frame(width: 26, height: 26)
-            .background(engineAccent(engine).opacity(0.10), in: Circle())
+            .background(engineAccent(source).opacity(0.10), in: Circle())
             .overlay(
                 Circle()
-                    .stroke(engineAccent(engine).opacity(0.15), lineWidth: 1)
+                    .stroke(engineAccent(source).opacity(0.15), lineWidth: 1)
             )
     }
 
@@ -682,7 +732,7 @@ struct TranslationPanelView: View {
             EmptyView()
         case .failed:
             Button {
-                retry(result.engine)
+                retry(result.id)
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 11.5, weight: .semibold))
@@ -707,64 +757,64 @@ struct TranslationPanelView: View {
         .padding(.top, -2)
     }
 
-    private func retry(_ engine: TranslationEngine) {
+    private func retry(_ id: TranslationEngineIdentifier) {
         store.translate()
     }
 
-    private func speak(_ text: String, engine: TranslationEngine) {
+    private func speak(_ text: String, engine: TranslationEngineIdentifier) {
         speechSpeaker.toggle(text, engine: engine)
     }
 
-    private func toggleCollapse(_ engine: TranslationEngine) {
-        if collapsedEngines.contains(engine) {
-            expandEngine(engine)
+    private func toggleCollapse(_ id: TranslationEngineIdentifier) {
+        if collapsedEngines.contains(id) {
+            expandEngine(id)
         } else {
-            collapseEngine(engine)
+            collapseEngine(id)
         }
     }
 
-    private func expandEngine(_ engine: TranslationEngine) {
+    private func expandEngine(_ id: TranslationEngineIdentifier) {
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
-            collapsedEngines.remove(engine)
-            contentRevealProgress[engine] = 0
-            contentOpacity[engine] = 0
+            collapsedEngines.remove(id)
+            contentRevealProgress[id] = 0
+            contentOpacity[id] = 0
         }
 
         DispatchQueue.main.async {
             withAnimation(expandAnimation) {
-                contentRevealProgress[engine] = 1
+                contentRevealProgress[id] = 1
             }
             withAnimation(contentFadeAnimation) {
-                contentOpacity[engine] = 1
+                contentOpacity[id] = 1
             }
         }
     }
 
-    private func collapseEngine(_ engine: TranslationEngine) {
+    private func collapseEngine(_ id: TranslationEngineIdentifier) {
         withAnimation(.easeOut(duration: 0.08)) {
-            contentOpacity[engine] = 0
+            contentOpacity[id] = 0
         }
         withAnimation(collapseAnimation) {
-            contentRevealProgress[engine] = 0
+            contentRevealProgress[id] = 0
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.23) {
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
-                collapsedEngines.insert(engine)
-                contentOpacity[engine] = 0
+                collapsedEngines.insert(id)
+                contentOpacity[id] = 0
             }
         }
     }
 
-    private func toggle(_ engine: TranslationEngine, in set: inout Set<TranslationEngine>) {
-        if set.contains(engine) {
-            set.remove(engine)
+    private func toggle(_ id: TranslationEngineIdentifier, in set: inout Set<TranslationEngineIdentifier>) {
+        if set.contains(id) {
+            set.remove(id)
         } else {
-            set.insert(engine)
+            set.insert(id)
         }
     }
 
@@ -792,13 +842,21 @@ struct TranslationPanelView: View {
         }
     }
 
-    private func engineAccent(_ engine: TranslationEngine) -> Color {
-        switch engine {
-        case .appleSystem: .blue
-        case .openAI: .blue
-        case .deepL: .indigo
-        case .google: .red
-        case .customAPI: .secondary
+    private func engineAccent(_ source: TranslationResultSource) -> Color {
+        switch source {
+        case .builtin(.appleSystem): .blue
+        case .builtin(.openAI): .blue
+        case .builtin(.deepL): .indigo
+        case .builtin(.google): .red
+        case .custom(let engine): customEngineAccent(engine)
+        }
+    }
+
+    private func customEngineAccent(_ engine: CustomTranslationEngine) -> Color {
+        switch engine.format {
+        case .openAICompatible: .blue
+        case .ollama: .green
+        case .customHTTP: .secondary
         }
     }
 
@@ -844,7 +902,7 @@ struct TranslationPanelView: View {
 
 @MainActor
 private final class TranslationSpeechSpeaker: NSObject, ObservableObject, NSSpeechSynthesizerDelegate {
-    @Published var speakingEngine: TranslationEngine?
+    @Published var speakingEngine: TranslationEngineIdentifier?
 
     private let synthesizer = NSSpeechSynthesizer()
 
@@ -853,7 +911,7 @@ private final class TranslationSpeechSpeaker: NSObject, ObservableObject, NSSpee
         synthesizer.delegate = self
     }
 
-    func toggle(_ text: String, engine: TranslationEngine) {
+    func toggle(_ text: String, engine: TranslationEngineIdentifier) {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else { return }
 

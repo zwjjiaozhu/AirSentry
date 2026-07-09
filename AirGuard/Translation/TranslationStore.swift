@@ -13,7 +13,7 @@ final class TranslationStore: ObservableObject {
 
     private let settings: AppSettings
     private var cancellables = Set<AnyCancellable>()
-    private var activeStartDates: [TranslationEngine: Date] = [:]
+    private var activeStartDates: [TranslationEngineIdentifier: Date] = [:]
 
     init(settings: AppSettings) {
         self.settings = settings
@@ -29,9 +29,10 @@ final class TranslationStore: ObservableObject {
             .store(in: &cancellables)
     }
 
-    var activeEngines: [TranslationEngine] {
-        let configured = settings.translationEngines
-        return configured.isEmpty ? [.appleSystem] : configured
+    var activeEngines: [TranslationResultSource] {
+        var sources = settings.translationEngines.map { TranslationResultSource.builtin($0) }
+        sources.append(contentsOf: settings.customTranslationEngines.filter(\.enabled).map { .custom($0) })
+        return sources.isEmpty ? [.builtin(.appleSystem)] : sources
     }
 
     var characterCountText: String {
@@ -57,32 +58,40 @@ final class TranslationStore: ObservableObject {
 
     func translate() {
         let trimmedText = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let engines = activeEngines
+
         guard !trimmedText.isEmpty else {
-            results = activeEngines.map {
-                TranslationResultItem(id: $0, state: .failed("请输入要翻译的文本"), text: "", duration: nil)
+            results = engines.map {
+                TranslationResultItem(source: $0, state: .failed("请输入要翻译的文本"), text: "", duration: nil)
             }
             return
         }
 
-        let engines = activeEngines
-        activeStartDates = Dictionary(uniqueKeysWithValues: engines.map { ($0, Date()) })
-        results = engines.map { TranslationResultItem(id: $0, state: .translating, text: "", duration: nil) }
+        activeStartDates = Dictionary(uniqueKeysWithValues: engines.map { ($0.id, Date()) })
+        results = engines.map { TranslationResultItem(source: $0, state: .translating, text: "", duration: nil) }
 
-        for engine in engines where engine != .appleSystem {
-            markResult(
-                for: engine,
-                state: .failed(enginePlaceholderMessage(for: engine)),
-                text: ""
-            )
-        }
-
-        if engines.contains(.appleSystem) {
-            if #available(macOS 15.0, *) {
-                appleTranslationRequestID = UUID()
-            } else {
+        for source in engines {
+            switch source {
+            case .builtin(.appleSystem):
+                if #available(macOS 15.0, *) {
+                    appleTranslationRequestID = UUID()
+                } else {
+                    markResult(
+                        for: source.id,
+                        state: .failed("Apple 系统翻译需要 macOS 15 或更高版本"),
+                        text: ""
+                    )
+                }
+            case .builtin(let engine):
                 markResult(
-                    for: .appleSystem,
-                    state: .failed("Apple 系统翻译需要 macOS 15 或更高版本"),
+                    for: source.id,
+                    state: .failed(enginePlaceholderMessage(for: engine)),
+                    text: ""
+                )
+            case .custom(let engine):
+                markResult(
+                    for: source.id,
+                    state: .failed(customEnginePlaceholderMessage(for: engine)),
                     text: ""
                 )
             }
@@ -90,7 +99,7 @@ final class TranslationStore: ObservableObject {
     }
 
     func resetResults() {
-        results = activeEngines.map { TranslationResultItem(id: $0, state: .idle, text: "", duration: nil) }
+        results = activeEngines.map { TranslationResultItem(source: $0, state: .idle, text: "", duration: nil) }
     }
 
     func pasteFromClipboard() {
@@ -125,22 +134,29 @@ final class TranslationStore: ObservableObject {
         targetLanguage = oldSource
     }
 
-    func markAppleResult(text: String) {
-        markResult(for: .appleSystem, state: .succeeded, text: text)
+    func markAppleResult(text: String, requestID: UUID? = nil) {
+        guard shouldAcceptAppleResult(for: requestID) else { return }
+        markResult(for: .builtin(.appleSystem), state: .succeeded, text: text)
 
         if settings.translationAutoCopiesResult {
             copy(text)
         }
     }
 
-    func markAppleError(_ message: String) {
-        markResult(for: .appleSystem, state: .failed(message), text: "")
+    func markAppleError(_ message: String, requestID: UUID? = nil) {
+        guard shouldAcceptAppleResult(for: requestID) else { return }
+        markResult(for: .builtin(.appleSystem), state: .failed(message), text: "")
     }
 
-    private func markResult(for engine: TranslationEngine, state: TranslationResultState, text: String) {
-        guard let index = results.firstIndex(where: { $0.engine == engine }) else { return }
-        let duration = activeStartDates[engine].map { Date().timeIntervalSince($0) }
-        results[index] = TranslationResultItem(id: engine, state: state, text: text, duration: duration)
+    private func shouldAcceptAppleResult(for requestID: UUID?) -> Bool {
+        guard let requestID else { return true }
+        return appleTranslationRequestID == requestID
+    }
+
+    private func markResult(for id: TranslationEngineIdentifier, state: TranslationResultState, text: String) {
+        guard let index = results.firstIndex(where: { $0.id == id }) else { return }
+        let duration = activeStartDates[id].map { Date().timeIntervalSince($0) }
+        results[index] = TranslationResultItem(source: results[index].source, state: state, text: text, duration: duration)
     }
 
     private func enginePlaceholderMessage(for engine: TranslationEngine) -> String {
@@ -148,13 +164,27 @@ final class TranslationStore: ObservableObject {
         case .appleSystem:
             return ""
         case .openAI:
-            return settings.translationOpenAIAPIKey.isEmpty ? "请先在工具箱配置 OpenAI API Key" : "OpenAI 引擎接口将在下一步接入"
+            return settings.translationOpenAIAPIKey.isEmpty ? "请先配置 OpenAI API Key，或添加一个 OpenAI 兼容自定义引擎" : "OpenAI 引擎接口将在下一步接入"
         case .deepL:
             return "DeepL 引擎接口将在下一步接入"
         case .google:
             return "Google 引擎接口将在下一步接入"
-        case .customAPI:
-            return "请先配置自定义 API 端点"
+        }
+    }
+
+    private func customEnginePlaceholderMessage(for engine: CustomTranslationEngine) -> String {
+        let baseURL = engine.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if baseURL.isEmpty {
+            return "请先配置 \(engine.name) 的 API 地址"
+        }
+
+        switch engine.format {
+        case .openAICompatible:
+            return engine.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "请先配置 OpenAI 兼容模型名称" : "OpenAI 兼容接口将在下一步接入"
+        case .ollama:
+            return engine.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "请先配置 Ollama 模型名称" : "Ollama 接口将在下一步接入"
+        case .customHTTP:
+            return engine.requestTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "请先配置自定义 HTTP 请求模板" : "自定义 HTTP 接口将在下一步接入"
         }
     }
 }

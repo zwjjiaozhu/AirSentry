@@ -179,6 +179,10 @@ final class AppSettings: ObservableObject {
         didSet { saveTranslationEngines() }
     }
 
+    @Published var customTranslationEngines: [CustomTranslationEngine] {
+        didSet { saveCustomTranslationEngines() }
+    }
+
     @Published var translationReadsClipboardText: Bool {
         didSet { defaults.set(translationReadsClipboardText, forKey: Keys.translationReadsClipboardText) }
     }
@@ -245,6 +249,7 @@ final class AppSettings: ObservableObject {
         translationDefaultTargetLanguage = TranslationLanguage(rawValue: defaults.string(forKey: Keys.translationDefaultTargetLanguage) ?? "") ?? .simplifiedChinese
         translationDefaultEngine = TranslationEngine(rawValue: defaults.string(forKey: Keys.translationDefaultEngine) ?? "") ?? .appleSystem
         translationEngines = Self.loadTranslationEngines(from: defaults)
+        customTranslationEngines = Self.loadCustomTranslationEngines(from: defaults)
         translationReadsClipboardText = defaults.object(forKey: Keys.translationReadsClipboardText) as? Bool ?? true
         translationAutoFocusesInput = defaults.object(forKey: Keys.translationAutoFocusesInput) as? Bool ?? true
         translationAutoCopiesResult = defaults.object(forKey: Keys.translationAutoCopiesResult) as? Bool ?? false
@@ -379,7 +384,31 @@ final class AppSettings: ObservableObject {
             translationEngines.removeAll { $0 == engine }
         }
 
-        if translationEngines.isEmpty {
+        if translationEngines.isEmpty && customTranslationEngines.allSatisfy({ !$0.enabled }) {
+            translationEngines = [.appleSystem]
+        }
+    }
+
+    func addCustomTranslationEngine(_ engine: CustomTranslationEngine) {
+        customTranslationEngines.append(engine)
+    }
+
+    func updateCustomTranslationEngine(_ engine: CustomTranslationEngine) {
+        guard let index = customTranslationEngines.firstIndex(where: { $0.id == engine.id }) else { return }
+        customTranslationEngines[index] = engine
+    }
+
+    func removeCustomTranslationEngine(id: UUID) {
+        customTranslationEngines.removeAll { $0.id == id }
+        if translationEngines.isEmpty && customTranslationEngines.allSatisfy({ !$0.enabled }) {
+            translationEngines = [.appleSystem]
+        }
+    }
+
+    func setCustomTranslationEngine(id: UUID, enabled: Bool) {
+        guard let index = customTranslationEngines.firstIndex(where: { $0.id == id }) else { return }
+        customTranslationEngines[index].enabled = enabled
+        if translationEngines.isEmpty && customTranslationEngines.allSatisfy({ !$0.enabled }) {
             translationEngines = [.appleSystem]
         }
     }
@@ -400,7 +429,7 @@ final class AppSettings: ObservableObject {
         if translationDefaultSourceLanguage == translationDefaultTargetLanguage {
             translationDefaultSourceLanguage = .automatic
         }
-        if translationEngines.isEmpty {
+        if translationEngines.isEmpty && customTranslationEngines.allSatisfy({ !$0.enabled }) {
             translationEngines = [.appleSystem]
         }
         translationQualityPreference = min(max(translationQualityPreference, 0), 1)
@@ -471,6 +500,15 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    private func saveCustomTranslationEngines() {
+        do {
+            let data = try JSONEncoder().encode(customTranslationEngines)
+            defaults.set(data, forKey: Keys.customTranslationEngines)
+        } catch {
+            NSLog("AirSentry custom translation engines save failed: \(error.localizedDescription)")
+        }
+    }
+
     private static func loadInputMethodShortcutRules(from defaults: UserDefaults) -> [InputMethodShortcutRule] {
         guard let data = defaults.data(forKey: Keys.inputMethodShortcutRules) else {
             return [
@@ -535,15 +573,29 @@ final class AppSettings: ObservableObject {
 
     private static func loadTranslationEngines(from defaults: UserDefaults) -> [TranslationEngine] {
         guard let data = defaults.data(forKey: Keys.translationEngines) else {
-            return [.appleSystem, .openAI]
+            return [.appleSystem]
         }
 
         do {
-            let engines = try JSONDecoder().decode([TranslationEngine].self, from: data)
+            let rawValues = try JSONDecoder().decode([String].self, from: data)
+            let engines = rawValues.compactMap(TranslationEngine.init(rawValue:))
             return engines.isEmpty ? [.appleSystem] : engines
         } catch {
             NSLog("AirSentry translation engines load failed: \(error.localizedDescription)")
             return [.appleSystem]
+        }
+    }
+
+    private static func loadCustomTranslationEngines(from defaults: UserDefaults) -> [CustomTranslationEngine] {
+        guard let data = defaults.data(forKey: Keys.customTranslationEngines) else {
+            return []
+        }
+
+        do {
+            return try JSONDecoder().decode([CustomTranslationEngine].self, from: data)
+        } catch {
+            NSLog("AirSentry custom translation engines load failed: \(error.localizedDescription)")
+            return []
         }
     }
 
@@ -585,6 +637,7 @@ private enum Keys {
     static let translationDefaultTargetLanguage = "translationDefaultTargetLanguage"
     static let translationDefaultEngine = "translationDefaultEngine"
     static let translationEngines = "translationEngines"
+    static let customTranslationEngines = "customTranslationEngines"
     static let translationReadsClipboardText = "translationReadsClipboardText"
     static let translationAutoFocusesInput = "translationAutoFocusesInput"
     static let translationAutoCopiesResult = "translationAutoCopiesResult"
