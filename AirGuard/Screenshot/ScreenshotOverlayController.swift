@@ -1,10 +1,14 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import SwiftUI
 
 @MainActor
 final class ScreenshotOverlayController {
     private var windows: [ScreenshotOverlayWindow] = []
+    private var localKeyMonitor: Any?
+    private var globalKeyMonitor: Any?
+    private let escapeHotKeyIdentifier = GlobalHotKeyIdentifier(signature: screenshotEscapeHotKeySignature, id: 1)
     private let onAction: (ScreenshotResultAction, ScreenshotCapturePayload) -> Void
     private let onCancel: () -> Void
     private var didFinish = false
@@ -15,6 +19,8 @@ final class ScreenshotOverlayController {
     }
 
     func show() {
+        installKeyMonitors()
+
         windows = NSScreen.screens.map { screen in
             let screenImage = ScreenshotImageCapturer.capture(rect: screen.frame)
             let windowTargets = ScreenshotWindowTargetDetector.targets(on: screen.frame)
@@ -62,6 +68,7 @@ final class ScreenshotOverlayController {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
+            NSApp.activate(ignoringOtherApps: true)
             windows.forEach { $0.orderFrontRegardless() }
             windows.first?.makeKey()
         }
@@ -86,6 +93,7 @@ final class ScreenshotOverlayController {
     }
 
     private func closeWindows() {
+        removeKeyMonitors()
         windows.forEach { window in
             window.makeFirstResponder(nil)
             window.contentView = nil
@@ -94,7 +102,52 @@ final class ScreenshotOverlayController {
         }
         windows.removeAll()
     }
+
+    private func installKeyMonitors() {
+        removeKeyMonitors()
+
+        let status = GlobalHotKeyManager.shared.register(
+            shortcut: KeyboardShortcut(keyCode: UInt32(kVK_Escape), modifiers: 0),
+            signature: screenshotEscapeHotKeySignature,
+            id: 1
+        ) { [weak self] in
+            self?.cancel()
+        }
+        if status != noErr {
+            NSLog("AirSentry screenshot escape hotkey registration failed: \(status)")
+        }
+
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            Task { @MainActor [weak self] in
+                self?.cancel()
+            }
+            return nil
+        }
+
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == UInt16(kVK_Escape) else { return }
+            Task { @MainActor [weak self] in
+                self?.cancel()
+            }
+        }
+    }
+
+    private func removeKeyMonitors() {
+        GlobalHotKeyManager.shared.unregister(escapeHotKeyIdentifier)
+
+        if let localKeyMonitor {
+            NSEvent.removeMonitor(localKeyMonitor)
+            self.localKeyMonitor = nil
+        }
+        if let globalKeyMonitor {
+            NSEvent.removeMonitor(globalKeyMonitor)
+            self.globalKeyMonitor = nil
+        }
+    }
 }
+
+private let screenshotEscapeHotKeySignature: OSType = 0x53434553
 
 final class ScreenshotOverlayWindow: NSPanel {
     init(screen: NSScreen) {
