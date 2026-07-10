@@ -773,9 +773,9 @@
 			buildSettings = {
 				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = AirGuard/DirectDistribution.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = AirGuard/Debug.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -789,7 +789,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				REGISTER_APP_GROUPS = YES;
+				REGISTER_APP_GROUPS = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "AirGuard/AirGuard-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -828,9 +828,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				AIR_SENTRY_BUNDLE_ID = com.sjzm.airsentry;
-				CODE_SIGN_ENTITLEMENTS = AirGuardFinderExtension/FinderExtension.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = AirGuardFinderExtension/Debug.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEAD_CODE_STRIPPING = YES;
@@ -847,7 +847,7 @@
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				REGISTER_APP_GROUPS = YES;
+				REGISTER_APP_GROUPS = NO;
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

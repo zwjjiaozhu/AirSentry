@@ -25,6 +25,10 @@ struct ToolboxView: View {
     @State private var draggedSuperRightClickTemplateID: String?
     @State private var localSortOption: AppUninstallerStore.SortOption = .name
     @State private var uninstallerIconCache: [String: NSImage] = [:]
+    @AppStorage("aiUsageQuotaAnalysisEnabled") private var aiUsageQuotaAnalysisEnabled = true
+    @AppStorage("aiUsageQuotaSectionExpanded") private var aiUsageQuotaSectionExpanded = true
+    @AppStorage("aiUsageSelectedProviderIDs") private var aiUsageSelectedProviderIDsRaw = AIUsageProviderID.codex.rawValue
+    @State private var selectedAIUsageProviderID: AIUsageProviderID?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -271,7 +275,7 @@ struct ToolboxView: View {
         }
         .onAppear {
             storageStore.refresh()
-            aiUsageStore.refresh()
+            refreshAIUsageIfNeeded()
         }
     }
 
@@ -408,16 +412,7 @@ struct ToolboxView: View {
                 }
 
                 Button {
-                    aiUsageStore.refresh()
-                } label: {
-                    Label("来源", systemImage: "gearshape")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("从 Codex、Claude、Qoder 等工具的本地会话文件中提取 token 和额度字段。")
-
-                Button {
-                    aiUsageStore.refresh()
+                    refreshAIUsageIfNeeded()
                     if storageStore.hasFolderAccess {
                         storageStore.refresh()
                     } else {
@@ -2183,62 +2178,162 @@ struct ToolboxView: View {
 
     private var aiUsageQuotaSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("AI 使用额度")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("重点显示剩余额度与重置时间")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.snappy(duration: 0.18)) {
+                        aiUsageQuotaSectionExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: aiUsageQuotaSectionExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .disabled(!aiUsageQuotaAnalysisEnabled)
+                .help(aiUsageQuotaSectionExpanded ? "收起额度分析" : "展开额度分析")
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("额度分析")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text("本地读取")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 6)
+                            .frame(height: 18)
+                            .background(.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                    Text(aiUsageQuotaAnalysisEnabled ? "只扫描已添加工具，显示剩余额度与重置时间" : "已关闭，刷新时不读取额度文件")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
                 Spacer()
+
                 if aiUsageStore.isScanning {
                     ProgressView()
                         .controlSize(.small)
                 }
-            }
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 190, maximum: 250), spacing: 10)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                ForEach(aiUsageStore.overview.snapshots) { snapshot in
-                    aiUsageQuotaCard(snapshot)
-                }
-            }
-
-            if let snapshot = aiUsageStore.overview.bestSnapshot {
-                aiUsageDetailPanel(snapshot)
-            } else {
-                HStack(spacing: 14) {
-                    Image(systemName: "lock.doc")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("尚未读取到额度数据")
-                            .font(.system(size: 14.5, weight: .semibold))
-                        Text("已按白名单扫描 Codex、Claude、Qoder、Cursor、Windsurf 和 Copilot 的本地记录；不会读取认证文件、Cookie 或会话正文。")
-                            .font(.system(size: 12.5))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                Toggle("", isOn: Binding(
+                    get: { aiUsageQuotaAnalysisEnabled },
+                    set: { isOn in
+                        aiUsageQuotaAnalysisEnabled = isOn
+                        aiUsageQuotaSectionExpanded = isOn
+                        if isOn {
+                            refreshAIUsageIfNeeded()
+                        } else {
+                            aiUsageStore.clear()
+                        }
                     }
+                ))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+            }
+
+            if aiUsageQuotaAnalysisEnabled && aiUsageQuotaSectionExpanded {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(visibleAIUsageSnapshots) { snapshot in
+                            aiUsageQuotaCard(snapshot)
+                                .frame(width: 214)
+                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .onTapGesture {
+                                    selectedAIUsageProviderID = snapshot.id
+                                }
+                        }
+
+                        aiUsageAddProviderCard
+                            .frame(width: 154)
+                    }
+                    .padding(.vertical, 1)
                 }
-                .padding(16)
-                .background(.blue.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(.blue.opacity(0.16), lineWidth: 1)
-                )
+
+                if let snapshot = selectedAIUsageSnapshot {
+                    aiUsageDetailPanel(snapshot)
+                } else if visibleAIUsageSnapshots.isEmpty {
+                    aiUsageEmptyQuotaCard
+                }
             }
         }
+        .padding(14)
+        .background(.background.opacity(0.48), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var aiUsageAddProviderCard: some View {
+        Menu {
+            ForEach(AIUsageProviderID.allCases) { providerID in
+                let isSelected = aiUsageSelectedProviderIDs.contains(providerID)
+                Button {
+                    toggleAIUsageProvider(providerID)
+                } label: {
+                    Label(
+                        providerID.planName,
+                        systemImage: isSelected ? "checkmark.circle.fill" : providerID.systemImage
+                    )
+                }
+            }
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 34, height: 34)
+                    .background(.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Text("添加")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("选择要分析的工具")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 112)
+            .foregroundStyle(.blue)
+            .background(.background.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.blue.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+    }
+
+    private var aiUsageEmptyQuotaCard: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.doc")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+                .background(.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("还没有添加额度分析对象")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text("点右侧加号选择 Codex、Claude、Qoder 等工具。")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.blue.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.blue.opacity(0.14), lineWidth: 1)
+        )
     }
 
     private func aiUsageQuotaCard(_ snapshot: AIUsageSnapshot) -> some View {
         let tint = snapshot.accentColor
         let remainingPercent = snapshot.displayRemainingPercent
         let progress = min(max((remainingPercent ?? 0) / 100, 0), 1)
+        let isSelected = selectedAIUsageSnapshot?.id == snapshot.id
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -2255,12 +2350,21 @@ struct ToolboxView: View {
 
                 Spacer(minLength: 0)
 
-                Text(snapshot.id == .claude ? "Pro" : snapshot.id == .cursor ? "Pro" : "AI")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .padding(.horizontal, 6)
-                    .frame(height: 20)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                if isSelected {
+                    Button {
+                        removeAIUsageProvider(snapshot.id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10.5, weight: .bold))
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .background(.secondary.opacity(0.10), in: Circle())
+                    .help("移除 \(snapshot.planName)")
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
 
                 HStack(alignment: .lastTextBaseline, spacing: 8) {
@@ -2296,7 +2400,7 @@ struct ToolboxView: View {
         .background(.background.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(tint.opacity(remainingPercent == nil ? 0.12 : 0.38), lineWidth: remainingPercent == nil ? 1 : 1.4)
+                .stroke(tint.opacity(isSelected ? 0.62 : (remainingPercent == nil ? 0.12 : 0.38)), lineWidth: isSelected ? 1.8 : (remainingPercent == nil ? 1 : 1.4))
         )
     }
 
@@ -2329,6 +2433,7 @@ struct ToolboxView: View {
             }
 
             VStack(alignment: .leading, spacing: 11) {
+                tokenUsageMeter(snapshot, tint: tint)
                 quotaLimitMeter(snapshot.rateLimits.first { $0.kind == .primary }, tint: tint)
                 quotaLimitMeter(snapshot.rateLimits.first { $0.kind == .secondary }, tint: tint)
             }
@@ -2340,6 +2445,43 @@ struct ToolboxView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(tint.opacity(0.22), lineWidth: 1)
         )
+    }
+
+    private func tokenUsageMeter(_ snapshot: AIUsageSnapshot, tint: Color) -> some View {
+        let usedTokens = snapshot.currentUsage?.totalTokens
+        let totalTokens = snapshot.totalUsage?.totalTokens
+        let progress = tokenUsageProgress(usedTokens: usedTokens, totalTokens: totalTokens)
+
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("今日 Token")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text(tokenUsageDescription(usedTokens: usedTokens, totalTokens: totalTokens))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 132, alignment: .leading)
+
+            ProgressView(value: progress ?? 0)
+                .tint(tint)
+
+            Text(progress.map { "\(Int(($0 * 100).rounded()))%" } ?? "--")
+                .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                .frame(width: 82, alignment: .trailing)
+        }
+    }
+
+    private func tokenUsageProgress(usedTokens: Int?, totalTokens: Int?) -> Double? {
+        guard let usedTokens, let totalTokens, totalTokens > 0 else { return nil }
+        return min(max(Double(usedTokens) / Double(totalTokens), 0), 1)
+    }
+
+    private func tokenUsageDescription(usedTokens: Int?, totalTokens: Int?) -> String {
+        guard let usedTokens, let totalTokens, totalTokens > 0 else {
+            return "未读取到 Token 总量"
+        }
+        return "已用 \(usedTokens.formatted()) / \(totalTokens.formatted())"
     }
 
     private func quotaLimitMeter(_ limit: AIUsageRateLimit?, tint: Color) -> some View {
@@ -2517,6 +2659,86 @@ struct ToolboxView: View {
     private func sourceSummary(_ snapshot: AIUsageSnapshot) -> String {
         if snapshot.sourceFileCount > 0 { return "\(snapshot.sourceFileCount) 个来源" }
         return snapshot.isDetected ? "已检测" : "未检测"
+    }
+
+    private var aiUsageSelectedProviderIDs: Set<AIUsageProviderID> {
+        let ids = aiUsageSelectedProviderIDsRaw
+            .split(separator: ",")
+            .compactMap { AIUsageProviderID(rawValue: String($0)) }
+        return Set(ids)
+    }
+
+    private var visibleAIUsageSnapshots: [AIUsageSnapshot] {
+        let selectedIDs = aiUsageSelectedProviderIDs
+        return aiUsageStore.overview.snapshots
+            .filter { selectedIDs.contains($0.id) }
+            .sorted { lhs, rhs in
+                providerSortIndex(lhs.id) < providerSortIndex(rhs.id)
+            }
+    }
+
+    private var selectedAIUsageSnapshot: AIUsageSnapshot? {
+        if let selectedAIUsageProviderID,
+           let snapshot = visibleAIUsageSnapshots.first(where: { $0.id == selectedAIUsageProviderID }) {
+            return snapshot
+        }
+        return visibleAIUsageSnapshots.first(where: { $0.displayRemainingPercent != nil }) ??
+        visibleAIUsageSnapshots.first
+    }
+
+    private func refreshAIUsageIfNeeded() {
+        guard aiUsageQuotaAnalysisEnabled else {
+            aiUsageStore.clear()
+            return
+        }
+
+        let providerIDs = aiUsageSelectedProviderIDs
+        guard !providerIDs.isEmpty else {
+            aiUsageStore.clear()
+            return
+        }
+
+        aiUsageStore.refresh(providerIDs: providerIDs)
+        if selectedAIUsageProviderID == nil {
+            selectedAIUsageProviderID = providerIDs.sorted { providerSortIndex($0) < providerSortIndex($1) }.first
+        }
+    }
+
+    private func toggleAIUsageProvider(_ providerID: AIUsageProviderID) {
+        var providerIDs = aiUsageSelectedProviderIDs
+        if providerIDs.contains(providerID) {
+            removeAIUsageProvider(providerID)
+            return
+        } else {
+            providerIDs.insert(providerID)
+            selectedAIUsageProviderID = providerID
+            aiUsageQuotaAnalysisEnabled = true
+            aiUsageQuotaSectionExpanded = true
+        }
+
+        aiUsageSelectedProviderIDsRaw = providerIDs
+            .sorted { providerSortIndex($0) < providerSortIndex($1) }
+            .map(\.rawValue)
+            .joined(separator: ",")
+        refreshAIUsageIfNeeded()
+    }
+
+    private func removeAIUsageProvider(_ providerID: AIUsageProviderID) {
+        var providerIDs = aiUsageSelectedProviderIDs
+        providerIDs.remove(providerID)
+        if selectedAIUsageProviderID == providerID {
+            selectedAIUsageProviderID = providerIDs.sorted { providerSortIndex($0) < providerSortIndex($1) }.first
+        }
+
+        aiUsageSelectedProviderIDsRaw = providerIDs
+            .sorted { providerSortIndex($0) < providerSortIndex($1) }
+            .map(\.rawValue)
+            .joined(separator: ",")
+        refreshAIUsageIfNeeded()
+    }
+
+    private func providerSortIndex(_ providerID: AIUsageProviderID) -> Int {
+        AIUsageProviderID.allCases.firstIndex(of: providerID) ?? Int.max
     }
 
     private func quotaWindowTitle(_ limit: AIUsageRateLimit) -> String {
