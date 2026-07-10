@@ -79,6 +79,8 @@
 		A00000000000000000000046 /* AIUsageInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014E /* AIUsageInfo.swift */; };
 		A00000000000000000000047 /* AIUsageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014F /* AIUsageReader.swift */; };
 		A00000000000000000000048 /* AIUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000150 /* AIUsageStore.swift */; };
+		A00000000000000000000049 /* FloatingBallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000151 /* FloatingBallController.swift */; };
+		A0000000000000000000004A /* FloatingArcMenuGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000152 /* FloatingArcMenuGeometry.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -202,6 +204,8 @@
 		A0000000000000000000014E /* AIUsageInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageInfo.swift; sourceTree = "<group>"; };
 		A0000000000000000000014F /* AIUsageReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageReader.swift; sourceTree = "<group>"; };
 		A00000000000000000000150 /* AIUsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000151 /* FloatingBallController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingBallController.swift; sourceTree = "<group>"; };
+		A00000000000000000000152 /* FloatingArcMenuGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingArcMenuGeometry.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -313,6 +317,8 @@
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
 				A0000000000000000000014C /* LogArchiver.swift */,
 				A0000000000000000000014D /* SuperRightClickSharedConfig.swift */,
+				A00000000000000000000151 /* FloatingBallController.swift */,
+				A00000000000000000000152 /* FloatingArcMenuGeometry.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -621,6 +627,8 @@
 				A00000000000000000000046 /* AIUsageInfo.swift in Sources */,
 				A00000000000000000000047 /* AIUsageReader.swift in Sources */,
 				A00000000000000000000048 /* AIUsageStore.swift in Sources */,
+				A00000000000000000000049 /* FloatingBallController.swift in Sources */,
+				A0000000000000000000004A /* FloatingArcMenuGeometry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -785,7 +793,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.3;
+				MARKETING_VERSION = 1.2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -813,7 +821,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.3;
+				MARKETING_VERSION = 1.2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -842,7 +850,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.3;
+				MARKETING_VERSION = 1.2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
@@ -873,7 +881,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.3;
+				MARKETING_VERSION = 1.2.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;

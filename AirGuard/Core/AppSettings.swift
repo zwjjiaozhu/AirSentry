@@ -67,6 +67,66 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
     ]
 }
 
+enum FloatingBallActionKind: String, CaseIterable, Codable, Identifiable {
+    case pomodoro
+    case timer
+    case focus
+    case translation
+    case ocrCapture
+    case screenshot
+    case appLauncher
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .pomodoro: "番茄钟"
+        case .timer: "计时"
+        case .focus: "专注"
+        case .translation: "翻译"
+        case .ocrCapture: "OCR 截图"
+        case .screenshot: "截图"
+        case .appLauncher: "程序收纳台"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .pomodoro: "启动 25 分钟番茄专注"
+        case .timer: "打开快速计时入口"
+        case .focus: "切换专注模式"
+        case .translation: "打开翻译助手"
+        case .ocrCapture: "框选截图并识别文字"
+        case .screenshot: "框选截图或钉图"
+        case .appLauncher: "打开程序收纳台"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .pomodoro: "timer"
+        case .timer: "stopwatch"
+        case .focus: "moon.zzz"
+        case .translation: "character.book.closed"
+        case .ocrCapture: "text.viewfinder"
+        case .screenshot: "camera.viewfinder"
+        case .appLauncher: "square.grid.3x3"
+        }
+    }
+}
+
+struct FloatingBallAction: Identifiable, Codable, Equatable, Hashable {
+    let id: UUID
+    var kind: FloatingBallActionKind
+    var isEnabled: Bool
+
+    init(id: UUID = UUID(), kind: FloatingBallActionKind, isEnabled: Bool = true) {
+        self.id = id
+        self.kind = kind
+        self.isEnabled = isEnabled
+    }
+}
+
 final class AppSettings: ObservableObject {
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Keys.notificationsEnabled) }
@@ -211,6 +271,26 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(translationQualityPreference, forKey: Keys.translationQualityPreference) }
     }
 
+    @Published var floatingBallEnabled: Bool {
+        didSet { defaults.set(floatingBallEnabled, forKey: Keys.floatingBallEnabled) }
+    }
+
+    @Published var floatingBallSize: Double {
+        didSet { defaults.set(floatingBallSize, forKey: Keys.floatingBallSize) }
+    }
+
+    @Published var floatingBallOpacity: Double {
+        didSet { defaults.set(floatingBallOpacity, forKey: Keys.floatingBallOpacity) }
+    }
+
+    @Published var floatingBallPetImagePath: String {
+        didSet { defaults.set(floatingBallPetImagePath, forKey: Keys.floatingBallPetImagePath) }
+    }
+
+    @Published var floatingBallActions: [FloatingBallAction] {
+        didSet { saveFloatingBallActions() }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -258,9 +338,17 @@ final class AppSettings: ObservableObject {
         translationOpenAIModel = defaults.string(forKey: Keys.translationOpenAIModel) ?? "gpt-4o-mini"
         let savedTranslationQuality = defaults.double(forKey: Keys.translationQualityPreference)
         translationQualityPreference = savedTranslationQuality > 0 ? savedTranslationQuality : 0.55
+        floatingBallEnabled = defaults.object(forKey: Keys.floatingBallEnabled) as? Bool ?? false
+        let savedFloatingBallSize = defaults.double(forKey: Keys.floatingBallSize)
+        floatingBallSize = savedFloatingBallSize > 0 ? savedFloatingBallSize : 64
+        let savedFloatingBallOpacity = defaults.double(forKey: Keys.floatingBallOpacity)
+        floatingBallOpacity = savedFloatingBallOpacity > 0 ? savedFloatingBallOpacity : 0.96
+        floatingBallPetImagePath = defaults.string(forKey: Keys.floatingBallPetImagePath) ?? ""
+        floatingBallActions = Self.loadFloatingBallActions(from: defaults)
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
         normalizeTranslationSettings()
+        normalizeFloatingBallSettings()
     }
 
     func effectiveThermalStatus(from status: ThermalStatus) -> ThermalStatus {
@@ -413,6 +501,32 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    func setFloatingBallSize(_ value: Double) {
+        floatingBallSize = min(max(value, 28), 96)
+    }
+
+    func setFloatingBallOpacity(_ value: Double) {
+        floatingBallOpacity = min(max(value, 0.35), 1)
+    }
+
+    func setFloatingBallAction(_ kind: FloatingBallActionKind, enabled: Bool) {
+        if let index = floatingBallActions.firstIndex(where: { $0.kind == kind }) {
+            floatingBallActions[index].isEnabled = enabled
+        } else if enabled {
+            floatingBallActions.append(FloatingBallAction(kind: kind))
+        }
+        sortFloatingBallActions()
+    }
+
+    func moveFloatingBallAction(from source: IndexSet, to destination: Int) {
+        var actions = floatingBallActions
+        let moving = source.map { actions[$0] }
+        actions.removeAll { action in moving.contains(action) }
+        let insertionIndex = min(max(destination - source.filter { $0 < destination }.count, 0), actions.count)
+        actions.insert(contentsOf: moving, at: insertionIndex)
+        floatingBallActions = actions
+    }
+
     private func normalizeLoadedTemperatureThresholds() {
         fairTemperatureThreshold = min(max(fairTemperatureThreshold, 30), 123)
         seriousTemperatureThreshold = min(max(seriousTemperatureThreshold, fairTemperatureThreshold + 1), 124)
@@ -433,6 +547,26 @@ final class AppSettings: ObservableObject {
             translationEngines = [.appleSystem]
         }
         translationQualityPreference = min(max(translationQualityPreference, 0), 1)
+    }
+
+    private func normalizeFloatingBallSettings() {
+        floatingBallSize = min(max(floatingBallSize, 28), 96)
+        floatingBallOpacity = min(max(floatingBallOpacity, 0.35), 1)
+        if floatingBallActions.isEmpty {
+            floatingBallActions = Self.defaultFloatingBallActions
+        }
+    }
+
+    private func sortFloatingBallActions() {
+        floatingBallActions.sort { lhs, rhs in
+            guard
+                let lhsIndex = FloatingBallActionKind.allCases.firstIndex(of: lhs.kind),
+                let rhsIndex = FloatingBallActionKind.allCases.firstIndex(of: rhs.kind)
+            else {
+                return lhs.kind.rawValue < rhs.kind.rawValue
+            }
+            return lhsIndex < rhsIndex
+        }
     }
 
     private func saveMenuBarQuickTools() {
@@ -506,6 +640,15 @@ final class AppSettings: ObservableObject {
             defaults.set(data, forKey: Keys.customTranslationEngines)
         } catch {
             NSLog("AirSentry custom translation engines save failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func saveFloatingBallActions() {
+        do {
+            let data = try JSONEncoder().encode(floatingBallActions)
+            defaults.set(data, forKey: Keys.floatingBallActions)
+        } catch {
+            NSLog("AirSentry floating ball actions save failed: \(error.localizedDescription)")
         }
     }
 
@@ -607,6 +750,30 @@ final class AppSettings: ObservableObject {
         let tools = rawValues.compactMap(MenuBarQuickTool.init(rawValue:))
         return tools.isEmpty ? MenuBarQuickTool.defaultTools : tools
     }
+
+    private static var defaultFloatingBallActions: [FloatingBallAction] {
+        [
+            FloatingBallAction(kind: .pomodoro),
+            FloatingBallAction(kind: .timer),
+            FloatingBallAction(kind: .focus),
+            FloatingBallAction(kind: .translation),
+            FloatingBallAction(kind: .ocrCapture)
+        ]
+    }
+
+    private static func loadFloatingBallActions(from defaults: UserDefaults) -> [FloatingBallAction] {
+        guard let data = defaults.data(forKey: Keys.floatingBallActions) else {
+            return defaultFloatingBallActions
+        }
+
+        do {
+            let actions = try JSONDecoder().decode([FloatingBallAction].self, from: data)
+            return actions.isEmpty ? defaultFloatingBallActions : actions
+        } catch {
+            NSLog("AirSentry floating ball actions load failed: \(error.localizedDescription)")
+            return defaultFloatingBallActions
+        }
+    }
 }
 
 private enum Keys {
@@ -645,4 +812,9 @@ private enum Keys {
     static let translationOpenAIBaseURL = "translationOpenAIBaseURL"
     static let translationOpenAIModel = "translationOpenAIModel"
     static let translationQualityPreference = "translationQualityPreference"
+    static let floatingBallEnabled = "floatingBallEnabled"
+    static let floatingBallSize = "floatingBallSize"
+    static let floatingBallOpacity = "floatingBallOpacity"
+    static let floatingBallPetImagePath = "floatingBallPetImagePath"
+    static let floatingBallActions = "floatingBallActions"
 }

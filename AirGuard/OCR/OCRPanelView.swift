@@ -55,6 +55,13 @@ final class OCRStore: ObservableObject {
         statusMessage = "识别结果已复制"
     }
 
+    func copyQRCode(_ item: OCRQRCodeItem) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(item.payload, forType: .string)
+        statusMessage = "二维码内容已复制"
+    }
+
     func recognize() {
         guard let image else {
             NSSound.beep()
@@ -219,20 +226,7 @@ struct OCRPanelView: View {
                         .stroke(Color.primary.opacity(0.10), lineWidth: 1)
                 )
 
-            if !store.qrCodeItems.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(store.qrCodeItems.prefix(2)) { item in
-                        if let url = item.url {
-                            Button {
-                                NSWorkspace.shared.open(url)
-                            } label: {
-                                Label("打开链接", systemImage: "safari")
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                }
-            }
+            qrCodeResultList
 
             Text(store.statusMessage)
                 .font(.system(size: 12.5))
@@ -240,6 +234,54 @@ struct OCRPanelView: View {
                 .lineLimit(2)
         }
         .padding(16)
+    }
+
+    @ViewBuilder
+    private var qrCodeResultList: some View {
+        if !store.qrCodeItems.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("二维码", systemImage: "qrcode")
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                ForEach(Array(store.qrCodeItems.enumerated()), id: \.element.id) { index, item in
+                    HStack(spacing: 8) {
+                        Text(store.qrCodeItems.count == 1 ? item.payload : "\(index + 1). \(item.payload)")
+                            .font(.system(size: 12.5))
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if let url = item.url {
+                            Button {
+                                NSWorkspace.shared.open(url)
+                            } label: {
+                                Image(systemName: "safari")
+                                    .frame(width: 24, height: 24)
+                            }
+                            .buttonStyle(.plain)
+                            .help("打开链接")
+                        }
+
+                        Button {
+                            store.copyQRCode(item)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.plain)
+                        .help("复制二维码内容")
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+                    )
+                }
+            }
+        }
     }
 
     private func openImagePanel() {

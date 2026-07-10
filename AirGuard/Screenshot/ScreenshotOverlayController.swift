@@ -1108,13 +1108,6 @@ private struct ScreenshotOverlayView: View {
             return
         }
 
-        guard !isOCRRecognizing else { return }
-        guard let payload = capturePayload(from: selection),
-              let image = payload.image else {
-            NSSound.beep()
-            return
-        }
-
         finishTextEditing()
         selectedTool = nil
         selectedAnnotationID = nil
@@ -1127,18 +1120,46 @@ private struct ScreenshotOverlayView: View {
         let token = UUID()
         ocrRecognitionToken = token
 
-        Task {
-            do {
-                let result = try await OCRService.recognizeContent(in: image)
-                guard ocrRecognitionToken == token else { return }
-                ocrResult = result
-            } catch {
-                guard ocrRecognitionToken == token else { return }
-                NSSound.beep()
-            }
-            if ocrRecognitionToken == token {
+        DispatchQueue.main.async {
+            guard ocrRecognitionToken == token else { return }
+            guard let payload = capturePayload(from: selection),
+                  let image = payload.image else {
                 isOCRRecognizing = false
+                showCopyFeedback("无法读取截图")
+                NSSound.beep()
+                return
             }
+
+            Task {
+                do {
+                    let result = try await OCRService.recognizeContent(in: image)
+                    guard ocrRecognitionToken == token else { return }
+                    ocrResult = result
+                    showCopyFeedback(ocrCompletionMessage(for: result))
+                } catch {
+                    guard ocrRecognitionToken == token else { return }
+                    showCopyFeedback("没有识别到文字或二维码")
+                    NSSound.beep()
+                }
+                if ocrRecognitionToken == token {
+                    isOCRRecognizing = false
+                }
+            }
+        }
+    }
+
+    private func ocrCompletionMessage(for result: OCRRecognitionResult) -> String {
+        let textCount = result.textItems.count
+        let qrCodeCount = result.qrCodeItems.count
+        switch (textCount, qrCodeCount) {
+        case (0, 0):
+            return "没有识别到文字或二维码"
+        case (_, 0):
+            return "识别完成：\(textCount) 段文字"
+        case (0, _):
+            return "识别完成：\(qrCodeCount) 个二维码"
+        default:
+            return "识别完成：\(textCount) 段文字，\(qrCodeCount) 个二维码"
         }
     }
 
@@ -2139,7 +2160,7 @@ private struct ScreenshotOverlayView: View {
     }
 
     private var toolbarControlMode: ScreenshotToolbarControlMode? {
-        if ocrResult?.textItems.isEmpty == false {
+        if isOCRRecognizing || ocrResult != nil {
             return .ocr
         }
         if selectedAnnotation?.tool == .text || selectedTool == .text {

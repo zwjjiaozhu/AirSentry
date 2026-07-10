@@ -31,7 +31,7 @@ final class OCRPanelController: ObservableObject {
             backing: .buffered,
             defer: false
         )
-        panel.title = "OCR 文字识别"
+        panel.title = "OCR 识别"
         panel.contentView = hostingView
         panel.center()
         panel.isReleasedWhenClosed = false

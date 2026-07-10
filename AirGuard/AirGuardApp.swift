@@ -18,6 +18,7 @@ struct AirGuardApp: App {
     @StateObject private var screenshotShortcutManager: ScreenshotShortcutManager
     @StateObject private var translationStore: TranslationStore
     @StateObject private var translationShortcutManager: TranslationShortcutManager
+    @StateObject private var floatingBallController: FloatingBallController
     private let appLauncherPanelController: AppLauncherPanelController
     private let translationPanelController: TranslationPanelController
 
@@ -44,6 +45,7 @@ struct AirGuardApp: App {
         _translationShortcutManager = StateObject(wrappedValue: TranslationShortcutManager(settings: settings) {
             translationPanelController.toggle()
         })
+        _floatingBallController = StateObject(wrappedValue: FloatingBallController(settings: settings, screenshotCaptureController: screenshotCaptureController))
         self.appLauncherPanelController = appLauncherPanelController
         self.translationPanelController = translationPanelController
     }
@@ -60,6 +62,7 @@ struct AirGuardApp: App {
         } label: {
             MenuBarStatusLabel(settings: settings, monitorStore: monitorStore)
                 .background(FinderAuthorizationSettingsWindowBridge())
+                .background(FloatingBallSettingsWindowBridge())
         }
         .menuBarExtraStyle(.window)
 
@@ -649,12 +652,13 @@ private struct FinderNewFileRequest: Codable {
     let path: String
 }
 
-private extension Notification.Name {
+extension Notification.Name {
     static let airSentryFinderNewFileRequest = Notification.Name("AirSentry.Finder.NewFileRequest")
     static let airSentryFinderOpenTerminalRequest = Notification.Name("AirSentry.Finder.OpenTerminalRequest")
     static let airSentryFinderActionRequest = Notification.Name("AirSentry.Finder.ActionRequest")
     static let airSentryOpenFinderAuthorizationSettings = Notification.Name("AirSentry.OpenFinderAuthorizationSettings")
     static let airSentrySelectSuperRightClickToolboxSection = Notification.Name("AirSentry.SelectSuperRightClickToolboxSection")
+    static let openFloatingBallSettings = Notification.Name("AirSentry.OpenFloatingBallSettings")
 }
 
 private struct FinderAuthorizationSettingsWindowBridge: View {
@@ -672,6 +676,39 @@ private struct FinderAuthorizationSettingsWindowBridge: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                         bringToolboxWindowToFront()
                         NotificationCenter.default.post(name: .airSentrySelectSuperRightClickToolboxSection, object: nil)
+                    }
+                }
+            }
+    }
+
+    private func bringToolboxWindowToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        guard let toolboxWindow = NSApp.windows.first(where: { $0.title == "工具箱" }) else {
+            return
+        }
+
+        toolboxWindow.deminiaturize(nil)
+        toolboxWindow.orderFrontRegardless()
+        toolboxWindow.makeKeyAndOrderFront(nil)
+    }
+}
+
+private struct FloatingBallSettingsWindowBridge: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .openFloatingBallSettings)) { _ in
+                openWindow(id: "toolbox")
+                NSApp.activate(ignoringOtherApps: true)
+                NotificationCenter.default.post(name: .selectToolboxSection, object: "floatingBall")
+
+                [0.05, 0.15, 0.35].forEach { delay in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        bringToolboxWindowToFront()
+                        NotificationCenter.default.post(name: .selectToolboxSection, object: "floatingBall")
                     }
                 }
             }

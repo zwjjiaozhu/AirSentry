@@ -44,13 +44,17 @@ struct ToolboxView: View {
             selectedTool = .superRightClick
         }
         .onReceive(NotificationCenter.default.publisher(for: .selectToolboxSection)) { notification in
-            guard
-                let rawValue = notification.object as? String,
-                let quickTool = MenuBarQuickTool(rawValue: rawValue),
-                let section = ToolboxSection(quickTool: quickTool)
-            else {
+            guard let rawValue = notification.object as? String else {
                 return
             }
+            if rawValue == "floatingBall" {
+                selectedTool = .floatingBall
+                return
+            }
+            guard
+                let quickTool = MenuBarQuickTool(rawValue: rawValue),
+                let section = ToolboxSection(quickTool: quickTool)
+            else { return }
             selectedTool = section
         }
         .onReceive(NotificationCenter.default.publisher(for: .openTranslationSettings)) { _ in
@@ -146,6 +150,14 @@ struct ToolboxView: View {
               ) {
                 selectedTool = .translation
               }
+
+              ToolboxSidebarItem(
+                title: "悬浮球",
+                systemImage: "circle.grid.cross",
+                isSelected: selectedTool == .floatingBall
+              ) {
+                selectedTool = .floatingBall
+              }
             }
             .padding(.horizontal, 12)
 
@@ -239,6 +251,8 @@ struct ToolboxView: View {
                     superRightClickContent
                 case .translation:
                     translationContent
+                case .floatingBall:
+                    floatingBallContent
                 }
             }
             .padding(26)
@@ -336,6 +350,313 @@ struct ToolboxView: View {
             isRecordingShortcut: $isRecordingTranslationShortcut,
             conflictReason: translationShortcutConflictReason
         )
+    }
+
+    private var floatingBallHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("悬浮球")
+                    .font(.system(size: 24, weight: .bold))
+                Text("把常用工具收进一个桌面宠物入口，点击后以半圆发散菜单展开。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: $settings.floatingBallEnabled)
+                .labelsHidden()
+                .toggleStyle(.switch)
+        }
+    }
+
+    private var floatingBallSwitchSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.cyan.opacity(0.12))
+                    Image(systemName: "circle.grid.cross")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.cyan)
+                }
+                .frame(width: 46, height: 46)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(settings.floatingBallEnabled ? "悬浮球已开启" : "悬浮球已关闭")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("开启后会显示透明置顶小窗，可拖拽移动；点击宠物会展开快捷功能。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    settings.floatingBallEnabled.toggle()
+                } label: {
+                    Label(settings.floatingBallEnabled ? "关闭" : "打开", systemImage: settings.floatingBallEnabled ? "power.circle" : "play.circle")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            HStack(spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("大小")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { settings.floatingBallSize },
+                        set: { settings.setFloatingBallSize($0) }
+                    ), in: 28...96)
+                    Text("\(Int(settings.floatingBallSize)) px")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("透明度")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { settings.floatingBallOpacity },
+                        set: { settings.setFloatingBallOpacity($0) }
+                    ), in: 0.35...1)
+                    Text("\(Int(settings.floatingBallOpacity * 100))%")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var floatingBallPetSection: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(.blue.opacity(0.12))
+                if
+                    !settings.floatingBallPetImagePath.isEmpty,
+                    let image = NSImage(contentsOfFile: settings.floatingBallPetImagePath)
+                {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(Circle())
+                        .padding(6)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
+            .frame(width: 58, height: 58)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("宠物图标")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(settings.floatingBallPetImagePath.isEmpty ? "当前使用内置动态图标，可替换为 PNG、JPG、GIF 或 WebP。" : settings.floatingBallPetImagePath)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            Button {
+                pickFloatingPetImage()
+            } label: {
+                Label("选择图标", systemImage: "photo")
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                settings.floatingBallPetImagePath = ""
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("恢复默认")
+            .disabled(settings.floatingBallPetImagePath.isEmpty)
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var floatingBallActionsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("自定义功能")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("勾选后会出现在悬浮球展开菜单里，当前最多显示 6 个。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
+                ForEach(FloatingBallActionKind.allCases) { kind in
+                    let isEnabled = settings.floatingBallActions.contains { $0.kind == kind && $0.isEnabled }
+                    HStack(spacing: 12) {
+                        Image(systemName: kind.systemImage)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(isEnabled ? .blue : .secondary)
+                            .frame(width: 28)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(kind.title)
+                                .font(.system(size: 14, weight: .semibold))
+                            Text(kind.helpText)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: Binding(
+                            get: { isEnabled },
+                            set: { settings.setFloatingBallAction(kind, enabled: $0) }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+                    .padding(12)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var floatingBallContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            floatingBallHeader
+            floatingBallPreviewSection
+            floatingBallSwitchSection
+            floatingBallPetSection
+            floatingBallActionsSection
+        }
+    }
+
+    private var floatingBallPreviewSection: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                dottedPreviewBackground
+
+                ZStack(alignment: .topLeading) {
+                    ZStack {
+                        FloatingArcBandShape(
+                            center: CGPoint(x: 278, y: 204),
+                            outerRadius: 116,
+                            innerRadius: 76,
+                            startAngle: 240,
+                            endAngle: 120,
+                            progress: 1
+                        )
+                            .fill(.regularMaterial)
+                            .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+                        FloatingArcBandShape(
+                            center: CGPoint(x: 278, y: 204),
+                            outerRadius: 116,
+                            innerRadius: 76,
+                            startAngle: 240,
+                            endAngle: 120,
+                            progress: 1
+                        )
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        FloatingArcGuideShape(
+                            center: CGPoint(x: 278, y: 204),
+                            radius: 104,
+                            startAngle: 240,
+                            endAngle: 120,
+                            progress: 1
+                        )
+                            .stroke(Color.primary.opacity(0.07), lineWidth: 2)
+                        FloatingArcGuideShape(
+                            center: CGPoint(x: 278, y: 204),
+                            radius: 88,
+                            startAngle: 240,
+                            endAngle: 120,
+                            progress: 1
+                        )
+                            .stroke(Color.white.opacity(0.48), lineWidth: 2)
+                    }
+                    .frame(width: 390, height: 340)
+
+                    ForEach(Array(settings.floatingBallActions.filter(\.isEnabled).prefix(5).enumerated()), id: \.element.id) { index, action in
+                        let point = floatingBallPreviewPoint(index: index, count: min(settings.floatingBallActions.filter(\.isEnabled).count, 5))
+                        Image(systemName: action.kind.systemImage)
+                            .font(.system(size: 15.5, weight: .semibold))
+                            .symbolRenderingMode(.hierarchical)
+                            .frame(width: 34, height: 34)
+                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.90), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+                            .position(point)
+                    }
+
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.cyan.opacity(0.92), .indigo.opacity(0.88)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 82, height: 82)
+                    .overlay(Circle().stroke(.white.opacity(0.45), lineWidth: 1.5))
+                    .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
+                    .position(x: 278, y: 204)
+                }
+                .frame(width: 390, height: 340)
+            }
+            .frame(maxWidth: .infinity, minHeight: 350)
+
+            Text("点击悬浮球后显示半环菜单，常用动作沿弧线排列，中间保留名称或状态。")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var dottedPreviewBackground: some View {
+        GeometryReader { proxy in
+            let columns = stride(from: 0, through: Int(proxy.size.width), by: 28).map { $0 }
+            let rows = stride(from: 0, through: Int(proxy.size.height), by: 28).map { $0 }
+            ZStack {
+                ForEach(columns, id: \.self) { x in
+                    ForEach(rows, id: \.self) { y in
+                        Circle()
+                            .fill(Color.primary.opacity(0.055))
+                            .frame(width: 4, height: 4)
+                            .position(x: CGFloat(x), y: CGFloat(y))
+                    }
+                }
+            }
+        }
+    }
+
+    private func floatingBallPreviewPoint(index: Int, count: Int) -> CGPoint {
+        let progress = count > 1 ? Double(index) / Double(count - 1) : 0.5
+        let angle = FloatingArcMath.counterClockwiseAngle(from: 240, to: 120, progress: progress) * .pi / 180
+        let radius: CGFloat = 96
+        return CGPoint(x: 278 + cos(angle) * radius, y: 204 + sin(angle) * radius)
     }
 
     private var uninstallerContent: some View {
@@ -1433,9 +1754,9 @@ struct ToolboxView: View {
     private var ocrHeader: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("文字识别")
+                Text("文字和二维码识别")
                     .font(.system(size: 24, weight: .bold))
-                Text("调用 macOS 系统 OCR，支持拖入图片、粘贴剪贴板图片和框选截图识别。")
+                Text("调用 macOS 系统 OCR，支持拖入图片、粘贴剪贴板图片、框选截图，以及识别二维码。")
                     .font(.system(size: 13.5))
                     .foregroundStyle(.secondary)
             }
@@ -2948,6 +3269,18 @@ struct ToolboxView: View {
         NSWorkspace.shared.open(settingsURL)
     }
 
+    private func pickFloatingPetImage() {
+        let panel = NSOpenPanel()
+        panel.title = "选择悬浮球宠物图标"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.image]
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.floatingBallPetImagePath = url.path
+        }
+    }
+
     private func iconName(for kind: AppUninstallArtifactKind) -> String {
         switch kind {
         case .application:
@@ -2995,6 +3328,7 @@ private enum ToolboxSection {
     case imageProcessing
     case superRightClick
     case translation
+    case floatingBall
 
     init?(quickTool: MenuBarQuickTool) {
         switch quickTool {

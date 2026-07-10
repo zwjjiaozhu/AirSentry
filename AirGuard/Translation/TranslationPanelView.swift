@@ -1302,11 +1302,6 @@ private struct AppleSystemTranslationBridge: View {
             .translationTask(configuration) { session in
                 await translate(with: session)
             }
-            .onAppear {
-                if configuration == nil {
-                    configuration = makeConfiguration()
-                }
-            }
             .onChange(of: store.appleTranslationRequestID) { requestID in
                 guard let requestID, requestID != handledRequestID else { return }
                 handledRequestID = requestID
@@ -1330,18 +1325,27 @@ private struct AppleSystemTranslationBridge: View {
     }
 
     private func translate(with session: TranslationSession) async {
-        let requestID = handledRequestID
-        let text = store.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let requestID = await MainActor.run { handledRequestID }
+        let text = await MainActor.run {
+            store.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard !text.isEmpty else {
-            store.markAppleError("请输入要翻译的文本", requestID: requestID)
+            await MainActor.run {
+                store.markAppleError("请输入要翻译的文本", requestID: requestID)
+            }
             return
         }
 
         do {
             let response = try await session.translate(text)
-            store.markAppleResult(text: response.targetText, requestID: requestID)
+            await MainActor.run {
+                store.markAppleResult(text: response.targetText, requestID: requestID)
+            }
         } catch {
-            store.markAppleError(appleErrorMessage(for: error), requestID: requestID)
+            let message = appleErrorMessage(for: error)
+            await MainActor.run {
+                store.markAppleError(message, requestID: requestID)
+            }
         }
     }
 

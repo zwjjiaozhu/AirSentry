@@ -19,9 +19,7 @@ final class TranslationPanelController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.show()
-            }
+            self?.show()
         }
     }
 
