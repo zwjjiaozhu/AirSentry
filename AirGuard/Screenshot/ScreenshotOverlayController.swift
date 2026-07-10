@@ -68,7 +68,6 @@ final class ScreenshotOverlayController {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
-            NSApp.activate(ignoringOtherApps: true)
             windows.forEach { $0.orderFrontRegardless() }
             windows.first?.makeKey()
         }
@@ -337,9 +336,9 @@ private struct ScreenshotOverlayView: View {
                 if mosaicSampler == nil, let screenImage {
                     mosaicSampler = ScreenshotOverlayMosaicSampler(image: screenImage)
                 }
-                // 进入截图模式时默认高亮最前方窗口（不直接选中）
-                if hoveredTargetID == nil, let frontTarget = captureTargets.first {
-                    hoveredTargetID = frontTarget.id
+                // 进入截图模式时优先高亮鼠标所在/最近的窗口，避免前层小浮窗抢默认目标。
+                if hoveredTargetID == nil {
+                    hoveredTargetID = initialHoverTargetID()
                 }
             }
             .background(ScreenshotOverlayKeyCatcher(isEnabled: focusedTextAnnotationID == nil) { event in
@@ -1315,6 +1314,57 @@ private struct ScreenshotOverlayView: View {
                 return firstArea < secondArea
             }
             .first
+    }
+
+    private func initialHoverTargetID() -> ScreenshotCaptureTarget.ID? {
+        let mousePoint = localMousePoint()
+        let localBounds = CGRect(origin: .zero, size: screenFrame.size)
+        guard localBounds.contains(mousePoint) else { return nil }
+
+        if let target = captureTarget(at: mousePoint) {
+            return target.id
+        }
+        if let nearest = nearestCaptureTarget(to: mousePoint) {
+            return nearest.id
+        }
+        return captureTargets.first?.id
+    }
+
+    private func localMousePoint() -> CGPoint {
+        let mouseLocation = NSEvent.mouseLocation
+        return CGPoint(
+            x: mouseLocation.x - screenFrame.minX,
+            y: screenFrame.maxY - mouseLocation.y
+        )
+    }
+
+    private func nearestCaptureTarget(to point: CGPoint) -> ScreenshotCaptureTarget? {
+        mergedCaptureTargets
+            .filter { !$0.isSystemUI }
+            .min { first, second in
+                distanceSquared(from: point, to: first.screenRect) < distanceSquared(from: point, to: second.screenRect)
+            }
+    }
+
+    private func distanceSquared(from point: CGPoint, to rect: CGRect) -> CGFloat {
+        let dx: CGFloat
+        if point.x < rect.minX {
+            dx = rect.minX - point.x
+        } else if point.x > rect.maxX {
+            dx = point.x - rect.maxX
+        } else {
+            dx = 0
+        }
+
+        let dy: CGFloat
+        if point.y < rect.minY {
+            dy = rect.minY - point.y
+        } else if point.y > rect.maxY {
+            dy = point.y - rect.maxY
+        } else {
+            dy = 0
+        }
+        return dx * dx + dy * dy
     }
 
     private func boundedTargetRect(_ rect: CGRect, in size: CGSize) -> CGRect {
