@@ -1299,20 +1299,24 @@ private struct AppleSystemTranslationBridge: View {
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .id(handledRequestID)
             .translationTask(configuration) { session in
                 await translate(with: session)
+            }
+            .onAppear {
+                if configuration == nil {
+                    configuration = makeConfiguration()
+                }
             }
             .onChange(of: store.appleTranslationRequestID) { requestID in
                 guard let requestID, requestID != handledRequestID else { return }
                 handledRequestID = requestID
 
-                // Apple Translation 的 Configuration 在源/目标语言不变时，
-                // 只重新赋一个“相同配置”不一定会触发新的 translationTask。
-                // 先置空，再下一轮 RunLoop 重新挂载并 invalidate，确保连续点击翻译也会重新执行。
-                configuration = nil
+                // Apple Translation 的 translationTask 依赖 Configuration.invalidate() 重新触发。
+                // 之前通过 nil -> 新配置 + .id() 重建视图，连续第二次请求时容易把无效化时机丢掉，
+                // 造成 Store 已进入 translating，但 translationTask 没有再次执行。
+                configuration = makeConfiguration()
                 DispatchQueue.main.async {
-                    configuration = makeConfiguration()
+                    guard handledRequestID == requestID else { return }
                     configuration?.invalidate()
                 }
             }
@@ -1326,17 +1330,18 @@ private struct AppleSystemTranslationBridge: View {
     }
 
     private func translate(with session: TranslationSession) async {
+        let requestID = handledRequestID
         let text = store.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            store.markAppleError("请输入要翻译的文本")
+            store.markAppleError("请输入要翻译的文本", requestID: requestID)
             return
         }
 
         do {
             let response = try await session.translate(text)
-            store.markAppleResult(text: response.targetText)
+            store.markAppleResult(text: response.targetText, requestID: requestID)
         } catch {
-            store.markAppleError(appleErrorMessage(for: error))
+            store.markAppleError(appleErrorMessage(for: error), requestID: requestID)
         }
     }
 
