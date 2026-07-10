@@ -5,6 +5,8 @@ struct SystemSnapshot: Equatable {
     var cpuUsage: Double
     var memory: MemoryInfo
     var network: NetworkSpeed
+    var battery: BatteryInfo
+    var disk: DiskStorageInfo
     var capturedAt: Date
 
     static let empty = SystemSnapshot(
@@ -12,6 +14,8 @@ struct SystemSnapshot: Equatable {
         cpuUsage: 0,
         memory: .empty,
         network: .zero,
+        battery: .empty,
+        disk: .empty,
         capturedAt: Date()
     )
 }
@@ -27,4 +31,22 @@ struct TopCPUProcess: Equatable, Identifiable {
     var name: String
 
     var id: Int32 { pid }
+}
+
+struct BatteryInfo: Equatable {
+    var levelRatio: Double?
+    var isCharging: Bool
+    var isCharged: Bool
+    var isPresent: Bool
+    var cycleCount: Int?
+    var health: String?
+
+    static let empty = BatteryInfo(
+        levelRatio: nil,
+        isCharging: false,
+        isCharged: false,
+        isPresent: false,
+        cycleCount: nil,
+        health: nil
+    )
 }

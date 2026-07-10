@@ -34,9 +34,8 @@ final class PinnedImageController {
         }
         windows.append(window)
 
-        NSApp.activate(ignoringOtherApps: true)
         window.orderFrontRegardless()
-        window.makeKeyAndOrderFront(nil)
+        focus(window)
     }
 
     private func replace(_ window: PinnedImageWindow, with image: NSImage) {
@@ -111,10 +110,13 @@ final class PinnedImageController {
         if didSave {
             close(window)
         } else {
-            NSApp.activate(ignoringOtherApps: true)
             window.orderFrontRegardless()
-            window.makeKeyAndOrderFront(nil)
+            focus(window)
         }
+    }
+
+    private func focus(_ window: PinnedImageWindow) {
+        windows.forEach { $0.focusState?.isFocused = ($0 === window) }
     }
 
     private func close(_ window: PinnedImageWindow) {

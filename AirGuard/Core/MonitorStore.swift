@@ -41,6 +41,8 @@ final class MonitorStore: ObservableObject {
             cpuUsage: cpuReader.readUsage(),
             memory: memoryReader.read(),
             network: networkReader.readSpeed(),
+            battery: .empty,
+            disk: .empty,
             capturedAt: Date()
         )
         self.snapshot = snapshot

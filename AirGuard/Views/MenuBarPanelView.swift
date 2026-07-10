@@ -1,4 +1,6 @@
 import AppKit
+import IOKit
+import IOKit.ps
 import SwiftUI
 
 struct MenuBarPanelView: View {
@@ -9,8 +11,15 @@ struct MenuBarPanelView: View {
     @EnvironmentObject private var monitorStore: MonitorStore
     @EnvironmentObject private var alertManager: AlertManager
     @EnvironmentObject private var screenshotCaptureController: ScreenshotCaptureController
+    @State private var showsSystemStatusPopover = false
+    @State private var moreStatusBattery: BatteryInfo = .empty
+    @State private var moreStatusDisk: DiskStorageInfo = .empty
+    @State private var moreStatusDiskIO: DiskIOInfo = .empty
 
     private var snapshot: SystemSnapshot { monitorStore.snapshot }
+    private let batteryReader = BatteryReader()
+    private let diskIOReader = DiskIOReader()
+    private let storageReader = StorageReader()
 
     var body: some View {
         VStack(spacing: 12) {
@@ -196,6 +205,23 @@ struct MenuBarPanelView: View {
             suggestionContent
 
             Spacer(minLength: 0)
+
+            Button {
+                refreshMoreSystemStatus()
+                showsSystemStatusPopover.toggle()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .help("查看更多系统状态")
+            .popover(isPresented: $showsSystemStatusPopover, arrowEdge: .trailing) {
+                moreSystemStatusPanel
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
@@ -205,6 +231,140 @@ struct MenuBarPanelView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(surfaceStrokeColor, lineWidth: 1)
         )
+    }
+
+    private var moreSystemStatusPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("更多系统状态")
+                    .font(.system(size: 18, weight: .bold))
+
+                Spacer()
+
+                Button {
+                    showsSystemStatusPopover = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+                .help("关闭")
+            }
+
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 0),
+                GridItem(.flexible(), spacing: 0)
+            ], spacing: 0) {
+                statusMiniCell(
+                    title: "电池电量",
+                    value: batteryLevelText,
+                    systemImage: "battery.100percent",
+                    tint: batteryTint
+                ) {
+                    ProgressView(value: moreStatusBattery.levelRatio ?? 0)
+                        .tint(batteryTint)
+                }
+
+                statusMiniCell(
+                    title: "充电状态",
+                    value: chargingStatusText,
+                    systemImage: "powerplug",
+                    tint: .green
+                )
+
+                statusMiniCell(
+                    title: "电池健康",
+                    value: batteryHealthText,
+                    systemImage: "heart",
+                    tint: batteryHealthTint
+                )
+
+                statusMiniCell(
+                    title: "循环次数",
+                    value: batteryCycleText,
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: .secondary
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(popoverStrokeColor, lineWidth: 1)
+            )
+
+            statusWideCell(
+                title: "存储状态",
+                value: diskHealthText,
+                detail: diskHealthDetail,
+                systemImage: "shield",
+                tint: diskTint
+            ) {
+                diskIOStatusLine
+            }
+
+            statusWideCell(
+                title: "磁盘容量",
+                value: diskCapacityText,
+                detail: diskUsageText,
+                systemImage: "internaldrive",
+                tint: .blue
+            ) {
+                ProgressView(value: moreStatusDisk.usageRatio)
+                    .tint(.blue)
+            }
+
+            statusWideCell(
+                title: "内存使用",
+                value: "\(ByteFormatter.string(from: snapshot.memory.usedBytes)) / \(ByteFormatter.string(from: snapshot.memory.totalBytes))",
+                detail: percent(snapshot.memory.usageRatio),
+                systemImage: "memorychip",
+                tint: memoryPressureColor
+            ) {
+                ProgressView(value: snapshot.memory.usageRatio)
+                    .tint(memoryPressureColor)
+            }
+
+            Button {
+                openActivityMonitor()
+                showsSystemStatusPopover = false
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("打开系统监控")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text("查看更详细的系统数据与历史趋势")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(popoverSurfaceColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(popoverStrokeColor, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+        }
+        .padding(16)
+        .frame(width: 350)
+        .background(panelBackground)
     }
 
     @ViewBuilder
@@ -387,6 +547,122 @@ struct MenuBarPanelView: View {
         }
     }
 
+    private func statusMiniCell<Content: View>(
+        title: String,
+        value: String,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: systemImage)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(value)
+                    .font(.system(size: 17, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+
+                content()
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(height: 82)
+        .background(popoverSurfaceColor)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(popoverStrokeColor)
+                .frame(width: 1)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(popoverStrokeColor)
+                .frame(height: 1)
+        }
+    }
+
+    private func statusMiniCell(
+        title: String,
+        value: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        statusMiniCell(title: title, value: value, systemImage: systemImage, tint: tint) {
+            EmptyView()
+        }
+    }
+
+    private func statusWideCell<Content: View>(
+        title: String,
+        value: String,
+        detail: String? = nil,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 25, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(value)
+                        .font(.system(size: 17, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+
+                    if let detail {
+                        Text(detail)
+                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(tint)
+                            .lineLimit(1)
+                    }
+                }
+
+                content()
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(minHeight: 72)
+        .background(popoverSurfaceColor, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(popoverStrokeColor, lineWidth: 1)
+        )
+    }
+
+    private func statusWideCell(
+        title: String,
+        value: String,
+        detail: String? = nil,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        statusWideCell(title: title, value: value, detail: detail, systemImage: systemImage, tint: tint) {
+            EmptyView()
+        }
+    }
+
     private var memoryPressureLine: some View {
         HStack(spacing: 6) {
             Image(systemName: snapshot.memory.pressureLevel.symbolName)
@@ -449,6 +725,12 @@ struct MenuBarPanelView: View {
         NSWorkspace.shared.openApplication(at: fallbackURL, configuration: configuration)
     }
 
+    private func refreshMoreSystemStatus() {
+        moreStatusBattery = batteryReader.read()
+        moreStatusDisk = storageReader.readDiskStorage()
+        moreStatusDiskIO = diskIOReader.read()
+    }
+
     private func activityMonitorButton<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         Button {
             openActivityMonitor()
@@ -485,6 +767,83 @@ struct MenuBarPanelView: View {
         snapshot.thermal.level.severity >= settings.alertThermalLevel.severity
     }
 
+    private var batteryLevelText: String {
+        guard moreStatusBattery.isPresent, let levelRatio = moreStatusBattery.levelRatio else { return "不可用" }
+        return percent(levelRatio)
+    }
+
+    private var chargingStatusText: String {
+        guard moreStatusBattery.isPresent else { return "不可用" }
+        if moreStatusBattery.isCharged { return "已充满" }
+        return moreStatusBattery.isCharging ? "充电中" : "未充电"
+    }
+
+    private var batteryHealthText: String {
+        guard moreStatusBattery.isPresent else { return "不可用" }
+        guard let health = moreStatusBattery.health, !health.isEmpty else { return "良好" }
+        switch health.lowercased() {
+        case "good": return "良好"
+        case "fair": return "一般"
+        case "poor": return "较差"
+        default: return health
+        }
+    }
+
+    private var batteryCycleText: String {
+        guard moreStatusBattery.isPresent else { return "不可用" }
+        guard let cycleCount = moreStatusBattery.cycleCount else { return "未知" }
+        return "\(cycleCount) 次"
+    }
+
+    private var diskCapacityText: String {
+        guard moreStatusDisk.totalBytes > 0 else { return "不可用" }
+        return "\(ByteFormatter.string(from: moreStatusDisk.usedBytes)) / \(ByteFormatter.string(from: moreStatusDisk.totalBytes))"
+    }
+
+    private var diskUsageText: String {
+        moreStatusDisk.totalBytes > 0 ? percent(moreStatusDisk.usageRatio) : ""
+    }
+
+    private var diskHealthText: String {
+        guard moreStatusDisk.totalBytes > 0 else { return "未知" }
+        return moreStatusDisk.usageRatio < 0.90 ? "正常" : "空间紧张"
+    }
+
+    private var diskHealthDetail: String {
+        guard moreStatusDisk.totalBytes > 0 else { return "" }
+        return "基于剩余空间"
+    }
+
+    private var diskIOStatusLine: some View {
+        HStack(spacing: 12) {
+            diskIOBadge(systemImage: "arrow.down", color: .green, text: "写 \(diskWriteText)")
+            diskIOBadge(systemImage: "arrow.up", color: .blue, text: "读 \(diskReadText)")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func diskIOBadge(systemImage: String, color: Color, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(color)
+
+            Text(text)
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+    }
+
+    private var diskReadText: String {
+        moreStatusDiskIO.readBytes.map(ByteFormatter.string(from:)) ?? "不可用"
+    }
+
+    private var diskWriteText: String {
+        moreStatusDiskIO.writeBytes.map(ByteFormatter.string(from:)) ?? "不可用"
+    }
+
     private var thermalColor: Color {
         switch snapshot.thermal.level {
         case .nominal: .green
@@ -493,6 +852,21 @@ struct MenuBarPanelView: View {
         case .critical: .red
         case .unknown: .secondary
         }
+    }
+
+    private var batteryTint: Color {
+        guard let levelRatio = moreStatusBattery.levelRatio else { return .secondary }
+        if levelRatio <= 0.20 { return .red }
+        if levelRatio <= 0.35 { return .orange }
+        return .green
+    }
+
+    private var batteryHealthTint: Color {
+        batteryHealthText == "较差" ? .orange : .green
+    }
+
+    private var diskTint: Color {
+        moreStatusDisk.usageRatio >= 0.90 ? .orange : .green
     }
 
     private var memoryPressureColor: Color {
@@ -517,6 +891,14 @@ struct MenuBarPanelView: View {
 
     private var surfaceStrokeColor: Color {
         colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.62)
+    }
+
+    private var popoverSurfaceColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.62)
+    }
+
+    private var popoverStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
     }
 
     private func percent(_ value: Double) -> String {
@@ -615,6 +997,137 @@ private struct Sparkline: View {
             ))
             context.stroke(line, with: .color(color), lineWidth: 2)
         }
+    }
+}
+
+private struct BatteryReader {
+    func read() -> BatteryInfo {
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
+        else {
+            LogArchiver.shared.warning("More system status battery read failed: power source snapshot/list unavailable")
+            return .empty
+        }
+
+        guard let source = sources.first,
+              let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any]
+        else {
+            LogArchiver.shared.warning("More system status battery read failed: no readable power source description, sourceCount=\(sources.count)")
+            return .empty
+        }
+
+        let currentCapacity = (description[kIOPSCurrentCapacityKey] as? NSNumber)?.doubleValue
+        let maxCapacity = (description[kIOPSMaxCapacityKey] as? NSNumber)?.doubleValue
+        let levelRatio = if let currentCapacity, let maxCapacity, maxCapacity > 0 {
+            min(max(currentCapacity / maxCapacity, 0), 1)
+        } else {
+            Optional<Double>.none
+        }
+
+        let powerState = description[kIOPSPowerSourceStateKey] as? String
+        let isCharging = (description[kIOPSIsChargingKey] as? Bool) ?? false
+        let isCharged = (description[kIOPSIsChargedKey] as? Bool) ?? false
+        let isPresent = (description[kIOPSIsPresentKey] as? Bool) ?? (powerState != nil)
+        let powerSourceCycleCount = (description["Cycle Count"] as? NSNumber)?.intValue
+        let registryCycleCount = readCycleCountFromRegistry()
+        let cycleCount = powerSourceCycleCount ?? registryCycleCount
+        let health = description["BatteryHealth"] as? String ?? description["Battery Health"] as? String
+
+        if isPresent, cycleCount == nil {
+            let keys = description.keys.sorted().joined(separator: ", ")
+            let currentCapacityText = currentCapacity.map { String($0) } ?? "nil"
+            let maxCapacityText = maxCapacity.map { String($0) } ?? "nil"
+            let powerStateText = powerState ?? "nil"
+            let healthText = health ?? "nil"
+            let designCycleCountText = (description["DesignCycleCount"] as? NSNumber).map { String($0.intValue) } ?? "nil"
+            let message = "More system status battery cycle count unavailable: powerState=\(powerStateText) currentCapacity=\(currentCapacityText) maxCapacity=\(maxCapacityText) health=\(healthText) designCycleCount=\(designCycleCountText) keys=[\(keys)]"
+            LogArchiver.shared.warning(message)
+        }
+
+        return BatteryInfo(
+            levelRatio: levelRatio,
+            isCharging: isCharging,
+            isCharged: isCharged,
+            isPresent: isPresent,
+            cycleCount: cycleCount,
+            health: health
+        )
+    }
+
+    private func readCycleCountFromRegistry() -> Int? {
+        let matching = IOServiceMatching("AppleSmartBattery")
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
+        guard service != 0 else {
+            LogArchiver.shared.warning("More system status battery cycle count registry fallback failed: AppleSmartBattery service unavailable")
+            return nil
+        }
+        defer { IOObjectRelease(service) }
+
+        guard let value = IORegistryEntryCreateCFProperty(
+            service,
+            "CycleCount" as CFString,
+            kCFAllocatorDefault,
+            0
+        )?.takeRetainedValue() as? NSNumber else {
+            LogArchiver.shared.warning("More system status battery cycle count registry fallback failed: CycleCount property unavailable")
+            return nil
+        }
+
+        return value.intValue
+    }
+}
+
+private struct DiskIOInfo: Equatable {
+    var readBytes: UInt64?
+    var writeBytes: UInt64?
+
+    static let empty = DiskIOInfo(readBytes: nil, writeBytes: nil)
+}
+
+private struct DiskIOReader {
+    func read() -> DiskIOInfo {
+        let matching = IOServiceMatching("IOBlockStorageDriver")
+        var iterator: io_iterator_t = 0
+        let result = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
+        guard result == KERN_SUCCESS else {
+            LogArchiver.shared.warning("More system status disk IO read failed: IOServiceGetMatchingServices result=\(result)")
+            return .empty
+        }
+        defer { IOObjectRelease(iterator) }
+
+        var totalReadBytes: UInt64 = 0
+        var totalWriteBytes: UInt64 = 0
+        var matchedDeviceCount = 0
+
+        while true {
+            let service = IOIteratorNext(iterator)
+            guard service != 0 else { break }
+            defer { IOObjectRelease(service) }
+
+            guard let stats = IORegistryEntryCreateCFProperty(
+                service,
+                "Statistics" as CFString,
+                kCFAllocatorDefault,
+                0
+            )?.takeRetainedValue() as? [String: Any] else {
+                continue
+            }
+
+            let readBytes = (stats["Bytes (Read)"] as? NSNumber)?.uint64Value
+            let writeBytes = (stats["Bytes (Write)"] as? NSNumber)?.uint64Value
+            if readBytes != nil || writeBytes != nil {
+                matchedDeviceCount += 1
+                totalReadBytes += readBytes ?? 0
+                totalWriteBytes += writeBytes ?? 0
+            }
+        }
+
+        guard matchedDeviceCount > 0 else {
+            LogArchiver.shared.warning("More system status disk IO read failed: no IOBlockStorageDriver statistics with byte counters")
+            return .empty
+        }
+
+        return DiskIOInfo(readBytes: totalReadBytes, writeBytes: totalWriteBytes)
     }
 }
 
