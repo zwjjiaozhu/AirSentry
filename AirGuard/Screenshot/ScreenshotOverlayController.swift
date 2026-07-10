@@ -216,6 +216,17 @@ private struct ScreenshotOverlayView: View {
     @State private var isShortcutHintHiddenByHover = false
     @FocusState private var focusedTextAnnotationID: UUID?
     @State private var pendingFocusAnnotationID: UUID?
+    @State private var ocrResult: OCRRecognitionResult?
+    @State private var isOCRRecognizing = false
+    @State private var selectedOCRTextIDs: Set<UUID> = []
+    @State private var selectedOCRTextRanges: [UUID: Range<Int>] = [:]
+    @State private var selectedQRCodeID: UUID?
+    @State private var ocrSelectionStart: CGPoint?
+    @State private var ocrSelectionCurrent: CGPoint?
+    @State private var ocrRecognitionToken = UUID()
+    @State private var copyFeedbackMessage: String?
+    @State private var copyFeedbackToken = UUID()
+    @State private var showAllOCRTextItems = false
     private let textBorderHitPadding: CGFloat = 8
 
     // Accessibility 控件检测相关状态
@@ -260,7 +271,11 @@ private struct ScreenshotOverlayView: View {
                             setFontName: updateSelectedFontName,
                             setTextBold: updateSelectedTextBold,
                             setTextItalic: updateSelectedTextItalic,
-                            openTextColorPanel: openTextColorPanel
+                            openTextColorPanel: openTextColorPanel,
+                            isOCREnabled: isOCRRecognizing || ocrResult != nil,
+                            hasOCRText: ocrResult?.textItems.isEmpty == false,
+                            showAllOCRTextItems: $showAllOCRTextItems,
+                            copyAllOCRText: copyAllOCRText
                         ) { toolbarAction in
                             handleToolbarAction(toolbarAction, selection: selection)
                         }
@@ -435,6 +450,8 @@ private struct ScreenshotOverlayView: View {
             }
 
             textAnnotationLayer(selection)
+
+            ocrContentLayer(selection)
 
             annotationHandlesLayer(selection)
 
@@ -632,6 +649,536 @@ private struct ScreenshotOverlayView: View {
         }
         .frame(width: selection.width, height: selection.height)
         .position(x: selection.midX, y: selection.midY)
+    }
+
+    private func ocrContentLayer(_ selection: CGRect) -> some View {
+        ZStack(alignment: .topLeading) {
+            if isOCRRecognizing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在识别文字和二维码...")
+                        .font(.system(size: 12.5, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .foregroundStyle(.white)
+                .position(x: selection.width / 2, y: 28)
+            }
+
+            if let ocrResult {
+                ForEach(ocrResult.textItems) { item in
+                    let rect = localOCRRect(item.boundingBox, in: selection.size)
+                    if showAllOCRTextItems {
+                        ocrTextItemView(item, rect: rect, isSelected: false)
+                    }
+                    if let range = selectedOCRTextRanges[item.id],
+                       let selectedRect = ocrTextRangeRect(range, item: item, itemRect: rect) {
+                        ocrTextItemView(item, rect: selectedRect, isSelected: true)
+                    }
+                }
+
+                ForEach(ocrResult.qrCodeItems) { item in
+                    let rect = localOCRRect(item.boundingBox, in: selection.size)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.blue.opacity(0.95), lineWidth: selectedQRCodeID == item.id ? 3 : 2)
+                        .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .frame(width: max(24, rect.width), height: max(24, rect.height))
+                        .position(x: rect.midX, y: rect.midY)
+                        .onTapGesture {
+                            selectedQRCodeID = item.id
+                            selectedOCRTextIDs.removeAll()
+                            selectedOCRTextRanges.removeAll()
+                        }
+                        .zIndex(2)
+
+                    Label("二维码", systemImage: "qrcode")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.blue.opacity(0.9), in: Capsule())
+                        .foregroundStyle(.white)
+                        .position(x: rect.midX, y: max(12, rect.minY - 13))
+                        .allowsHitTesting(false)
+                        .zIndex(2)
+                }
+
+                if let item = selectedQRCodeItem(in: ocrResult) {
+                    qrCodeActionBar(for: item, selectionSize: selection.size)
+                        .zIndex(3)
+                }
+
+                if let selectionRect = currentOCRSelectionRect {
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.13))
+                        .overlay(Rectangle().stroke(Color.accentColor.opacity(0.82), lineWidth: 1))
+                        .frame(width: selectionRect.width, height: selectionRect.height)
+                        .position(x: selectionRect.midX, y: selectionRect.midY)
+                        .allowsHitTesting(false)
+                }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.001))
+                    .frame(width: selection.width, height: selection.height)
+                    .gesture(ocrSelectionGesture(in: selection.size))
+                    .zIndex(1)
+            }
+
+            if let copyFeedbackMessage {
+                Text(copyFeedbackMessage)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .position(x: selection.width / 2, y: 28)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                    .zIndex(4)
+            }
+        }
+        .frame(width: selection.width, height: selection.height)
+        .position(x: selection.midX, y: selection.midY)
+    }
+
+    private func qrCodeActionBar(for item: OCRQRCodeItem, selectionSize: CGSize) -> some View {
+        let rect = localOCRRect(item.boundingBox, in: selectionSize)
+        return HStack(spacing: 6) {
+            if let url = item.url {
+                Button {
+                    openQRCodeURL(url)
+                } label: {
+                    Label("打开", systemImage: "safari")
+                }
+            }
+
+            Button {
+                copyToPasteboard(item.payload)
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .padding(6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .position(
+            x: min(max(rect.midX, 70), selectionSize.width - 70),
+            y: min(selectionSize.height - 22, rect.maxY + 26)
+        )
+    }
+
+    private func openQRCodeURL(_ url: URL) {
+        cancel()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func ocrTextItemView(_ item: OCRTextItem, rect: CGRect, isSelected: Bool) -> some View {
+        let fillColor = isSelected ? Color.accentColor.opacity(0.34) : Color.accentColor.opacity(0.17)
+        let strokeColor = isSelected ? Color.accentColor.opacity(0.95) : Color.accentColor.opacity(0.45)
+
+        return RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(fillColor)
+            .frame(width: max(1, rect.width), height: max(1, rect.height))
+            .overlay(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(strokeColor, lineWidth: isSelected ? 1.2 : 1)
+            )
+            .shadow(color: isSelected ? Color.accentColor.opacity(0.30) : Color.clear, radius: 5, y: 1)
+            .position(x: rect.midX, y: rect.midY)
+            .allowsHitTesting(false)
+    }
+
+    private var currentOCRSelectionRect: CGRect? {
+        guard let start = ocrSelectionStart,
+              let current = ocrSelectionCurrent else { return nil }
+        let x = min(start.x, current.x)
+        let y = min(start.y, current.y)
+        let maxX = max(start.x, current.x)
+        let maxY = max(start.y, current.y)
+        let rect = CGRect(x: x, y: y, width: maxX - x, height: maxY - y)
+        return rect.width >= 2 || rect.height >= 2 ? rect : nil
+    }
+
+    private func localOCRRect(_ normalizedBoundingBox: CGRect, in size: CGSize) -> CGRect {
+        CGRect(
+            x: normalizedBoundingBox.minX * size.width,
+            y: (1 - normalizedBoundingBox.maxY) * size.height,
+            width: normalizedBoundingBox.width * size.width,
+            height: normalizedBoundingBox.height * size.height
+        )
+    }
+
+    private func selectedQRCodeItem(in result: OCRRecognitionResult) -> OCRQRCodeItem? {
+        guard let selectedQRCodeID else { return nil }
+        return result.qrCodeItems.first { $0.id == selectedQRCodeID }
+    }
+
+    private func updateSelectedOCRText(in size: CGSize) {
+        guard let result = ocrResult else { return }
+        guard let start = ocrSelectionStart,
+              let current = ocrSelectionCurrent,
+              currentOCRSelectionRect != nil else { return }
+
+        if let ranges = ocrReadingOrderRanges(from: start, to: current, in: size, items: result.textItems) {
+            selectedOCRTextRanges = ranges
+            selectedOCRTextIDs = Set(ranges.keys)
+            return
+        }
+
+        guard let rect = currentOCRSelectionRect else { return }
+        let ranges = ocrRectIntersectionRanges(in: rect, size: size, items: result.textItems)
+        selectedOCRTextRanges = ranges
+        selectedOCRTextIDs = Set(ranges.keys)
+    }
+
+    private func selectOCRLine(at point: CGPoint, in size: CGSize) {
+        guard let item = ocrTextItem(at: point, in: size) else {
+            selectedOCRTextIDs.removeAll()
+            selectedOCRTextRanges.removeAll()
+            return
+        }
+        selectedOCRTextIDs = [item.id]
+        selectedOCRTextRanges = [item.id: 0..<item.text.count]
+    }
+
+    private func ocrTextRange(in item: OCRTextItem, itemRect: CGRect, selectionRect: CGRect) -> Range<Int>? {
+        let count = item.text.count
+        guard count > 0, itemRect.width > 0 else { return nil }
+        let overlap = itemRect.intersection(selectionRect)
+        guard overlap.width > 0, overlap.height > 0 else { return nil }
+
+        let startRatio = ((overlap.minX - itemRect.minX) / itemRect.width).clamped(to: 0...1)
+        let endRatio = ((overlap.maxX - itemRect.minX) / itemRect.width).clamped(to: 0...1)
+        var start = Int(floor(startRatio * CGFloat(count)))
+        var end = Int(ceil(endRatio * CGFloat(count)))
+        start = start.clamped(to: 0...count)
+        end = end.clamped(to: 0...count)
+        guard start < end else { return nil }
+        return start..<end
+    }
+
+    private func ocrRectIntersectionRanges(in selectionRect: CGRect, size: CGSize, items: [OCRTextItem]) -> [UUID: Range<Int>] {
+        var ranges: [UUID: Range<Int>] = [:]
+        for item in items {
+            let itemRect = localOCRRect(item.boundingBox, in: size)
+            guard itemRect.intersects(selectionRect),
+                  let range = ocrTextRange(in: item, itemRect: itemRect, selectionRect: selectionRect) else {
+                continue
+            }
+            ranges[item.id] = range
+        }
+        return ranges
+    }
+
+    private func ocrReadingOrderRanges(
+        from start: CGPoint,
+        to end: CGPoint,
+        in size: CGSize,
+        items: [OCRTextItem]
+    ) -> [UUID: Range<Int>]? {
+        let orderedItems = items
+            .map { item in (item: item, rect: localOCRRect(item.boundingBox, in: size)) }
+            .filter { entry in
+                !entry.item.text.isEmpty && selectionRectVerticallyTouches(entry.rect, from: start, to: end)
+            }
+            .sorted { first, second in
+                let dy = abs(first.rect.midY - second.rect.midY)
+                if dy > 4 {
+                    return first.rect.midY < second.rect.midY
+                }
+                return first.rect.minX < second.rect.minX
+            }
+
+        guard let startEndpoint = ocrSelectionEndpoint(at: start, in: orderedItems),
+              let endEndpoint = ocrSelectionEndpoint(at: end, in: orderedItems) else {
+            return nil
+        }
+
+        let lowerEndpoint: OCRSelectionEndpoint
+        let upperEndpoint: OCRSelectionEndpoint
+        if ocrEndpoint(startEndpoint, isBeforeOrEqualTo: endEndpoint) {
+            lowerEndpoint = startEndpoint
+            upperEndpoint = endEndpoint
+        } else {
+            lowerEndpoint = endEndpoint
+            upperEndpoint = startEndpoint
+        }
+
+        var ranges: [UUID: Range<Int>] = [:]
+        for (index, entry) in orderedItems.enumerated() {
+            let count = entry.item.text.count
+            guard count > 0,
+                  index >= lowerEndpoint.itemIndex,
+                  index <= upperEndpoint.itemIndex else {
+                continue
+            }
+
+            let range: Range<Int>
+            if lowerEndpoint.itemIndex == upperEndpoint.itemIndex {
+                let lower = min(lowerEndpoint.characterIndex, upperEndpoint.characterIndex)
+                let upper = max(lowerEndpoint.characterIndex, upperEndpoint.characterIndex)
+                range = lower..<upper
+            } else if index == lowerEndpoint.itemIndex {
+                range = lowerEndpoint.characterIndex..<count
+            } else if index == upperEndpoint.itemIndex {
+                range = 0..<upperEndpoint.characterIndex
+            } else {
+                range = 0..<count
+            }
+
+            if range.lowerBound < range.upperBound {
+                ranges[entry.item.id] = range
+            }
+        }
+
+        return ranges
+    }
+
+    private func ocrSelectionEndpoint(
+        at point: CGPoint,
+        in orderedItems: [(item: OCRTextItem, rect: CGRect)]
+    ) -> OCRSelectionEndpoint? {
+        guard let itemIndex = orderedItems.indices.min(by: { first, second in
+            ocrVerticalDistance(from: point, to: orderedItems[first].rect) < ocrVerticalDistance(from: point, to: orderedItems[second].rect)
+        }) else {
+            return nil
+        }
+
+        let entry = orderedItems[itemIndex]
+        let characterIndex = ocrCharacterIndex(atX: point.x, item: entry.item, itemRect: entry.rect)
+        return OCRSelectionEndpoint(itemIndex: itemIndex, characterIndex: characterIndex)
+    }
+
+    private func ocrVerticalDistance(from point: CGPoint, to rect: CGRect) -> CGFloat {
+        if point.y < rect.minY {
+            return rect.minY - point.y
+        }
+        if point.y > rect.maxY {
+            return point.y - rect.maxY
+        }
+        return 0
+    }
+
+    private func selectionRectVerticallyTouches(_ rect: CGRect, from start: CGPoint, to end: CGPoint) -> Bool {
+        let minY = min(start.y, end.y)
+        let maxY = max(start.y, end.y)
+        return rect.maxY >= minY && rect.minY <= maxY
+    }
+
+    private func ocrCharacterIndex(atX x: CGFloat, item: OCRTextItem, itemRect: CGRect) -> Int {
+        let count = item.text.count
+        guard count > 0, itemRect.width > 0 else { return 0 }
+        let ratio = ((x - itemRect.minX) / itemRect.width).clamped(to: 0...1)
+        return Int(round(ratio * CGFloat(count))).clamped(to: 0...count)
+    }
+
+    private func ocrEndpoint(_ first: OCRSelectionEndpoint, isBeforeOrEqualTo second: OCRSelectionEndpoint) -> Bool {
+        if first.itemIndex != second.itemIndex {
+            return first.itemIndex < second.itemIndex
+        }
+        return first.characterIndex <= second.characterIndex
+    }
+
+    private func ocrTextRangeRect(_ range: Range<Int>, item: OCRTextItem, itemRect: CGRect) -> CGRect? {
+        let count = item.text.count
+        guard count > 0, range.lowerBound < range.upperBound else { return nil }
+        let lower = CGFloat(range.lowerBound.clamped(to: 0...count)) / CGFloat(count)
+        let upper = CGFloat(range.upperBound.clamped(to: 0...count)) / CGFloat(count)
+        return CGRect(
+            x: itemRect.minX + itemRect.width * lower,
+            y: itemRect.minY,
+            width: max(1, itemRect.width * (upper - lower)),
+            height: itemRect.height
+        )
+    }
+
+    private func selectedOCRText() -> String {
+        guard let result = ocrResult else { return "" }
+        guard !selectedOCRTextRanges.isEmpty else {
+            return orderedOCRText(result.textItems)
+        }
+
+        return result.textItems
+            .filter { selectedOCRTextRanges[$0.id] != nil }
+            .sorted { first, second in
+                let dy = abs(first.boundingBox.midY - second.boundingBox.midY)
+                if dy > 0.02 {
+                    return first.boundingBox.midY > second.boundingBox.midY
+                }
+                return first.boundingBox.minX < second.boundingBox.minX
+            }
+            .compactMap { item in
+                guard let range = selectedOCRTextRanges[item.id] else { return nil }
+                return substring(item.text, in: range)
+            }
+            .joined(separator: "\n")
+    }
+
+    private func allOCRText() -> String {
+        guard let result = ocrResult else { return "" }
+        return orderedOCRText(result.textItems)
+    }
+
+    private func orderedOCRText(_ items: [OCRTextItem]) -> String {
+        return items
+            .sorted { first, second in
+                let dy = abs(first.boundingBox.midY - second.boundingBox.midY)
+                if dy > 0.02 {
+                    return first.boundingBox.midY > second.boundingBox.midY
+                }
+                return first.boundingBox.minX < second.boundingBox.minX
+            }
+            .map(\.text)
+            .joined(separator: "\n")
+    }
+
+    private func substring(_ text: String, in range: Range<Int>) -> String {
+        let count = text.count
+        let lower = range.lowerBound.clamped(to: 0...count)
+        let upper = range.upperBound.clamped(to: 0...count)
+        guard lower < upper else { return "" }
+        let start = text.index(text.startIndex, offsetBy: lower)
+        let end = text.index(text.startIndex, offsetBy: upper)
+        return String(text[start..<end])
+    }
+
+    private func ocrTextItem(at point: CGPoint, in size: CGSize) -> OCRTextItem? {
+        guard let result = ocrResult else { return nil }
+        return result.textItems.first { item in
+            localOCRRect(item.boundingBox, in: size).insetBy(dx: -2, dy: -2).contains(point)
+        }
+    }
+
+    private func copySelectedOCRTextIfAvailable() -> Bool {
+        let text = selectedOCRText()
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        copyToPasteboard(text)
+        return true
+    }
+
+    private func copyAllOCRText() {
+        let text = allOCRText()
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            NSSound.beep()
+            return
+        }
+        copyToPasteboard(text)
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        showCopyFeedback()
+    }
+
+    private func showCopyFeedback(_ message: String = "已复制") {
+        let token = UUID()
+        copyFeedbackToken = token
+        copyFeedbackMessage = message
+
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard copyFeedbackToken == token else { return }
+            copyFeedbackMessage = nil
+        }
+    }
+
+    private func clearOCRContent() {
+        ocrRecognitionToken = UUID()
+        isOCRRecognizing = false
+        ocrResult = nil
+        selectedOCRTextIDs.removeAll()
+        selectedOCRTextRanges.removeAll()
+        selectedQRCodeID = nil
+        ocrSelectionStart = nil
+        ocrSelectionCurrent = nil
+        copyFeedbackMessage = nil
+        showAllOCRTextItems = false
+        popSelectionCursor()
+    }
+
+    private func recognizeContent(in selection: CGRect) {
+        if isOCRRecognizing || ocrResult != nil {
+            clearOCRContent()
+            return
+        }
+
+        guard !isOCRRecognizing else { return }
+        guard let payload = capturePayload(from: selection),
+              let image = payload.image else {
+            NSSound.beep()
+            return
+        }
+
+        finishTextEditing()
+        selectedTool = nil
+        selectedAnnotationID = nil
+        selectedQRCodeID = nil
+        selectedOCRTextIDs.removeAll()
+        selectedOCRTextRanges.removeAll()
+        showAllOCRTextItems = false
+        ocrResult = nil
+        isOCRRecognizing = true
+        let token = UUID()
+        ocrRecognitionToken = token
+
+        Task {
+            do {
+                let result = try await OCRService.recognizeContent(in: image)
+                guard ocrRecognitionToken == token else { return }
+                ocrResult = result
+            } catch {
+                guard ocrRecognitionToken == token else { return }
+                NSSound.beep()
+            }
+            if ocrRecognitionToken == token {
+                isOCRRecognizing = false
+            }
+        }
+    }
+
+    private func ocrSelectionGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                selectedQRCodeID = nil
+                if ocrSelectionStart == nil {
+                    selectedOCRTextIDs.removeAll()
+                    selectedOCRTextRanges.removeAll()
+                    ocrSelectionStart = value.startLocation
+                }
+
+                guard isOCRDragSelection(value) else {
+                    ocrSelectionCurrent = nil
+                    return
+                }
+                ocrSelectionCurrent = value.location
+                updateSelectedOCRText(in: size)
+            }
+            .onEnded { value in
+                if isOCRClickSelection(value) {
+                    selectedQRCodeID = nil
+                    selectOCRLine(at: value.location, in: size)
+                } else {
+                    selectedQRCodeID = nil
+                    ocrSelectionCurrent = value.location
+                    updateSelectedOCRText(in: size)
+                }
+                ocrSelectionStart = nil
+                ocrSelectionCurrent = nil
+            }
+    }
+
+    private func isOCRClickSelection(_ value: DragGesture.Value) -> Bool {
+        !isOCRDragSelection(value)
+    }
+
+    private func isOCRDragSelection(_ value: DragGesture.Value) -> Bool {
+        abs(value.translation.width) > 3 || abs(value.translation.height) > 3
     }
 
     private func textBorderDragLayer(for annotation: ScreenshotAnnotation, in selection: CGRect) -> some View {
@@ -946,13 +1493,18 @@ private struct ScreenshotOverlayView: View {
 
         // 选区中间
         if selection.contains(point) {
+            let localPoint = CGPoint(x: point.x - selection.minX, y: point.y - selection.minY)
+            if ocrTextItem(at: localPoint, in: selection.size) != nil {
+                pushSelectionCursor(.iBeam)
+                return
+            }
+
             // 靠近标注手柄 -> 十字光标
             if let id = selectedAnnotationID,
                let index = annotations.firstIndex(where: { $0.id == id }),
                annotations[index].tool != .text,
                annotations[index].tool != .pen,
                annotations[index].tool != .mosaic {
-                let localPoint = CGPoint(x: point.x - selection.minX, y: point.y - selection.minY)
                 let handleRadius: CGFloat = 12
                 let annotation = annotations[index]
                 if (annotation.tool == .rectangle || annotation.tool == .ellipse),
@@ -985,7 +1537,6 @@ private struct ScreenshotOverlayView: View {
                let index = annotations.firstIndex(where: { $0.id == id }),
                annotations[index].tool != .text,
                let bounds = annotationBounds(annotations[index]) {
-                let localPoint = CGPoint(x: point.x - selection.minX, y: point.y - selection.minY)
                 if bounds.insetBy(dx: -6, dy: -6).contains(localPoint) {
                     pushSelectionCursor(.openHand)
                     return
@@ -1401,6 +1952,10 @@ private struct ScreenshotOverlayView: View {
     private func handleToolbarAction(_ toolbarAction: ScreenshotToolbarAction, selection: CGRect) {
         switch toolbarAction {
         case .perform(let action):
+            if case .ocr = action {
+                recognizeContent(in: selection)
+                return
+            }
             guard let payload = capturePayload(from: selection) else { return }
             perform(action, payload)
         case .undo:
@@ -1480,6 +2035,12 @@ private struct ScreenshotOverlayView: View {
     private func handleKeyDown(_ event: NSEvent, in size: CGSize) {
         if event.keyCode == 53 {
             cancel()
+            return
+        }
+
+        if event.modifierFlags.contains(.command),
+           (event.charactersIgnoringModifiers ?? "").lowercased() == "c",
+           copySelectedOCRTextIfAvailable() {
             return
         }
 
@@ -1578,6 +2139,9 @@ private struct ScreenshotOverlayView: View {
     }
 
     private var toolbarControlMode: ScreenshotToolbarControlMode? {
+        if ocrResult?.textItems.isEmpty == false {
+            return .ocr
+        }
         if selectedAnnotation?.tool == .text || selectedTool == .text {
             return .text
         }
@@ -1878,6 +2442,11 @@ private extension CGRect {
     }
 }
 
+private struct OCRSelectionEndpoint {
+    let itemIndex: Int
+    let characterIndex: Int
+}
+
 private struct ScreenshotTextPaletteColor: Identifiable {
     let id: String
     let title: String
@@ -1927,6 +2496,10 @@ private struct ScreenshotSelectionToolbar: View {
     let setTextBold: (Bool) -> Void
     let setTextItalic: (Bool) -> Void
     let openTextColorPanel: () -> Void
+    let isOCREnabled: Bool
+    let hasOCRText: Bool
+    @Binding var showAllOCRTextItems: Bool
+    let copyAllOCRText: () -> Void
     let action: (ScreenshotToolbarAction) -> Void
     @State private var hoveredTooltip: String?
     @State private var hoveredItemID: String?
@@ -1967,22 +2540,38 @@ private struct ScreenshotSelectionToolbar: View {
                         action(.perform(.pin))
                     }
 
-                    iconButton("text.viewfinder", "OCR 识别文字", isSelected: false) {
+                    iconButton("text.viewfinder", "OCR 识别文字", isSelected: isOCREnabled) {
                         action(.perform(.ocr))
                     }
 
-                    iconButton("square.and.arrow.down", "保存为 PNG", isSelected: false) {
+                    iconButton("tray.and.arrow.down", "保存为 PNG", isSelected: false) {
                         action(.perform(.save))
                     }
 
-                    iconButton("doc.on.doc", "复制到剪贴板", isSelected: false) {
+                    iconButton("doc.on.doc", "复制截图到剪贴板", isSelected: false) {
                         action(.perform(.copy))
                     }
                 }
 
                 if let controlMode {
                     HStack(spacing: 4) {
-                        if controlMode == .text {
+                        if controlMode == .ocr {
+                            iconButton(
+                                showAllOCRTextItems ? "eye.slash" : "eye",
+                                showAllOCRTextItems ? "隐藏所有识别区域" : "显示所有识别区域",
+                                isSelected: showAllOCRTextItems
+                            ) {
+                                showAllOCRTextItems.toggle()
+                            }
+                            .disabled(!hasOCRText)
+                            .opacity(hasOCRText ? 1 : 0.45)
+
+                            iconButton("doc.on.doc", "复制所有 OCR 文本", isSelected: false) {
+                                copyAllOCRText()
+                            }
+                            .disabled(!hasOCRText)
+                            .opacity(hasOCRText ? 1 : 0.45)
+                        } else if controlMode == .text {
                             textToggleButton("B", "加粗", id: "bold", isSelected: selectedTextBold) {
                                 setTextBold(!selectedTextBold)
                             }
@@ -2612,6 +3201,7 @@ private enum ScreenshotToolbarAction {
 }
 
 private enum ScreenshotToolbarControlMode {
+    case ocr
     case shape
     case text
 }

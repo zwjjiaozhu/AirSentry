@@ -9,11 +9,13 @@ final class OCRStore: ObservableObject {
     @Published var statusMessage = "拖入图片文件、粘贴剪贴板图片，或从截图进入识别。"
     @Published var isRecognizing = false
     @Published var sourceName: String?
+    @Published var qrCodeItems: [OCRQRCodeItem] = []
 
     func setImage(_ image: NSImage, sourceName: String? = nil, recognizeImmediately: Bool = true) {
         self.image = image
         self.sourceName = sourceName
         recognizedText = ""
+        qrCodeItems = []
         statusMessage = "图片已载入"
 
         if recognizeImmediately {
@@ -65,11 +67,14 @@ final class OCRStore: ObservableObject {
 
         Task {
             do {
-                let result = try await OCRService.recognizeText(in: image)
-                recognizedText = result.text
-                statusMessage = "识别完成，共 \(result.text.count) 个字符"
+                let result = try await OCRService.recognizeContent(in: image)
+                recognizedText = result.displayText
+                qrCodeItems = result.qrCodeItems
+                let qrSummary = result.qrCodeItems.isEmpty ? "" : "，\(result.qrCodeItems.count) 个二维码"
+                statusMessage = "识别完成，\(result.textItems.count) 段文字\(qrSummary)"
             } catch {
                 recognizedText = ""
+                qrCodeItems = []
                 statusMessage = error.localizedDescription
                 NSSound.beep()
             }
@@ -213,6 +218,21 @@ struct OCRPanelView: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .stroke(Color.primary.opacity(0.10), lineWidth: 1)
                 )
+
+            if !store.qrCodeItems.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(store.qrCodeItems.prefix(2)) { item in
+                        if let url = item.url {
+                            Button {
+                                NSWorkspace.shared.open(url)
+                            } label: {
+                                Label("打开链接", systemImage: "safari")
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            }
 
             Text(store.statusMessage)
                 .font(.system(size: 12.5))
