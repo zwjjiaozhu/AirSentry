@@ -76,6 +76,9 @@
 		A00000000000000000000043 /* ImageProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014B /* ImageProcessingView.swift */; };
 		A00000000000000000000044 /* LogArchiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014C /* LogArchiver.swift */; };
 		A00000000000000000000045 /* SuperRightClickSharedConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014D /* SuperRightClickSharedConfig.swift */; };
+		A00000000000000000000046 /* AIUsageInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014E /* AIUsageInfo.swift */; };
+		A00000000000000000000047 /* AIUsageReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000014F /* AIUsageReader.swift */; };
+		A00000000000000000000048 /* AIUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000150 /* AIUsageStore.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -196,6 +199,9 @@
 		A0000000000000000000014B /* ImageProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageProcessingView.swift; sourceTree = "<group>"; };
 		A0000000000000000000014C /* LogArchiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogArchiver.swift; sourceTree = "<group>"; };
 		A0000000000000000000014D /* SuperRightClickSharedConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperRightClickSharedConfig.swift; sourceTree = "<group>"; };
+		A0000000000000000000014E /* AIUsageInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageInfo.swift; sourceTree = "<group>"; };
+		A0000000000000000000014F /* AIUsageReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageReader.swift; sourceTree = "<group>"; };
+		A00000000000000000000150 /* AIUsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageStore.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -295,6 +301,7 @@
 				A00000000000000000000127 /* NowPlayingStore.swift */,
 				A00000000000000000000128 /* MediaRemoteAdapterClient.swift */,
 				A0000000000000000000012C /* StorageAnalyzerStore.swift */,
+				A00000000000000000000150 /* AIUsageStore.swift */,
 				A00000000000000000000133 /* AppUninstallerStore.swift */,
 				A00000000000000000000136 /* AppLauncherStore.swift */,
 				A00000000000000000000137 /* AppLauncherPanelController.swift */,
@@ -318,6 +325,7 @@
 				A0000000000000000000010C /* MemoryReader.swift */,
 				A0000000000000000000010D /* NetworkReader.swift */,
 				A0000000000000000000012B /* StorageReader.swift */,
+				A0000000000000000000014F /* AIUsageReader.swift */,
 				A00000000000000000000132 /* AppUninstallerReader.swift */,
 				A00000000000000000000135 /* AppLauncherReader.swift */,
 				A00000000000000000000115 /* HIDTemperatureReader.m */,
@@ -338,6 +346,7 @@
 				A0000000000000000000011E /* AgentEvent.swift */,
 				A00000000000000000000126 /* NowPlayingTrack.swift */,
 				A0000000000000000000012A /* StorageInfo.swift */,
+				A0000000000000000000014E /* AIUsageInfo.swift */,
 				A00000000000000000000131 /* AppUninstallerInfo.swift */,
 				A00000000000000000000134 /* AppLauncherInfo.swift */,
 			);
@@ -609,6 +618,9 @@
 				A00000000000000000000043 /* ImageProcessingView.swift in Sources */,
 				A00000000000000000000044 /* LogArchiver.swift in Sources */,
 				A00000000000000000000045 /* SuperRightClickSharedConfig.swift in Sources */,
+				A00000000000000000000046 /* AIUsageInfo.swift in Sources */,
+				A00000000000000000000047 /* AIUsageReader.swift in Sources */,
+				A00000000000000000000048 /* AIUsageStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

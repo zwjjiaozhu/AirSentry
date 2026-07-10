@@ -121,6 +121,7 @@ struct StorageReader {
     private static let toolDefinitions: [ToolDefinition] = [
         ToolDefinition(id: "codex", name: "Codex", systemImage: "chevron.left.forwardslash.chevron.right", relativePaths: [".codex"]),
         ToolDefinition(id: "claude", name: "Claude", systemImage: "brain.head.profile", relativePaths: [".claude", "Library/Application Support/Claude", "Library/Caches/Claude"]),
+        ToolDefinition(id: "qoder", name: "Qoder", systemImage: "cube.transparent", relativePaths: [".qoder", "Library/Application Support/Qoder", "Library/Caches/Qoder"]),
         ToolDefinition(id: "cursor", name: "Cursor", systemImage: "cursorarrow.rays", relativePaths: [".cursor", "Library/Application Support/Cursor", "Library/Caches/Cursor"]),
         ToolDefinition(id: "windsurf", name: "Windsurf", systemImage: "wind", relativePaths: [".codeium/windsurf", "Library/Application Support/Windsurf", "Library/Caches/Windsurf"]),
         ToolDefinition(id: "copilot", name: "GitHub Copilot", systemImage: "person.crop.circle.badge.checkmark", relativePaths: [".config/github-copilot", "Library/Application Support/GitHub Copilot"]),

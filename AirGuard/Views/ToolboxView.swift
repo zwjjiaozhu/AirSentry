@@ -8,6 +8,7 @@ struct ToolboxView: View {
     @EnvironmentObject private var appLauncherStore: AppLauncherStore
     @EnvironmentObject private var screenshotCaptureController: ScreenshotCaptureController
     @StateObject private var storageStore = StorageAnalyzerStore()
+    @StateObject private var aiUsageStore = AIUsageStore()
     @StateObject private var uninstallerStore = AppUninstallerStore()
     @StateObject private var superRightClickStore = SuperRightClickStore()
     @StateObject private var finderAuthorizationStore = FinderNewFileAuthorizationStore()
@@ -111,8 +112,8 @@ struct ToolboxView: View {
               }
 
               ToolboxSidebarItem(
-                title: "AI 存储分析",
-                systemImage: "internaldrive",
+                title: "AI 用量中心",
+                systemImage: "sparkles",
                 isSelected: selectedTool == .storage
               ) {
                 selectedTool = .storage
@@ -254,6 +255,7 @@ struct ToolboxView: View {
         VStack(alignment: .leading, spacing: 18) {
             storageHeader
             diskOverview
+            aiUsageQuotaSection
 
             if storageStore.hasFolderAccess {
                 resultSection
@@ -269,6 +271,7 @@ struct ToolboxView: View {
         }
         .onAppear {
             storageStore.refresh()
+            aiUsageStore.refresh()
         }
     }
 
@@ -373,9 +376,9 @@ struct ToolboxView: View {
     private var storageHeader: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("AI 存储分析")
+                Text("AI 用量中心")
                     .font(.system(size: 24, weight: .bold))
-                Text("看看 AI 工具、模型与缓存悄悄占了多少空间。")
+                Text("查看 AI 工具、token 额度、重置时间和本地数据占用。")
                     .font(.system(size: 13.5))
                     .foregroundStyle(.secondary)
                 if let selectedFolderPath = storageStore.selectedFolderPath {
@@ -391,28 +394,42 @@ struct ToolboxView: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if storageStore.hasFolderAccess {
                     Button {
                         storageStore.requestFolderAccess()
                     } label: {
-                        Label("更换目录", systemImage: "folder.badge.plus")
+                        Label("目录", systemImage: "folder.badge.plus")
                     }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
                     .disabled(storageStore.isScanning)
+                    .help("更换扫描目录")
                 }
 
                 Button {
+                    aiUsageStore.refresh()
+                } label: {
+                    Label("来源", systemImage: "gearshape")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("从 Codex、Claude、Qoder 等工具的本地会话文件中提取 token 和额度字段。")
+
+                Button {
+                    aiUsageStore.refresh()
                     if storageStore.hasFolderAccess {
                         storageStore.refresh()
                     } else {
                         storageStore.requestFolderAccess()
                     }
                 } label: {
-                    Label(scanButtonTitle, systemImage: storageStore.hasFolderAccess ? "arrow.clockwise" : "folder.badge.plus")
+                    Label(combinedScanButtonTitle, systemImage: storageStore.hasFolderAccess ? "arrow.clockwise" : "folder.badge.plus")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(storageStore.isScanning)
+                .controlSize(.small)
+                .disabled(storageStore.isScanning || aiUsageStore.isScanning)
+                .help("同时刷新 AI 额度和本地存储占用")
             }
         }
     }
@@ -581,7 +598,7 @@ struct ToolboxView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 setupGuideStepRow(
                     step: "1",
                     title: "在系统设置里启用 Finder 扩展",
@@ -858,7 +875,7 @@ struct ToolboxView: View {
                     }
                 }
 
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button("建议选择") {
                         uninstallerStore.selectRecommended()
                     }
@@ -1852,7 +1869,7 @@ struct ToolboxView: View {
             Text("添加常用目录")
                 .font(.system(size: 16, weight: .semibold))
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text("目录路径")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -2164,6 +2181,190 @@ struct ToolboxView: View {
         .toolboxCard()
     }
 
+    private var aiUsageQuotaSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("AI 使用额度")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("重点显示剩余额度与重置时间")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if aiUsageStore.isScanning {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 190, maximum: 250), spacing: 10)],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                ForEach(aiUsageStore.overview.snapshots) { snapshot in
+                    aiUsageQuotaCard(snapshot)
+                }
+            }
+
+            if let snapshot = aiUsageStore.overview.bestSnapshot {
+                aiUsageDetailPanel(snapshot)
+            } else {
+                HStack(spacing: 14) {
+                    Image(systemName: "lock.doc")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("尚未读取到额度数据")
+                            .font(.system(size: 14.5, weight: .semibold))
+                        Text("已按白名单扫描 Codex、Claude、Qoder、Cursor、Windsurf 和 Copilot 的本地记录；不会读取认证文件、Cookie 或会话正文。")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(16)
+                .background(.blue.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.blue.opacity(0.16), lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private func aiUsageQuotaCard(_ snapshot: AIUsageSnapshot) -> some View {
+        let tint = snapshot.accentColor
+        let remainingPercent = snapshot.displayRemainingPercent
+        let progress = min(max((remainingPercent ?? 0) / 100, 0), 1)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: snapshot.systemImage)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 28, height: 28)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                Text(snapshot.planName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 0)
+
+                Text(snapshot.id == .claude ? "Pro" : snapshot.id == .cursor ? "Pro" : "AI")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 6)
+                    .frame(height: 20)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "--")
+                    .font(.system(size: 22, weight: .bold).monospacedDigit())
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(remainingPercent == nil ? snapshot.statusMessage ?? "未提供额度" : "额度剩余")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            ProgressView(value: progress)
+                .tint(tint)
+
+            HStack {
+                Text(snapshot.preferredRateLimit.map { quotaWindowTitle($0) } ?? sourceSummary(snapshot))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(snapshot.displayResetDate.map { "\(resetDateString($0)) 重置" } ?? "重置 --")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .padding(12)
+        .frame(minHeight: 112, alignment: .top)
+        .background(.background.opacity(0.62), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(tint.opacity(remainingPercent == nil ? 0.12 : 0.38), lineWidth: remainingPercent == nil ? 1 : 1.4)
+        )
+    }
+
+    private func aiUsageDetailPanel(_ snapshot: AIUsageSnapshot) -> some View {
+        let tint = snapshot.accentColor
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: snapshot.systemImage)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 30, height: 30)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                Text(snapshot.planName)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(tint)
+
+                Text("额度详情")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if snapshot.sourceFileCount > 0 {
+                    Text("本地来源 \(snapshot.sourceFileCount)")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 11) {
+                quotaLimitMeter(snapshot.rateLimits.first { $0.kind == .primary }, tint: tint)
+                quotaLimitMeter(snapshot.rateLimits.first { $0.kind == .secondary }, tint: tint)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func quotaLimitMeter(_ limit: AIUsageRateLimit?, tint: Color) -> some View {
+        let remaining = limit?.remainingPercent
+        let progress = min(max((remaining ?? 0) / 100, 0), 1)
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(limit.map(quotaWindowTitle) ?? "额度")
+                    .font(.system(size: 13.5, weight: .semibold))
+                Text(limit?.resetsAt.map { "\(resetDateString($0)) 重置" } ?? "未读取到重置时间")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(width: 132, alignment: .leading)
+
+            ProgressView(value: progress)
+                .tint(tint)
+
+            Text(remaining.map { "剩余 \(Int($0.rounded()))%" } ?? "--")
+                .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                .frame(width: 82, alignment: .trailing)
+        }
+    }
+
     @ViewBuilder
     private var resultSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2195,7 +2396,7 @@ struct ToolboxView: View {
                         .foregroundStyle(.green)
                     Text("没有发现已支持的 AI 工具数据")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("目前会检查 Codex、Claude、Cursor、Windsurf、Copilot、Ollama、LM Studio 和 Hugging Face。")
+                    Text("目前会检查 Codex、Claude、Qoder、Cursor、Windsurf、Copilot、Ollama、LM Studio 和 Hugging Face。")
                         .font(.system(size: 12.5))
                         .foregroundStyle(.secondary)
                 }
@@ -2313,12 +2514,60 @@ struct ToolboxView: View {
         }
     }
 
+    private func sourceSummary(_ snapshot: AIUsageSnapshot) -> String {
+        if snapshot.sourceFileCount > 0 { return "\(snapshot.sourceFileCount) 个来源" }
+        return snapshot.isDetected ? "已检测" : "未检测"
+    }
+
+    private func quotaWindowTitle(_ limit: AIUsageRateLimit) -> String {
+        if let minutes = limit.windowMinutes {
+            if minutes < 60 {
+                return "\(minutes) 分钟额度"
+            }
+            if minutes < 60 * 24 {
+                return "\(minutes / 60) 小时额度"
+            }
+            if minutes == 60 * 24 * 7 {
+                return "每周额度"
+            }
+            if minutes % (60 * 24) == 0 {
+                return "\(minutes / (60 * 24)) 天额度"
+            }
+        }
+        switch limit.kind {
+        case .primary: return "短周期额度"
+        case .secondary: return "长周期额度"
+        }
+    }
+
+    private func compactResetString(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "今天 " + date.formatted(date: .omitted, time: .shortened)
+        }
+        if calendar.isDateInTomorrow(date) {
+            return "明天 " + date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(.dateTime.month().day().hour().minute())
+    }
+
+    private func resetDateString(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return "今天 " + date.formatted(date: .omitted, time: .shortened)
+        }
+        if calendar.isDateInTomorrow(date) {
+            return "明天 " + date.formatted(date: .omitted, time: .shortened)
+        }
+        return date.formatted(.dateTime.month().day().hour().minute())
+    }
+
     private var diskTint: Color {
         storageStore.disk.usageRatio > 0.9 ? .red : (storageStore.disk.usageRatio > 0.75 ? .orange : .blue)
     }
 
-    private var scanButtonTitle: String {
-        if storageStore.isScanning { return "扫描中" }
+    private var combinedScanButtonTitle: String {
+        if storageStore.isScanning || aiUsageStore.isScanning { return "扫描中" }
         return storageStore.hasFolderAccess ? "重新扫描" : "开始扫描"
     }
 

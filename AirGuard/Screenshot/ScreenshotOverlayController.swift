@@ -1337,8 +1337,12 @@ private struct ScreenshotOverlayView: View {
 
     private func capturePayload(from selection: CGRect) -> ScreenshotCapturePayload? {
         guard let rect = globalRect(from: selection) else { return nil }
+        let frozenImage = screenImage.flatMap {
+            ScreenshotImageCapturer.crop(image: $0, rect: selection)
+        }
         return ScreenshotCapturePayload(
             rect: rect,
+            image: frozenImage,
             canvasSize: selection.size,
             annotations: visibleAnnotations
         )
@@ -2564,6 +2568,7 @@ private enum ScreenshotToolbarControlMode {
 
 struct ScreenshotCapturePayload {
     let rect: CGRect
+    let image: NSImage?
     let canvasSize: CGSize
     let annotations: [ScreenshotAnnotation]
 }

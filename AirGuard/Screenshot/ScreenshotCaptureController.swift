@@ -66,7 +66,7 @@ final class ScreenshotCaptureController: ObservableObject {
             return
         }
 
-        guard let image = ScreenshotImageCapturer.capture(rect: rect) else {
+        guard let image = payload.image ?? ScreenshotImageCapturer.capture(rect: rect) else {
             ScreenshotPermission.showScreenCapturePermissionAlert()
             return
         }
@@ -146,6 +146,40 @@ enum ScreenshotImageCapturer {
         let image = NSImage(cgImage: cgImage, size: normalizedRect.size)
         image.isTemplate = false
         return image
+    }
+
+    static func crop(image: NSImage, rect: CGRect) -> NSImage? {
+        let normalizedRect = CGRect(
+            x: floor(rect.origin.x),
+            y: floor(rect.origin.y),
+            width: floor(rect.width),
+            height: floor(rect.height)
+        )
+        guard normalizedRect.width >= 1,
+              normalizedRect.height >= 1,
+              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return nil
+        }
+
+        let scaleX = CGFloat(cgImage.width) / max(image.size.width, 1)
+        let scaleY = CGFloat(cgImage.height) / max(image.size.height, 1)
+        let pixelRect = CGRect(
+            x: normalizedRect.minX * scaleX,
+            y: normalizedRect.minY * scaleY,
+            width: normalizedRect.width * scaleX,
+            height: normalizedRect.height * scaleY
+        ).integral.intersection(CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+
+        guard !pixelRect.isNull,
+              pixelRect.width >= 1,
+              pixelRect.height >= 1,
+              let croppedImage = cgImage.cropping(to: pixelRect) else {
+            return nil
+        }
+
+        let outputImage = NSImage(cgImage: croppedImage, size: normalizedRect.size)
+        outputImage.isTemplate = false
+        return outputImage
     }
 
     private static func convertToQuartzScreenRect(_ rect: CGRect) -> CGRect {
