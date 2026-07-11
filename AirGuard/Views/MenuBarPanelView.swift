@@ -19,6 +19,7 @@ struct MenuBarPanelView: View {
     @State private var moreStatusDisk: DiskStorageInfo = .empty
     @State private var moreStatusDiskIO: DiskIOInfo = .empty
     @State private var moreStatusSmartWrittenText: String?
+    @State private var isRefreshingMoreSystemStatus = false
 
     private var snapshot: SystemSnapshot { monitorStore.snapshot }
     private let batteryReader = BatteryReader()
@@ -70,17 +71,32 @@ struct MenuBarPanelView: View {
     }
 
     private var statusPill: some View {
-        HStack(spacing: 7) {
-            Image(systemName: snapshot.thermal.level.symbolName)
-                .font(.system(size: 15, weight: .semibold))
+        Button {
+            openMoreSystemStatus()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: snapshot.thermal.level.symbolName)
+                    .font(.system(size: 15, weight: .semibold))
 
-            Text(snapshot.thermal.level.shortTitle)
-                .font(.system(size: 15, weight: .semibold))
+                Text(snapshot.thermal.level.shortTitle)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
         }
+        .buttonStyle(.plain)
         .foregroundStyle(thermalColor)
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .background(thermalColor.opacity(0.12), in: Capsule())
+        .contentShape(Capsule())
+        .pointingHandCursor()
+        .help("查看更多系统状态")
+        .popover(isPresented: $showsSystemStatusPopover, arrowEdge: .top) {
+            moreSystemStatusPanel
+        }
     }
 
     private var thermalHero: some View {
@@ -210,24 +226,6 @@ struct MenuBarPanelView: View {
             suggestionContent
 
             Spacer(minLength: 0)
-
-            Button {
-                refreshMoreSystemStatus()
-                moreSystemStatusPage = .overview
-                showsSystemStatusPopover.toggle()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .help("查看更多系统状态")
-            .popover(isPresented: $showsSystemStatusPopover, arrowEdge: .trailing) {
-                moreSystemStatusPanel
-            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
@@ -259,6 +257,11 @@ struct MenuBarPanelView: View {
             HStack {
                 Text("更多系统状态")
                     .font(.system(size: 18, weight: .bold))
+
+                if isRefreshingMoreSystemStatus {
+                    ProgressView()
+                        .controlSize(.small)
+                }
 
                 Spacer()
 
@@ -323,7 +326,7 @@ struct MenuBarPanelView: View {
                 systemImage: "internaldrive",
                 tint: diskTint
             ) {
-                EmptyView()
+                diskStorageStatusLine
             }
 
             statusWideCell(
@@ -790,6 +793,21 @@ struct MenuBarPanelView: View {
         toolboxWindow.makeKeyAndOrderFront(nil)
     }
 
+    private func openMoreSystemStatus() {
+        if showsSystemStatusPopover {
+            showsSystemStatusPopover = false
+            return
+        }
+
+        moreSystemStatusPage = .overview
+        showsSystemStatusPopover = false
+
+        DispatchQueue.main.async {
+            showsSystemStatusPopover = true
+            refreshMoreSystemStatus()
+        }
+    }
+
     private func openActivityMonitor() {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
@@ -804,17 +822,36 @@ struct MenuBarPanelView: View {
     }
 
     private func refreshMoreSystemStatus() {
-        moreStatusBattery = batteryReader.read()
-        moreStatusDisk = storageReader.readDiskStorage()
-        moreStatusDiskIO = diskIOReader.read()
         moreStatusSmartWrittenText = nil
+        isRefreshingMoreSystemStatus = true
 
         Task {
-            let smartWrittenText = await diskSmartWriteReader.readWrittenText()
+            async let smartWrittenText = diskSmartWriteReader.readWrittenText()
+            let snapshot = await readMoreSystemStatusSnapshot()
+            let smartWritten = await smartWrittenText
+
             await MainActor.run {
-                moreStatusSmartWrittenText = smartWrittenText
+                moreStatusBattery = snapshot.battery
+                moreStatusDisk = snapshot.disk
+                moreStatusDiskIO = snapshot.diskIO
+                moreStatusSmartWrittenText = smartWritten
+                isRefreshingMoreSystemStatus = false
             }
         }
+    }
+
+    private func readMoreSystemStatusSnapshot() async -> MoreSystemStatusSnapshot {
+        await Task.detached(priority: .utility) {
+            let batteryReader = BatteryReader()
+            let storageReader = StorageReader()
+            let diskIOReader = DiskIOReader()
+
+            return MoreSystemStatusSnapshot(
+                battery: batteryReader.read(),
+                disk: storageReader.readDiskStorage(),
+                diskIO: diskIOReader.read()
+            )
+        }.value
     }
 
     private func activityMonitorButton<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -911,6 +948,36 @@ struct MenuBarPanelView: View {
         return "来自系统写入量"
     }
 
+    private var diskStorageStatusLine: some View {
+        HStack(spacing: 12) {
+            diskStorageBadge(systemImage: "internaldrive", color: .orange, text: "已用 \(diskUsedText)")
+            diskStorageBadge(systemImage: "externaldrive", color: .blue, text: "总计 \(diskTotalText)")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func diskStorageBadge(systemImage: String, color: Color, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(color)
+
+            Text(text)
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+    }
+
+    private var diskUsedText: String {
+        moreStatusDisk.totalBytes > 0 ? ByteFormatter.string(from: moreStatusDisk.usedBytes) : "不可用"
+    }
+
+    private var diskTotalText: String {
+        moreStatusDisk.totalBytes > 0 ? ByteFormatter.string(from: moreStatusDisk.totalBytes) : "不可用"
+    }
+
     private var diskWriteText: String {
         moreStatusDiskIO.writeBytes.map(ByteFormatter.string(from:)) ?? "不可用"
     }
@@ -980,6 +1047,12 @@ struct MenuBarPanelView: View {
 private enum MoreSystemStatusPage {
     case overview
     case diskGuide
+}
+
+private struct MoreSystemStatusSnapshot {
+    let battery: BatteryInfo
+    let disk: DiskStorageInfo
+    let diskIO: DiskIOInfo
 }
 
 private struct MetricTile<Content: View>: View {

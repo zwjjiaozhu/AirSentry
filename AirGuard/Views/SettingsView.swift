@@ -294,9 +294,58 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
+                SectionTitle("鼠标")
+
+                SettingsGroup {
+                    PreferenceRow(
+                        title: "反转鼠标滚动方向",
+                        subtitle: mouseScrollDirectionSubtitle,
+                        systemImage: "computermouse",
+                        isOn: $settings.mouseScrollDirectionReversed
+                    )
+                    .onChange(of: settings.mouseScrollDirectionReversed) { isEnabled in
+                        if isEnabled {
+                            MouseScrollDirectionManager.requestAccessibilityPermission()
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
                 SectionTitle("运行日志")
 
                 SettingsGroup {
+                    HStack(spacing: 18) {
+                        Image(systemName: "text.badge.checkmark")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(.blue)
+                            .frame(width: 34)
+
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("显示日志级别")
+                                .font(.system(size: 15, weight: .semibold))
+
+                            Text("调试截图窗口识别等问题时可切换到 Debug，日志会写入下方文件夹。")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Picker("", selection: displayLogLevelBinding) {
+                            ForEach(LogLevel.allCases) { level in
+                                Text(level.title).tag(level)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 320)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 15)
+
+                    InsetDivider()
+
                     HStack(spacing: 18) {
                         Image(systemName: "folder")
                             .font(.system(size: 20, weight: .medium))
@@ -547,6 +596,23 @@ struct SettingsView: View {
                 settings.setAlertThermalLevel(level)
             }
         }
+    }
+
+    private var displayLogLevelBinding: Binding<LogLevel> {
+        Binding {
+            settings.displayLogLevel
+        } set: { level in
+            DispatchQueue.main.async {
+                settings.setDisplayLogLevel(level)
+            }
+        }
+    }
+
+    private var mouseScrollDirectionSubtitle: String {
+        if MouseScrollDirectionManager.isAccessibilityTrusted {
+            return "仅反转传统鼠标滚轮；触控板与连续滚动设备保持系统方向"
+        }
+        return "需要在「隐私与安全性 - 辅助功能」中允许 AirSentry 控制滚轮事件"
     }
 
     private func dismissThresholdInput() {

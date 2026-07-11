@@ -167,6 +167,10 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var displayLogLevel: LogLevel {
+        didSet { defaults.set(displayLogLevel.storageValue, forKey: Keys.displayLogLevel) }
+    }
+
     @Published var agentNotchEnabled: Bool {
         didSet { defaults.set(agentNotchEnabled, forKey: Keys.agentNotchEnabled) }
     }
@@ -291,6 +295,10 @@ final class AppSettings: ObservableObject {
         didSet { saveFloatingBallActions() }
     }
 
+    @Published var mouseScrollDirectionReversed: Bool {
+        didSet { defaults.set(mouseScrollDirectionReversed, forKey: Keys.mouseScrollDirectionReversed) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -310,6 +318,7 @@ final class AppSettings: ObservableObject {
         let savedCooldown = defaults.double(forKey: Keys.notificationCooldown)
         notificationCooldown = savedCooldown >= 0 ? savedCooldown : 60
         launchAtLoginEnabled = defaults.object(forKey: Keys.launchAtLoginEnabled) as? Bool ?? LaunchAtLoginManager.isEnabled
+        displayLogLevel = LogLevel(storageValue: defaults.string(forKey: Keys.displayLogLevel) ?? "") ?? .info
         agentNotchEnabled = defaults.object(forKey: Keys.agentNotchEnabled) as? Bool ?? false
         codexMonitoringEnabled = defaults.object(forKey: Keys.codexMonitoringEnabled) as? Bool ?? true
         claudeMonitoringEnabled = defaults.object(forKey: Keys.claudeMonitoringEnabled) as? Bool ?? true
@@ -345,6 +354,7 @@ final class AppSettings: ObservableObject {
         floatingBallOpacity = savedFloatingBallOpacity > 0 ? savedFloatingBallOpacity : 0.96
         floatingBallPetImagePath = defaults.string(forKey: Keys.floatingBallPetImagePath) ?? ""
         floatingBallActions = Self.loadFloatingBallActions(from: defaults)
+        mouseScrollDirectionReversed = defaults.object(forKey: Keys.mouseScrollDirectionReversed) as? Bool ?? false
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
         normalizeTranslationSettings()
@@ -413,6 +423,10 @@ final class AppSettings: ObservableObject {
 
     func setAgentCompletionDisplayDuration(_ value: TimeInterval) {
         agentCompletionDisplayDuration = min(max(value, 2), 15)
+    }
+
+    func setDisplayLogLevel(_ level: LogLevel) {
+        displayLogLevel = level
     }
 
     func setMenuBarQuickTool(_ tool: MenuBarQuickTool, enabled: Bool) {
@@ -786,6 +800,7 @@ private enum Keys {
     static let refreshInterval = "refreshInterval"
     static let notificationCooldown = "notificationCooldown"
     static let launchAtLoginEnabled = "launchAtLoginEnabled"
+    static let displayLogLevel = "displayLogLevel"
     static let agentNotchEnabled = "agentNotchEnabled"
     static let codexMonitoringEnabled = "codexMonitoringEnabled"
     static let claudeMonitoringEnabled = "claudeMonitoringEnabled"
@@ -817,4 +832,5 @@ private enum Keys {
     static let floatingBallOpacity = "floatingBallOpacity"
     static let floatingBallPetImagePath = "floatingBallPetImagePath"
     static let floatingBallActions = "floatingBallActions"
+    static let mouseScrollDirectionReversed = "mouseScrollDirectionReversed"
 }

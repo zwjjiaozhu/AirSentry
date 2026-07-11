@@ -21,6 +21,7 @@ struct AirGuardApp: App {
     @StateObject private var focusTimerStore: FocusTimerStore
     @StateObject private var focusTimerShortcutManager: FocusTimerShortcutManager
     @StateObject private var floatingBallController: FloatingBallController
+    @StateObject private var mouseScrollDirectionManager: MouseScrollDirectionManager
     private let appLauncherPanelController: AppLauncherPanelController
     private let translationPanelController: TranslationPanelController
     private let focusTimerLauncherPanelController: FocusTimerLauncherPanelController
@@ -55,6 +56,7 @@ struct AirGuardApp: App {
             focusTimerLauncherPanelController.toggle()
         })
         _floatingBallController = StateObject(wrappedValue: FloatingBallController(settings: settings, timerStore: focusTimerStore, screenshotCaptureController: screenshotCaptureController))
+        _mouseScrollDirectionManager = StateObject(wrappedValue: MouseScrollDirectionManager(settings: settings))
         self.appLauncherPanelController = appLauncherPanelController
         self.translationPanelController = translationPanelController
         self.focusTimerLauncherPanelController = focusTimerLauncherPanelController

@@ -1,10 +1,50 @@
 import Foundation
 
 /// 日志级别
-enum LogLevel: String {
+enum LogLevel: String, CaseIterable, Identifiable {
+    case debug = "DEBUG"
     case info = "INFO"
     case warning = "WARN"
     case error = "ERROR"
+
+    var id: String { rawValue }
+
+    var storageValue: String {
+        switch self {
+        case .debug: "debug"
+        case .info: "info"
+        case .warning: "warning"
+        case .error: "error"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .debug: "Debug"
+        case .info: "Info"
+        case .warning: "Warning"
+        case .error: "Error"
+        }
+    }
+
+    fileprivate var priority: Int {
+        switch self {
+        case .debug: 0
+        case .info: 1
+        case .warning: 2
+        case .error: 3
+        }
+    }
+
+    init?(storageValue: String) {
+        switch storageValue.lowercased() {
+        case "debug": self = .debug
+        case "info": self = .info
+        case "warning", "warn": self = .warning
+        case "error": self = .error
+        default: return nil
+        }
+    }
 }
 
 /// 通用日志归档写入器
@@ -60,6 +100,11 @@ final class LogArchiver {
 
     // MARK: - Public API
 
+    /// 写入 DEBUG 级别日志
+    func debug(_ message: String, file: String = #file, line: Int = #line) {
+        write(message, level: .debug, file: file, line: line)
+    }
+
     /// 写入 INFO 级别日志
     func info(_ message: String, file: String = #file, line: Int = #line) {
         write(message, level: .info, file: file, line: line)
@@ -77,6 +122,8 @@ final class LogArchiver {
 
     /// 写入一条带级别的日志。
     func write(_ message: String, level: LogLevel = .info, file: String = #file, line: Int = #line) {
+        guard shouldWrite(level) else { return }
+
         let timestamp = logLineFormatter.string(from: Date())
         let fileName = (file as NSString).lastPathComponent
         let formatted = "\(timestamp) [\(process)] [\(level.rawValue)] [\(fileName):\(line)] \(message)\n"
@@ -117,6 +164,12 @@ final class LogArchiver {
     }
 
     // MARK: - Private
+
+    private func shouldWrite(_ level: LogLevel) -> Bool {
+        let savedLevel = UserDefaults.standard.string(forKey: "displayLogLevel")
+        let minimumLevel = savedLevel.flatMap(LogLevel.init(storageValue:)) ?? .info
+        return level.priority >= minimumLevel.priority
+    }
 
     private func appendToFile(_ message: String) {
         guard let data = message.data(using: .utf8) else { return }

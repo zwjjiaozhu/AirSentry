@@ -2968,7 +2968,7 @@ private enum ScreenshotWindowTargetDetector {
 
     static func targets(on screenFrame: CGRect) -> [ScreenshotCaptureTarget] {
         guard let windowInfoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
-            debugLogger.info("Failed to get window info list")
+            debugLogger.debug("Failed to get window info list")
             return []
         }
 
@@ -2977,7 +2977,7 @@ private enum ScreenshotWindowTargetDetector {
         var targets: [ScreenshotCaptureTarget] = []
         var frontWindowRects: [CGRect] = []
 
-        debugLogger.info("=== Start === PID=\(currentProcessID) totalWindows=\(windowInfoList.count)")
+        debugLogger.debug("=== Start === PID=\(currentProcessID) totalWindows=\(windowInfoList.count)")
 
         for (index, info) in windowInfoList.enumerated() {
             let layer = intValue(info[kCGWindowLayer as String]) ?? -999
@@ -2991,14 +2991,14 @@ private enum ScreenshotWindowTargetDetector {
 
             guard let boundsDictionary = info[kCGWindowBounds as String] as? NSDictionary,
                   let quartzRect = CGRect(dictionaryRepresentation: boundsDictionary) else {
-                debugLogger.info("#\(index) SKIP(no bounds) layer=\(layer) \(displayName)")
+                debugLogger.debug("#\(index) SKIP(no bounds) layer=\(layer) \(displayName)")
                 continue
             }
 
             // 允许的窗口层级：0=普通窗口, 3=浮动面板, 20=Dock, 24=菜单栏, 25=控制中心项, 101=弹出菜单（右键菜单等）
             let allowedLayers: Set<Int> = [0, 3, 20, 24, 25, 101]
             guard allowedLayers.contains(layer) else {
-                debugLogger.info("#\(index) SKIP(layer) layer=\(layer) \(displayName)")
+                debugLogger.debug("#\(index) SKIP(layer) layer=\(layer) \(displayName)")
                 continue
             }
 
@@ -3006,7 +3006,7 @@ private enum ScreenshotWindowTargetDetector {
             let isSystemUI = (layer == 20 || layer == 24)
 
             guard alpha > 0.05, onscreen == true else {
-                debugLogger.info("#\(index) SKIP(alpha/onscreen) layer=\(layer) alpha=\(alpha) onScr=\(onscreen) \(displayName)")
+                debugLogger.debug("#\(index) SKIP(alpha/onscreen) layer=\(layer) alpha=\(alpha) onScr=\(onscreen) \(displayName)")
                 continue
             }
 
@@ -3017,13 +3017,13 @@ private enum ScreenshotWindowTargetDetector {
                 height: quartzRect.height
             )
             guard globalRect.width * globalRect.height >= 500 else {
-                debugLogger.info("#\(index) SKIP(size) w=\(Int(globalRect.width)) h=\(Int(globalRect.height)) \(displayName)")
+                debugLogger.debug("#\(index) SKIP(size) w=\(Int(globalRect.width)) h=\(Int(globalRect.height)) \(displayName)")
                 continue
             }
 
             let clippedGlobalRect = globalRect.intersection(screenFrame)
             guard !clippedGlobalRect.isNull else {
-                debugLogger.info("#\(index) SKIP(clip) \(displayName)")
+                debugLogger.debug("#\(index) SKIP(clip) \(displayName)")
                 continue
             }
 
@@ -3044,11 +3044,11 @@ private enum ScreenshotWindowTargetDetector {
             let isSelfHighLayer = (ownerPID == currentProcessID && layer >= 24)
             guard !isSelfHighLayer,
                   visibleArea >= minVisibleArea else {
-                debugLogger.info("#\(index) SKIP(visibility) pid=\(ownerPID) self=\(ownerPID == currentProcessID) selfHigh=\(isSelfHighLayer) visArea=\(Int(visibleArea))/\(Int(totalArea)) floating=\(isFloatingPanel) \(displayName)")
+                debugLogger.debug("#\(index) SKIP(visibility) pid=\(ownerPID) self=\(ownerPID == currentProcessID) selfHigh=\(isSelfHighLayer) visArea=\(Int(visibleArea))/\(Int(totalArea)) floating=\(isFloatingPanel) \(displayName)")
                 continue
             }
 
-            debugLogger.info("#\(index) ADD layer=\(layer) w=\(Int(globalRect.width)) h=\(Int(globalRect.height)) pid=\(ownerPID) \(displayName)")
+            debugLogger.debug("#\(index) ADD layer=\(layer) w=\(Int(globalRect.width)) h=\(Int(globalRect.height)) pid=\(ownerPID) \(displayName)")
 
             let screenRect = CGRect(
                 x: clippedGlobalRect.minX - screenFrame.minX,
