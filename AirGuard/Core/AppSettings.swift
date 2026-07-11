@@ -299,6 +299,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(mouseScrollDirectionReversed, forKey: Keys.mouseScrollDirectionReversed) }
     }
 
+    @Published var mouseScrollReversesVertical: Bool {
+        didSet { defaults.set(mouseScrollReversesVertical, forKey: Keys.mouseScrollReversesVertical) }
+    }
+
+    @Published var mouseScrollReversesHorizontal: Bool {
+        didSet { defaults.set(mouseScrollReversesHorizontal, forKey: Keys.mouseScrollReversesHorizontal) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -355,6 +363,8 @@ final class AppSettings: ObservableObject {
         floatingBallPetImagePath = defaults.string(forKey: Keys.floatingBallPetImagePath) ?? ""
         floatingBallActions = Self.loadFloatingBallActions(from: defaults)
         mouseScrollDirectionReversed = defaults.object(forKey: Keys.mouseScrollDirectionReversed) as? Bool ?? false
+        mouseScrollReversesVertical = defaults.object(forKey: Keys.mouseScrollReversesVertical) as? Bool ?? true
+        mouseScrollReversesHorizontal = defaults.object(forKey: Keys.mouseScrollReversesHorizontal) as? Bool ?? true
         normalizeLoadedTemperatureThresholds()
         normalizeLoadedIntervals()
         normalizeTranslationSettings()
@@ -833,4 +843,6 @@ private enum Keys {
     static let floatingBallPetImagePath = "floatingBallPetImagePath"
     static let floatingBallActions = "floatingBallActions"
     static let mouseScrollDirectionReversed = "mouseScrollDirectionReversed"
+    static let mouseScrollReversesVertical = "mouseScrollReversesVertical"
+    static let mouseScrollReversesHorizontal = "mouseScrollReversesHorizontal"
 }

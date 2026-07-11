@@ -269,6 +269,7 @@
 				A0000000000000000000011A /* AppStore.entitlements */,
 				A00000000000000000000310 /* Views */,
 				A00000000000000000000311 /* Core */,
+				A00000000000000000000320 /* MouseScroll */,
 				A0000000000000000000031F /* MenuBarTools */,
 				A0000000000000000000031D /* FloatingBall */,
 				A0000000000000000000031E /* FocusTimer */,
@@ -331,10 +332,17 @@
 				A0000000000000000000012F /* InputMethodSwitcher.swift */,
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
 				A0000000000000000000014C /* LogArchiver.swift */,
-				A00000000000000000000158 /* MouseScrollDirectionManager.swift */,
 				A0000000000000000000014D /* SuperRightClickSharedConfig.swift */,
 			);
 			path = Core;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000320 /* MouseScroll */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000158 /* MouseScrollDirectionManager.swift */,
+			);
+			path = MouseScroll;
 			sourceTree = "<group>";
 		};
 		A0000000000000000000031D /* FloatingBall */ = {

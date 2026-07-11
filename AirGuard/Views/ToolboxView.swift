@@ -97,6 +97,7 @@ struct ToolboxView: View {
 
                     sidebarGroup("系统与辅助") {
                         sidebarItem(.storage, title: "AI 用量中心", systemImage: "sparkles")
+                        sidebarItem(.mouseScroll, title: "鼠标滚动", systemImage: "computermouse")
                         sidebarItem(.translation, title: "翻译助手", systemImage: "character.book.closed")
                         sidebarItem(.floatingBall, title: "悬浮球", systemImage: "circle.grid.cross")
                     }
@@ -253,6 +254,8 @@ struct ToolboxView: View {
                     imageProcessingContent
                 case .superRightClick:
                     superRightClickContent
+                case .mouseScroll:
+                    mouseScrollContent
                 case .translation:
                     translationContent
                 case .floatingBall:
@@ -959,6 +962,133 @@ struct ToolboxView: View {
                 quickActionPreviewBadge("防休眠", "cup.and.saucer")
                 quickActionPreviewBadge("锁屏", "lock")
                 quickActionPreviewBadge("休眠", "moon.zzz")
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var mouseScrollContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("鼠标滚动")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("为传统鼠标滚轮单独设置滚动方向，触控板继续沿用系统自然滚动。")
+                        .font(.system(size: 13.5))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("启用", isOn: $settings.mouseScrollDirectionReversed)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .onChange(of: settings.mouseScrollDirectionReversed) { enabled in
+                        if enabled {
+                            MouseScrollDirectionManager.requestAccessibilityPermission()
+                        }
+                    }
+            }
+
+            mouseScrollPermissionSection
+            mouseScrollDirectionSection
+            mouseScrollImplementationSection
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var mouseScrollPermissionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: MouseScrollDirectionManager.isAccessibilityTrusted ? "checkmark.shield" : "exclamationmark.shield")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(MouseScrollDirectionManager.isAccessibilityTrusted ? .green : .orange)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(MouseScrollDirectionManager.isAccessibilityTrusted ? "辅助功能权限已允许" : "需要辅助功能权限")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("滚轮反向需要读取并改写系统滚动事件。授权后如果没有立即生效，关闭再打开开关即可重建监听。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Button {
+                    MouseScrollDirectionManager.requestAccessibilityPermission()
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                } label: {
+                    Label("去授权", systemImage: "gearshape")
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var mouseScrollDirectionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("方向")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("垂直和水平滚动可以分别反向。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 0) {
+                MouseScrollOptionRow(
+                    title: "反转垂直滚动",
+                    subtitle: "滚轮向上/向下的方向互换",
+                    systemImage: "arrow.up.arrow.down",
+                    isOn: $settings.mouseScrollReversesVertical
+                )
+
+                Divider()
+                    .padding(.leading, 72)
+
+                MouseScrollOptionRow(
+                    title: "反转水平滚动",
+                    subtitle: "支持带横向滚动的鼠标滚轮或倾斜滚轮",
+                    systemImage: "arrow.left.arrow.right",
+                    isOn: $settings.mouseScrollReversesHorizontal
+                )
+            }
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .disabled(!settings.mouseScrollDirectionReversed)
+            .opacity(settings.mouseScrollDirectionReversed ? 1 : 0.55)
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var mouseScrollImplementationSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("实现策略")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("当前只处理非连续滚轮事件，避开触控板和 Magic Mouse 的连续滚动；后续可以在这里继续补平滑滚动、速度增益和按应用规则。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                quickActionPreviewBadge("Event Tap", "dot.radiowaves.left.and.right")
+                quickActionPreviewBadge("非连续滚轮", "scroll")
+                quickActionPreviewBadge("轴向独立", "arrow.up.and.down.and.arrow.left.and.right")
                 Spacer(minLength: 0)
             }
         }
@@ -3440,6 +3570,7 @@ private enum ToolboxSection {
     case ocr
     case imageProcessing
     case superRightClick
+    case mouseScroll
     case translation
     case floatingBall
 
@@ -3464,6 +3595,40 @@ private enum ToolboxSection {
         case .translation:
             self = .translation
         }
+    }
+}
+
+private struct MouseScrollOptionRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 18) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.blue)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 15)
+        .contentShape(Rectangle())
     }
 }
 
