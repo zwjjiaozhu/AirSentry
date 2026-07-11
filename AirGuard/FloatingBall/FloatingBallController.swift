@@ -5,14 +5,18 @@ import SwiftUI
 @MainActor
 final class FloatingBallController: ObservableObject {
     private let settings: AppSettings
+    private let timerStore: FocusTimerStore
     private let screenshotCaptureController: ScreenshotCaptureController
     private let menuModel = FloatingBallMenuModel()
     private var panel: FloatingBallPanel?
     private var contextMenuDelegate: FloatingBallContextMenuDelegate?
+    private var timerDisplayHiddenByUser = false
+    private var autoCollapseTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
 
-    init(settings: AppSettings, screenshotCaptureController: ScreenshotCaptureController) {
+    init(settings: AppSettings, timerStore: FocusTimerStore, screenshotCaptureController: ScreenshotCaptureController) {
         self.settings = settings
+        self.timerStore = timerStore
         self.screenshotCaptureController = screenshotCaptureController
 
         Publishers.CombineLatest4(
@@ -23,7 +27,7 @@ final class FloatingBallController: ObservableObject {
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] enabled, _, _, _ in
-            enabled ? self?.show() : self?.hide()
+            self?.syncVisibility(settingsEnabled: enabled)
         }
         .store(in: &cancellables)
 
@@ -31,6 +35,28 @@ final class FloatingBallController: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.refreshContent()
+            }
+            .store(in: &cancellables)
+
+        Publishers.MergeMany(
+            timerStore.$remainingSeconds.map { _ in () }.eraseToAnyPublisher(),
+            timerStore.$isRunning.map { _ in () }.eraseToAnyPublisher(),
+            timerStore.$isPaused.map { _ in () }.eraseToAnyPublisher(),
+            timerStore.$showsFloatingReminder.map { _ in () }.eraseToAnyPublisher()
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            self?.syncVisibility(settingsEnabled: self?.settings.floatingBallEnabled ?? false)
+            self?.updatePanelVisibleBounds()
+        }
+        .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .focusTimerDidStart)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.timerDisplayHiddenByUser = false
+                self?.collapseMenu()
+                self?.show()
             }
             .store(in: &cancellables)
     }
@@ -50,8 +76,9 @@ final class FloatingBallController: ObservableObject {
     private func makePanel() {
         let screenFrame = NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 1280, height: 800)
         let windowSize = CGSize(width: 390, height: 340)
+        let visibleHalfWidth = currentBallVisibleHalfWidth
         let origin = CGPoint(
-            x: screenFrame.maxX - windowSize.width - 28,
+            x: screenFrame.maxX - FloatingBallPanel.ballAnchorX - visibleHalfWidth - 8,
             y: screenFrame.midY - windowSize.height / 2
         )
         let panel = FloatingBallPanel(
@@ -67,10 +94,17 @@ final class FloatingBallController: ObservableObject {
         panel.animationBehavior = .none
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.acceptsMouseMovedEvents = true
+        panel.visibleHalfWidth = visibleHalfWidth
+        panel.visibleHalfHeight = currentBallVisibleHalfHeight
         panel.onClick = { [weak self] in
-            self?.toggleExpanded()
+            self?.handlePanelClick()
         }
-        let contextMenuDelegate = FloatingBallContextMenuDelegate(controller: self, settings: settings)
+        let contextMenuDelegate = FloatingBallContextMenuDelegate(
+            controller: self,
+            settings: settings,
+            timerStore: timerStore
+        )
         panel.contextMenuDelegate = contextMenuDelegate
         self.contextMenuDelegate = contextMenuDelegate
         self.panel = panel
@@ -79,27 +113,113 @@ final class FloatingBallController: ObservableObject {
     private func refreshContent() {
         guard let panel else { return }
         menuModel.isExpanded = panel.isMenuExpanded
+        updatePanelVisibleBounds()
         let content = FloatingBallView(
             settings: settings,
+            timerStore: timerStore,
             menuModel: menuModel,
+            setExpanded: { [weak self] expanded in self?.setMenuExpanded(expanded) },
+            keepExpanded: { [weak self] in self?.keepMenuExpanded() },
+            registerInteraction: { [weak self] in self?.registerMenuInteraction() },
             performAction: { [weak self] action in self?.perform(action) }
         )
-        let hostingView = NSHostingView(rootView: content)
+        let hostingView = FloatingBallHostingView(rootView: content)
+        hostingView.visibleHalfWidth = panel.visibleHalfWidth
+        hostingView.visibleHalfHeight = panel.visibleHalfHeight
+        hostingView.onHoverChanged = { [weak self] isOverBall in
+            self?.handleBallHoverChanged(isOverBall)
+        }
         hostingView.wantsLayer = true
         hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         panel.contentView = hostingView
     }
 
-    private func toggleExpanded() {
+    private func updatePanelVisibleBounds() {
+        panel?.visibleHalfWidth = currentBallVisibleHalfWidth
+        panel?.visibleHalfHeight = currentBallVisibleHalfHeight
+    }
+
+    private var currentBallSize: CGFloat {
+        min(max(CGFloat(settings.floatingBallSize), 28), 104)
+    }
+
+    private var currentBallVisibleHalfWidth: CGFloat {
+        let ballSize = currentBallSize
+        if timerStore.isActive || timerStore.showsFloatingReminder {
+            return max(ballSize * 1.72, 112) / 2
+        }
+        return ballSize / 2
+    }
+
+    private var currentBallVisibleHalfHeight: CGFloat {
+        currentBallSize / 2
+    }
+
+    private func setMenuExpanded(_ expanded: Bool) {
         guard let panel else { return }
-        panel.isMenuExpanded.toggle()
+        panel.isMenuExpanded = expanded
         menuModel.isExpanded = panel.isMenuExpanded
+        expanded ? scheduleAutoCollapse() : cancelAutoCollapse()
+    }
+
+    private func registerMenuInteraction() {
+        guard panel?.isMenuExpanded == true else { return }
+        scheduleAutoCollapse()
+    }
+
+    private func keepMenuExpanded() {
+        guard panel?.isMenuExpanded == true else { return }
+        cancelAutoCollapse()
+    }
+
+    private func handlePanelClick() {
+        if panel?.isMenuExpanded == true {
+            collapseMenu()
+        } else {
+            setMenuExpanded(true)
+        }
+    }
+
+    private func handleBallHoverChanged(_ isOverBall: Bool) {
+        if isOverBall {
+            setMenuExpanded(true)
+        } else {
+            registerMenuInteraction()
+        }
+    }
+
+    private func scheduleAutoCollapse() {
+        cancelAutoCollapse()
+        autoCollapseTimer = Timer.scheduledTimer(withTimeInterval: 3.2, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.collapseMenu()
+            }
+        }
+    }
+
+    private func cancelAutoCollapse() {
+        autoCollapseTimer?.invalidate()
+        autoCollapseTimer = nil
+    }
+
+    private func syncVisibility(settingsEnabled: Bool) {
+        let shouldShowTimerDisplay = (timerStore.isActive || timerStore.showsFloatingReminder) && !timerDisplayHiddenByUser
+        if settingsEnabled || shouldShowTimerDisplay {
+            if panel?.isVisible == true {
+                updatePanelVisibleBounds()
+            } else {
+                show()
+            }
+        } else {
+            hide()
+        }
     }
 
     fileprivate func collapseMenu() {
         guard let panel else { return }
         panel.isMenuExpanded = false
         menuModel.isExpanded = false
+        cancelAutoCollapse()
     }
 
     fileprivate func resetPosition() {
@@ -107,8 +227,8 @@ final class FloatingBallController: ObservableObject {
         let screenFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .init(x: 0, y: 0, width: 1280, height: 800)
         panel.setFrameOrigin(
             CGPoint(
-                x: screenFrame.maxX - panel.frame.width - 28,
-                y: screenFrame.midY - panel.frame.height / 2
+                x: screenFrame.maxX - FloatingBallPanel.ballAnchorX - panel.visibleHalfWidth - 8,
+                y: screenFrame.midY - FloatingBallPanel.ballAnchorY
             )
         )
     }
@@ -117,7 +237,28 @@ final class FloatingBallController: ObservableObject {
         NotificationCenter.default.post(name: .openFloatingBallSettings, object: nil)
     }
 
+    fileprivate func openFocusTimerLauncher() {
+        collapseMenu()
+        NotificationCenter.default.post(name: .showFocusTimerLauncher, object: nil)
+    }
+
+    fileprivate func closeFromContextMenu() {
+        if timerStore.isActive || timerStore.showsFloatingReminder {
+            timerDisplayHiddenByUser = true
+            hide()
+        } else {
+            settings.floatingBallEnabled = false
+        }
+    }
+
+    fileprivate func stopFocusTimerFromContextMenu() {
+        timerStore.stop()
+        timerDisplayHiddenByUser = false
+        syncVisibility(settingsEnabled: settings.floatingBallEnabled)
+    }
+
     private func perform(_ kind: FloatingBallActionKind) {
+        collapseMenu()
         switch kind {
         case .translation:
             NotificationCenter.default.post(name: .showTranslationPanel, object: nil)
@@ -129,20 +270,12 @@ final class FloatingBallController: ObservableObject {
         case .appLauncher:
             NotificationCenter.default.post(name: .showAppLauncherPanel, object: nil)
         case .pomodoro:
-            showTransientMessage("番茄钟已准备", detail: "完整番茄钟面板会在下一步接入。")
+            NotificationCenter.default.post(name: .showFocusTimerLauncher, object: nil)
         case .timer:
-            showTransientMessage("计时器已准备", detail: "这里会承载快速计时入口。")
+            NotificationCenter.default.post(name: .showFocusTimerLauncher, object: nil)
         case .focus:
-            showTransientMessage("专注模式已准备", detail: "后续可接入勿扰、白名单和专注时长。")
+            NotificationCenter.default.post(name: .showFocusTimerLauncher, object: nil)
         }
-    }
-
-    private func showTransientMessage(_ message: String, detail: String) {
-        let alert = NSAlert()
-        alert.messageText = message
-        alert.informativeText = detail
-        alert.addButton(withTitle: "知道了")
-        alert.runModal()
     }
 }
 
@@ -152,8 +285,13 @@ private final class FloatingBallMenuModel: ObservableObject {
 }
 
 private final class FloatingBallPanel: NSPanel {
+    static let ballAnchorX: CGFloat = 278
+    static let ballAnchorY: CGFloat = 204
+
     var isMenuExpanded = false
     var onClick: (() -> Void)?
+    var visibleHalfWidth: CGFloat = 32
+    var visibleHalfHeight: CGFloat = 32
     weak var contextMenuDelegate: FloatingBallContextMenuDelegate?
     private var mouseDownScreenLocation: CGPoint = .zero
     private var mouseDownFrameOrigin: CGPoint = .zero
@@ -193,8 +331,13 @@ private final class FloatingBallPanel: NSPanel {
         nextFrame.origin.y = mouseDownFrameOrigin.y + delta.height
 
         if let visibleFrame = screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
-            nextFrame.origin.x = min(max(nextFrame.origin.x, visibleFrame.minX), visibleFrame.maxX - nextFrame.width)
-            nextFrame.origin.y = min(max(nextFrame.origin.y, visibleFrame.minY), visibleFrame.maxY - nextFrame.height)
+            let edgePadding: CGFloat = 4
+            let minX = visibleFrame.minX - Self.ballAnchorX + visibleHalfWidth + edgePadding
+            let maxX = visibleFrame.maxX - Self.ballAnchorX - visibleHalfWidth - edgePadding
+            let minY = visibleFrame.minY - Self.ballAnchorY + visibleHalfHeight + edgePadding
+            let maxY = visibleFrame.maxY - Self.ballAnchorY - visibleHalfHeight - edgePadding
+            nextFrame.origin.x = min(max(nextFrame.origin.x, minX), maxX)
+            nextFrame.origin.y = min(max(nextFrame.origin.y, minY), maxY)
         }
 
         setFrameOrigin(nextFrame.origin)
@@ -205,20 +348,97 @@ private final class FloatingBallPanel: NSPanel {
             onClick?()
         }
     }
+
+}
+
+private final class FloatingBallHostingView<Content: View>: NSHostingView<Content> {
+    var onHoverChanged: ((Bool) -> Void)?
+    var visibleHalfWidth: CGFloat = 32
+    var visibleHalfHeight: CGFloat = 32
+    private var trackingArea: NSTrackingArea?
+    private var isMouseOverVisibleBall = false
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateVisibleBallHoverState(for: convert(event.locationInWindow, from: nil))
+        super.mouseMoved(with: event)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        updateVisibleBallHoverState(for: convert(event.locationInWindow, from: nil))
+        super.mouseEntered(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        updateVisibleBallHoverState(false)
+        super.mouseExited(with: event)
+    }
+
+    private func updateVisibleBallHoverState(for point: CGPoint) {
+        let normalizedX = (point.x - Self.ballAnchorX) / visibleHalfWidth
+        let normalizedY = (point.y - Self.ballAnchorY) / visibleHalfHeight
+
+        if visibleHalfWidth <= visibleHalfHeight + 2 {
+            updateVisibleBallHoverState((normalizedX * normalizedX + normalizedY * normalizedY) <= 1)
+            return
+        }
+
+        let hitRect = NSRect(
+            x: Self.ballAnchorX - visibleHalfWidth,
+            y: Self.ballAnchorY - visibleHalfHeight,
+            width: visibleHalfWidth * 2,
+            height: visibleHalfHeight * 2
+        )
+        updateVisibleBallHoverState(hitRect.contains(point))
+    }
+
+    private func updateVisibleBallHoverState(_ isHovering: Bool) {
+        guard isMouseOverVisibleBall != isHovering else { return }
+        isMouseOverVisibleBall = isHovering
+        onHoverChanged?(isHovering)
+    }
+
+    private static var ballAnchorX: CGFloat { FloatingBallPanel.ballAnchorX }
+    private static var ballAnchorY: CGFloat { FloatingBallPanel.ballAnchorY }
 }
 
 @MainActor
 private final class FloatingBallContextMenuDelegate: NSObject {
     private weak var controller: FloatingBallController?
     private weak var settings: AppSettings?
+    private weak var timerStore: FocusTimerStore?
 
-    init(controller: FloatingBallController, settings: AppSettings) {
+    init(controller: FloatingBallController, settings: AppSettings, timerStore: FocusTimerStore) {
         self.controller = controller
         self.settings = settings
+        self.timerStore = timerStore
     }
 
     func showMenu(for panel: NSPanel, event: NSEvent) {
         let menu = NSMenu()
+        menu.addItem(menuItem("打开时间节律", "timer") { [weak self] in
+            self?.controller?.openFocusTimerLauncher()
+        })
+        if timerStore?.isActive == true || timerStore?.showsFloatingReminder == true {
+            menu.addItem(menuItem("关闭番茄钟", "timer.circle.fill") { [weak self] in
+                self?.controller?.stopFocusTimerFromContextMenu()
+            })
+        }
+        menu.addItem(.separator())
         menu.addItem(menuItem("打开悬浮球设置", "gearshape") { [weak self] in
             self?.controller?.openFloatingBallSettings()
         })
@@ -230,7 +450,7 @@ private final class FloatingBallContextMenuDelegate: NSObject {
         })
         menu.addItem(.separator())
         menu.addItem(menuItem("关闭悬浮球", "power") { [weak self] in
-            self?.settings?.floatingBallEnabled = false
+            self?.controller?.closeFromContextMenu()
         })
         guard let view = panel.contentView else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: view)
@@ -263,7 +483,11 @@ private final class ClosureMenuItem: NSMenuItem {
 
 private struct FloatingBallView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var timerStore: FocusTimerStore
     @ObservedObject var menuModel: FloatingBallMenuModel
+    let setExpanded: (Bool) -> Void
+    let keepExpanded: () -> Void
+    let registerInteraction: () -> Void
     let performAction: (FloatingBallActionKind) -> Void
     @State private var idlePulse = false
     @State private var menuVisible = false
@@ -278,6 +502,10 @@ private struct FloatingBallView: View {
 
     private var ballSize: CGFloat {
         min(max(CGFloat(settings.floatingBallSize), 28), 104)
+    }
+
+    private var ballWidth: CGFloat {
+        timerStore.isActive || timerStore.showsFloatingReminder ? max(ballSize * 1.72, 112) : ballSize
     }
 
     private var arcCenter: CGPoint {
@@ -303,9 +531,13 @@ private struct FloatingBallView: View {
                 .scaleEffect(menuVisible ? 1 : 0.72, anchor: UnitPoint(x: ballCenter.x / 390, y: ballCenter.y / 340))
                 .rotationEffect(.degrees(menuVisible ? 0 : 48), anchor: UnitPoint(x: ballCenter.x / 390, y: ballCenter.y / 340))
                 .allowsHitTesting(menuVisible)
+                .onHover { hovering in
+                    hovering ? keepExpanded() : registerInteraction()
+                }
 
             petAvatar
-                .frame(width: ballSize, height: ballSize)
+                .frame(width: ballWidth, height: ballSize)
+                .contentShape(RoundedRectangle(cornerRadius: ballSize / 2, style: .continuous))
                 .position(ballCenter)
         }
         .frame(width: 390, height: 340)
@@ -408,16 +640,19 @@ private struct FloatingBallView: View {
 
     private var petAvatar: some View {
         ZStack {
-            Circle()
+            RoundedRectangle(cornerRadius: ballSize / 2, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.cyan.opacity(0.92), .indigo.opacity(0.88)],
+                        colors: timerGradientColors,
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-            Circle()
+            RoundedRectangle(cornerRadius: ballSize / 2, style: .continuous)
                 .stroke(.white.opacity(0.45), lineWidth: 1.5)
+            if timerStore.isActive || timerStore.showsFloatingReminder {
+                timerProgressOverlay
+            }
             avatarContent
                 .padding(settings.floatingBallPetImagePath.isEmpty ? 0 : 7)
         }
@@ -426,9 +661,42 @@ private struct FloatingBallView: View {
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
 
+    private var timerGradientColors: [Color] {
+        guard let mode = timerStore.mode else {
+            return [.cyan.opacity(0.92), .indigo.opacity(0.88)]
+        }
+        switch mode {
+        case .focus:
+            return [.orange.opacity(0.95), .red.opacity(0.86)]
+        case .breakTime:
+            return [.mint.opacity(0.95), .teal.opacity(0.88)]
+        case .quickTimer:
+            return [.cyan.opacity(0.94), .blue.opacity(0.88)]
+        }
+    }
+
+    private var timerProgressOverlay: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.22))
+                    Capsule()
+                        .fill(Color.white.opacity(0.72))
+                        .frame(width: proxy.size.width * max(timerStore.progress, 0.02))
+                }
+            }
+            .frame(height: 2)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 3)
+        }
+    }
+
     @ViewBuilder
     private var avatarContent: some View {
         if
+            !(timerStore.isActive || timerStore.showsFloatingReminder),
             !settings.floatingBallPetImagePath.isEmpty,
             let image = NSImage(contentsOfFile: settings.floatingBallPetImagePath)
         {
@@ -436,6 +704,17 @@ private struct FloatingBallView: View {
                 .resizable()
                 .scaledToFit()
                 .clipShape(Circle())
+        } else if timerStore.isActive || timerStore.showsFloatingReminder {
+            HStack(spacing: 7) {
+                Image(systemName: timerStore.mode?.icon ?? "timer")
+                    .font(.system(size: 17, weight: .bold))
+                Text(timerStore.remainingSeconds > 0 ? timerStore.displayTime : "完成")
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .offset(y: -2)
         } else {
             Image(systemName: "sparkles")
                 .font(.system(size: max(settings.floatingBallSize * 0.42, 12), weight: .bold))

@@ -18,9 +18,12 @@ struct AirGuardApp: App {
     @StateObject private var screenshotShortcutManager: ScreenshotShortcutManager
     @StateObject private var translationStore: TranslationStore
     @StateObject private var translationShortcutManager: TranslationShortcutManager
+    @StateObject private var focusTimerStore: FocusTimerStore
+    @StateObject private var focusTimerShortcutManager: FocusTimerShortcutManager
     @StateObject private var floatingBallController: FloatingBallController
     private let appLauncherPanelController: AppLauncherPanelController
     private let translationPanelController: TranslationPanelController
+    private let focusTimerLauncherPanelController: FocusTimerLauncherPanelController
 
     init() {
         let settings = AppSettings()
@@ -30,6 +33,8 @@ struct AirGuardApp: App {
         let screenshotCaptureController = ScreenshotCaptureController()
         let translationStore = TranslationStore(settings: settings)
         let translationPanelController = TranslationPanelController(settings: settings, store: translationStore)
+        let focusTimerStore = FocusTimerStore(settings: settings)
+        let focusTimerLauncherPanelController = FocusTimerLauncherPanelController(timerStore: focusTimerStore)
         _settings = StateObject(wrappedValue: settings)
         _alertManager = StateObject(wrappedValue: alertManager)
         _monitorStore = StateObject(wrappedValue: MonitorStore(settings: settings, alertManager: alertManager))
@@ -45,9 +50,14 @@ struct AirGuardApp: App {
         _translationShortcutManager = StateObject(wrappedValue: TranslationShortcutManager(settings: settings) {
             translationPanelController.toggle()
         })
-        _floatingBallController = StateObject(wrappedValue: FloatingBallController(settings: settings, screenshotCaptureController: screenshotCaptureController))
+        _focusTimerStore = StateObject(wrappedValue: focusTimerStore)
+        _focusTimerShortcutManager = StateObject(wrappedValue: FocusTimerShortcutManager {
+            focusTimerLauncherPanelController.toggle()
+        })
+        _floatingBallController = StateObject(wrappedValue: FloatingBallController(settings: settings, timerStore: focusTimerStore, screenshotCaptureController: screenshotCaptureController))
         self.appLauncherPanelController = appLauncherPanelController
         self.translationPanelController = translationPanelController
+        self.focusTimerLauncherPanelController = focusTimerLauncherPanelController
     }
 
     var body: some Scene {
@@ -58,6 +68,7 @@ struct AirGuardApp: App {
                 .environmentObject(monitorStore)
                 .environmentObject(agentMonitorStore)
                 .environmentObject(screenshotCaptureController)
+                .environmentObject(focusTimerStore)
                 .frame(width: 400)
         } label: {
             MenuBarStatusLabel(settings: settings, monitorStore: monitorStore)
@@ -79,6 +90,7 @@ struct AirGuardApp: App {
                 .environmentObject(settings)
                 .environmentObject(appLauncherStore)
                 .environmentObject(screenshotCaptureController)
+                .environmentObject(focusTimerStore)
         }
         .defaultSize(width: 900, height: 650)
     }

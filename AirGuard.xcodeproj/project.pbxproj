@@ -81,6 +81,9 @@
 		A00000000000000000000048 /* AIUsageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000150 /* AIUsageStore.swift */; };
 		A00000000000000000000049 /* FloatingBallController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000151 /* FloatingBallController.swift */; };
 		A0000000000000000000004A /* FloatingArcMenuGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000152 /* FloatingArcMenuGeometry.swift */; };
+		A0000000000000000000004B /* FocusTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000153 /* FocusTimerStore.swift */; };
+		A0000000000000000000004C /* FocusTimerLauncherPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */; };
+		A0000000000000000000004D /* FocusTimerShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000155 /* FocusTimerShortcutManager.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -206,6 +209,9 @@
 		A00000000000000000000150 /* AIUsageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIUsageStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000151 /* FloatingBallController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingBallController.swift; sourceTree = "<group>"; };
 		A00000000000000000000152 /* FloatingArcMenuGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingArcMenuGeometry.swift; sourceTree = "<group>"; };
+		A00000000000000000000153 /* FocusTimerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerLauncherPanelController.swift; sourceTree = "<group>"; };
+		A00000000000000000000155 /* FocusTimerShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerShortcutManager.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -257,6 +263,8 @@
 				A0000000000000000000011A /* AppStore.entitlements */,
 				A00000000000000000000310 /* Views */,
 				A00000000000000000000311 /* Core */,
+				A0000000000000000000031D /* FloatingBall */,
+				A0000000000000000000031E /* FocusTimer */,
 				A00000000000000000000312 /* Readers */,
 				A00000000000000000000313 /* Models */,
 				A00000000000000000000314 /* Utils */,
@@ -317,10 +325,27 @@
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
 				A0000000000000000000014C /* LogArchiver.swift */,
 				A0000000000000000000014D /* SuperRightClickSharedConfig.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000031D /* FloatingBall */ = {
+			isa = PBXGroup;
+			children = (
 				A00000000000000000000151 /* FloatingBallController.swift */,
 				A00000000000000000000152 /* FloatingArcMenuGeometry.swift */,
 			);
-			path = Core;
+			path = FloatingBall;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000031E /* FocusTimer */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000153 /* FocusTimerStore.swift */,
+				A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */,
+				A00000000000000000000155 /* FocusTimerShortcutManager.swift */,
+			);
+			path = FocusTimer;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000312 /* Readers */ = {
@@ -629,6 +654,9 @@
 				A00000000000000000000048 /* AIUsageStore.swift in Sources */,
 				A00000000000000000000049 /* FloatingBallController.swift in Sources */,
 				A0000000000000000000004A /* FloatingArcMenuGeometry.swift in Sources */,
+				A0000000000000000000004B /* FocusTimerStore.swift in Sources */,
+				A0000000000000000000004C /* FocusTimerLauncherPanelController.swift in Sources */,
+				A0000000000000000000004D /* FocusTimerShortcutManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
