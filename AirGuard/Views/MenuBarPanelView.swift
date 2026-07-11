@@ -11,14 +11,19 @@ struct MenuBarPanelView: View {
     @EnvironmentObject private var monitorStore: MonitorStore
     @EnvironmentObject private var alertManager: AlertManager
     @EnvironmentObject private var screenshotCaptureController: ScreenshotCaptureController
+    @StateObject private var systemToolRunner = MenuBarSystemToolRunner()
     @State private var showsSystemStatusPopover = false
+    @State private var showsQuickActionsPopover = false
+    @State private var moreSystemStatusPage: MoreSystemStatusPage = .overview
     @State private var moreStatusBattery: BatteryInfo = .empty
     @State private var moreStatusDisk: DiskStorageInfo = .empty
     @State private var moreStatusDiskIO: DiskIOInfo = .empty
+    @State private var moreStatusSmartWrittenText: String?
 
     private var snapshot: SystemSnapshot { monitorStore.snapshot }
     private let batteryReader = BatteryReader()
     private let diskIOReader = DiskIOReader()
+    private let diskSmartWriteReader = DiskSmartWriteReader()
     private let storageReader = StorageReader()
 
     var body: some View {
@@ -208,6 +213,7 @@ struct MenuBarPanelView: View {
 
             Button {
                 refreshMoreSystemStatus()
+                moreSystemStatusPage = .overview
                 showsSystemStatusPopover.toggle()
             } label: {
                 Image(systemName: "chevron.right")
@@ -234,6 +240,21 @@ struct MenuBarPanelView: View {
     }
 
     private var moreSystemStatusPanel: some View {
+        Group {
+            switch moreSystemStatusPage {
+            case .overview:
+                moreSystemStatusOverviewPanel
+            case .diskGuide:
+                DiskHealthGuideView(
+                    onBack: { moreSystemStatusPage = .overview },
+                    onClose: { showsSystemStatusPopover = false }
+                )
+            }
+        }
+        .background(panelBackground)
+    }
+
+    private var moreSystemStatusOverviewPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("更多系统状态")
@@ -295,25 +316,14 @@ struct MenuBarPanelView: View {
                     .stroke(popoverStrokeColor, lineWidth: 1)
             )
 
-            statusWideCell(
-                title: "存储状态",
-                value: diskHealthText,
-                detail: diskHealthDetail,
-                systemImage: "shield",
+            diskGuideButton(
+                title: "磁盘写入量",
+                value: diskWriteAmountText,
+                detail: diskWriteAmountDetail,
+                systemImage: "internaldrive",
                 tint: diskTint
             ) {
-                diskIOStatusLine
-            }
-
-            statusWideCell(
-                title: "磁盘容量",
-                value: diskCapacityText,
-                detail: diskUsageText,
-                systemImage: "internaldrive",
-                tint: .blue
-            ) {
-                ProgressView(value: moreStatusDisk.usageRatio)
-                    .tint(.blue)
+                EmptyView()
             }
 
             statusWideCell(
@@ -364,7 +374,6 @@ struct MenuBarPanelView: View {
         }
         .padding(16)
         .frame(width: 350)
-        .background(panelBackground)
     }
 
     @ViewBuilder
@@ -457,6 +466,12 @@ struct MenuBarPanelView: View {
                     runQuickTool(tool)
                 }
             }
+
+            Divider()
+                .frame(height: 18)
+                .overlay(Color.primary.opacity(0.12))
+
+            quickActionsButton
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
@@ -464,6 +479,37 @@ struct MenuBarPanelView: View {
         .overlay(
             Capsule()
                 .stroke(surfaceStrokeColor.opacity(0.72), lineWidth: 1)
+        )
+    }
+
+    private var quickActionsButton: some View {
+        Button {
+            showsQuickActionsPopover.toggle()
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(showsQuickActionsPopover ? Color.blue : Color.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(showsQuickActionsPopover ? Color.blue.opacity(0.11) : Color.clear)
+        )
+        .help("更多快捷动作")
+        .pointingHandCursor()
+        .popover(isPresented: $showsQuickActionsPopover, arrowEdge: .bottom) {
+            quickActionsPopover
+        }
+    }
+
+    private var quickActionsPopover: some View {
+        MenuBarQuickActionsPopover(
+            runner: systemToolRunner,
+            close: { showsQuickActionsPopover = false },
+            openActivityMonitor: openActivityMonitor,
+            openToolbox: { openToolboxWindow() }
         )
     }
 
@@ -663,6 +709,38 @@ struct MenuBarPanelView: View {
         }
     }
 
+    private func diskGuideButton<Content: View>(
+        title: String,
+        value: String,
+        detail: String? = nil,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button {
+            moreSystemStatusPage = .diskGuide
+        } label: {
+            statusWideCell(
+                title: title,
+                value: value,
+                detail: detail,
+                systemImage: systemImage,
+                tint: tint
+            ) {
+                HStack(spacing: 8) {
+                    content()
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .pointingHandCursor()
+        .help("查看磁盘健康与写入量引导")
+    }
+
     private var memoryPressureLine: some View {
         HStack(spacing: 6) {
             Image(systemName: snapshot.memory.pressureLevel.symbolName)
@@ -729,6 +807,14 @@ struct MenuBarPanelView: View {
         moreStatusBattery = batteryReader.read()
         moreStatusDisk = storageReader.readDiskStorage()
         moreStatusDiskIO = diskIOReader.read()
+        moreStatusSmartWrittenText = nil
+
+        Task {
+            let smartWrittenText = await diskSmartWriteReader.readWrittenText()
+            await MainActor.run {
+                moreStatusSmartWrittenText = smartWrittenText
+            }
+        }
     }
 
     private func activityMonitorButton<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -811,33 +897,18 @@ struct MenuBarPanelView: View {
 
     private var diskHealthDetail: String {
         guard moreStatusDisk.totalBytes > 0 else { return "" }
-        return "基于剩余空间"
+        return "点按读取 SMART 统计"
     }
 
-    private var diskIOStatusLine: some View {
-        HStack(spacing: 12) {
-            diskIOBadge(systemImage: "arrow.down", color: .green, text: "写 \(diskWriteText)")
-            diskIOBadge(systemImage: "arrow.up", color: .blue, text: "读 \(diskReadText)")
-            Spacer(minLength: 0)
+    private var diskWriteAmountText: String {
+        moreStatusSmartWrittenText ?? diskWriteText
+    }
+
+    private var diskWriteAmountDetail: String {
+        if moreStatusSmartWrittenText != nil {
+            return "来自 SMART 累计写入量"
         }
-    }
-
-    private func diskIOBadge(systemImage: String, color: Color, text: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(color)
-
-            Text(text)
-                .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-        }
-    }
-
-    private var diskReadText: String {
-        moreStatusDiskIO.readBytes.map(ByteFormatter.string(from:)) ?? "不可用"
+        return "来自系统写入量"
     }
 
     private var diskWriteText: String {
@@ -904,6 +975,11 @@ struct MenuBarPanelView: View {
     private func percent(_ value: Double) -> String {
         value.formatted(.percent.precision(.fractionLength(0)))
     }
+}
+
+private enum MoreSystemStatusPage {
+    case overview
+    case diskGuide
 }
 
 private struct MetricTile<Content: View>: View {
@@ -1078,10 +1154,9 @@ private struct BatteryReader {
 }
 
 private struct DiskIOInfo: Equatable {
-    var readBytes: UInt64?
     var writeBytes: UInt64?
 
-    static let empty = DiskIOInfo(readBytes: nil, writeBytes: nil)
+    static let empty = DiskIOInfo(writeBytes: nil)
 }
 
 private struct DiskIOReader {
@@ -1095,7 +1170,6 @@ private struct DiskIOReader {
         }
         defer { IOObjectRelease(iterator) }
 
-        var totalReadBytes: UInt64 = 0
         var totalWriteBytes: UInt64 = 0
         var matchedDeviceCount = 0
 
@@ -1113,21 +1187,89 @@ private struct DiskIOReader {
                 continue
             }
 
-            let readBytes = (stats["Bytes (Read)"] as? NSNumber)?.uint64Value
             let writeBytes = (stats["Bytes (Write)"] as? NSNumber)?.uint64Value
-            if readBytes != nil || writeBytes != nil {
+            if writeBytes != nil {
                 matchedDeviceCount += 1
-                totalReadBytes += readBytes ?? 0
                 totalWriteBytes += writeBytes ?? 0
             }
         }
 
         guard matchedDeviceCount > 0 else {
-            LogArchiver.shared.warning("More system status disk IO read failed: no IOBlockStorageDriver statistics with byte counters")
+            LogArchiver.shared.warning("More system status disk write read failed: no IOBlockStorageDriver write byte counters")
             return .empty
         }
 
-        return DiskIOInfo(readBytes: totalReadBytes, writeBytes: totalWriteBytes)
+        return DiskIOInfo(writeBytes: totalWriteBytes)
+    }
+}
+
+private struct DiskSmartWriteReader {
+    func readWrittenText() async -> String? {
+        let smartctlPath = await runShell(#"command -v smartctl || true"#).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !smartctlPath.isEmpty else {
+            LogArchiver.shared.info("More system status SMART write skipped: smartctl not found")
+            return nil
+        }
+
+        let command = #"\#(shellQuoted(smartctlPath)) -a /dev/disk0 2>&1"#
+        let output = await runShell(command).trimmingCharacters(in: .whitespacesAndNewlines)
+        LogArchiver.shared.info("More system status SMART write output:\n\(output.isEmpty ? "<empty>" : output)")
+
+        guard let line = output
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .first(where: { $0.localizedCaseInsensitiveContains("Data Units Written") }) else {
+            LogArchiver.shared.warning("More system status SMART write failed: Data Units Written unavailable")
+            return nil
+        }
+
+        let text = bracketValue(from: line) ?? valueAfterColon(from: line)
+        LogArchiver.shared.info("More system status SMART write parsed: \(text ?? "<empty>") from line: \(line)")
+        return text
+    }
+
+    private func runShell(_ command: String) async -> String {
+        await Task.detached(priority: .utility) {
+            let process = Process()
+            let pipe = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-lc", command]
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                return String(data: data, encoding: .utf8) ?? ""
+            } catch {
+                return error.localizedDescription
+            }
+        }.value
+    }
+
+    private func bracketValue(from line: String) -> String? {
+        guard let open = line.firstIndex(of: "["),
+              let close = line[open...].firstIndex(of: "]"),
+              open < close else {
+            return nil
+        }
+
+        let value = line[line.index(after: open)..<close]
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        return value.isEmpty ? nil : value
+    }
+
+    private func valueAfterColon(from line: String) -> String? {
+        guard let colon = line.firstIndex(of: ":") else { return nil }
+        let value = line[line.index(after: colon)...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private func shellQuoted(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }
 

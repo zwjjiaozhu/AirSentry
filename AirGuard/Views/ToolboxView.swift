@@ -14,6 +14,7 @@ struct ToolboxView: View {
     @StateObject private var finderAuthorizationStore = FinderNewFileAuthorizationStore()
     @StateObject private var imageProcessingStore = ImageProcessingStore()
     @State private var selectedTool: ToolboxSection = .appLauncher
+    @State private var collapsedSidebarGroups: Set<String> = []
     @State private var inputSources: [InputMethodSource] = []
     @State private var recordingRuleID: UUID?
     @State private var isRecordingAppLauncherShortcut = false
@@ -78,88 +79,32 @@ struct ToolboxView: View {
             .padding(.top, 28)
             .padding(.bottom, 26)
 
-            VStack(spacing: 7) {
-              ToolboxSidebarItem(
-                title: "程序收纳台",
-                systemImage: "square.grid.3x3",
-                isSelected: selectedTool == .appLauncher
-              ) {
-                selectedTool = .appLauncher
-              }
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 16) {
+                    sidebarGroup("常用") {
+                        sidebarItem(.appLauncher, title: "程序收纳台", systemImage: "square.grid.3x3")
+                        sidebarItem(.quickAccess, title: "快捷入口", systemImage: "switch.2")
+                        sidebarItem(.screenshot, title: "截图钉图", systemImage: "camera.viewfinder")
+                        sidebarItem(.ocr, title: "文字识别", systemImage: "text.viewfinder")
+                    }
 
-              ToolboxSidebarItem(
-                title: "截图钉图",
-                systemImage: "camera.viewfinder",
-                isSelected: selectedTool == .screenshot
-              ) {
-                selectedTool = .screenshot
-              }
+                    sidebarGroup("文件与效率") {
+                        sidebarItem(.imageProcessing, title: "图片处理", systemImage: "photo.on.rectangle.angled")
+                        sidebarItem(.superRightClick, title: "超级右键", systemImage: "computermouse")
+                        sidebarItem(.uninstaller, title: "软件卸载助手", systemImage: "trash")
+                        sidebarItem(.inputMethod, title: "输入法快捷切换", systemImage: "keyboard")
+                    }
 
-              ToolboxSidebarItem(
-                title: "文字识别",
-                systemImage: "text.viewfinder",
-                isSelected: selectedTool == .ocr
-              ) {
-                selectedTool = .ocr
-              }
-
-              ToolboxSidebarItem(
-                title: "图片处理",
-                systemImage: "photo.on.rectangle.angled",
-                isSelected: selectedTool == .imageProcessing
-              ) {
-                selectedTool = .imageProcessing
-              }
-
-              ToolboxSidebarItem(
-                title: "超级右键",
-                systemImage: "computermouse",
-                isSelected: selectedTool == .superRightClick
-              ) {
-                selectedTool = .superRightClick
-              }
-
-              ToolboxSidebarItem(
-                title: "AI 用量中心",
-                systemImage: "sparkles",
-                isSelected: selectedTool == .storage
-              ) {
-                selectedTool = .storage
-              }
-
-              ToolboxSidebarItem(
-                title: "软件卸载助手",
-                systemImage: "trash",
-                isSelected: selectedTool == .uninstaller
-              ) {
-                selectedTool = .uninstaller
-              }
-
-              ToolboxSidebarItem(
-                title: "输入法快捷切换",
-                systemImage: "keyboard",
-                isSelected: selectedTool == .inputMethod
-              ) {
-                selectedTool = .inputMethod
-              }
-
-              ToolboxSidebarItem(
-                title: "翻译助手",
-                systemImage: "character.book.closed",
-                isSelected: selectedTool == .translation
-              ) {
-                selectedTool = .translation
-              }
-
-              ToolboxSidebarItem(
-                title: "悬浮球",
-                systemImage: "circle.grid.cross",
-                isSelected: selectedTool == .floatingBall
-              ) {
-                selectedTool = .floatingBall
-              }
+                    sidebarGroup("系统与辅助") {
+                        sidebarItem(.storage, title: "AI 用量中心", systemImage: "sparkles")
+                        sidebarItem(.translation, title: "翻译助手", systemImage: "character.book.closed")
+                        sidebarItem(.floatingBall, title: "悬浮球", systemImage: "circle.grid.cross")
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
-            .padding(.horizontal, 12)
+            .scrollIndicators(.visible)
 
             Spacer()
 
@@ -180,6 +125,63 @@ struct ToolboxView: View {
                 endPoint: .bottomTrailing
             )
         )
+    }
+
+    private func sidebarGroup<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let isCollapsed = collapsedSidebarGroups.contains(title)
+
+        return VStack(alignment: .leading, spacing: 7) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    if isCollapsed {
+                        collapsedSidebarGroups.remove(title)
+                    } else {
+                        collapsedSidebarGroups.insert(title)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 11.5, weight: .semibold))
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isCollapsed ? "展开\(title)" : "折叠\(title)")
+
+            if !isCollapsed {
+                VStack(spacing: 7) {
+                    content()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func sidebarItem(
+        _ section: ToolboxSection,
+        title: String,
+        systemImage: String
+    ) -> some View {
+        ToolboxSidebarItem(
+            title: title,
+            systemImage: systemImage,
+            isSelected: selectedTool == section
+        ) {
+            selectedTool = section
+        }
     }
 
     private func togglePinOnTop() {
@@ -241,6 +243,8 @@ struct ToolboxView: View {
                     inputMethodContent
                 case .appLauncher:
                     appLauncherContent
+                case .quickAccess:
+                    quickAccessContent
                 case .screenshot:
                     screenshotContent
                 case .ocr:
@@ -312,6 +316,14 @@ struct ToolboxView: View {
         }
         .onAppear {
             appLauncherStore.refreshApplications()
+        }
+    }
+
+    private var quickAccessContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            quickAccessHeader
+            menuBarQuickToolsSection
+            quickActionsGuideSection
         }
     }
 
@@ -865,6 +877,106 @@ struct ToolboxView: View {
 
             Spacer()
         }
+    }
+
+    private var quickAccessHeader: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("快捷入口")
+                    .font(.system(size: 24, weight: .bold))
+                Text("管理菜单栏面板底部的固定工具，以及“更多”里的轻量系统动作。")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text("已固定 \(settings.menuBarQuickTools.count) 个")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.07), in: Capsule())
+        }
+    }
+
+    private var menuBarQuickToolsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("菜单栏固定图标")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("这些工具会显示在菜单栏面板底部，面板里只显示图标，悬浮时显示说明。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(MenuBarQuickTool.allCases.enumerated()), id: \.element.id) { index, tool in
+                    QuickToolPreferenceRow(
+                        tool: tool,
+                        isSelected: settings.menuBarQuickTools.contains(tool),
+                        isLastSelected: settings.menuBarQuickTools.count <= 1 && settings.menuBarQuickTools.contains(tool)
+                    ) { enabled in
+                        settings.setMenuBarQuickTool(tool, enabled: enabled)
+                    }
+
+                    if index < MenuBarQuickTool.allCases.count - 1 {
+                        Divider()
+                            .padding(.leading, 72)
+                    }
+                }
+            }
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private var quickActionsGuideSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.blue)
+                    .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("更多快捷动作")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("隐藏桌面、防止休眠、锁屏和休眠等一次性操作，会收在菜单栏面板底部的“更多”按钮里，避免主面板被拉长。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                quickActionPreviewBadge("隐藏桌面", "rectangle.dashed")
+                quickActionPreviewBadge("防休眠", "cup.and.saucer")
+                quickActionPreviewBadge("锁屏", "lock")
+                quickActionPreviewBadge("休眠", "moon.zzz")
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(18)
+        .toolboxCard()
+    }
+
+    private func quickActionPreviewBadge(_ title: String, _ systemImage: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+            Text(title)
+                .font(.system(size: 12.5, weight: .semibold))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.055), in: Capsule())
     }
 
     private var superRightClickHeader: some View {
@@ -3323,6 +3435,7 @@ private enum ToolboxSection {
     case uninstaller
     case inputMethod
     case appLauncher
+    case quickAccess
     case screenshot
     case ocr
     case imageProcessing
@@ -3351,6 +3464,45 @@ private enum ToolboxSection {
         case .translation:
             self = .translation
         }
+    }
+}
+
+private struct QuickToolPreferenceRow: View {
+    let tool: MenuBarQuickTool
+    let isSelected: Bool
+    let isLastSelected: Bool
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 18) {
+            Image(systemName: tool.systemImage)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.blue)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(tool.title)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(tool.helpText)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { isSelected },
+                set: { onChange($0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .disabled(isLastSelected)
+            .help(isLastSelected ? "至少保留一个快捷图标" : "显示在菜单栏面板")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
     }
 }
 

@@ -84,6 +84,8 @@
 		A0000000000000000000004B /* FocusTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000153 /* FocusTimerStore.swift */; };
 		A0000000000000000000004C /* FocusTimerLauncherPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */; };
 		A0000000000000000000004D /* FocusTimerShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000155 /* FocusTimerShortcutManager.swift */; };
+		A0000000000000000000004E /* MenuBarSystemTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000156 /* MenuBarSystemTool.swift */; };
+		A0000000000000000000004F /* DiskHealthGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000157 /* DiskHealthGuideView.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -212,6 +214,8 @@
 		A00000000000000000000153 /* FocusTimerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerLauncherPanelController.swift; sourceTree = "<group>"; };
 		A00000000000000000000155 /* FocusTimerShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerShortcutManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000156 /* MenuBarSystemTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSystemTool.swift; sourceTree = "<group>"; };
+		A00000000000000000000157 /* DiskHealthGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskHealthGuideView.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -263,6 +267,7 @@
 				A0000000000000000000011A /* AppStore.entitlements */,
 				A00000000000000000000310 /* Views */,
 				A00000000000000000000311 /* Core */,
+				A0000000000000000000031F /* MenuBarTools */,
 				A0000000000000000000031D /* FloatingBall */,
 				A0000000000000000000031E /* FocusTimer */,
 				A00000000000000000000312 /* Readers */,
@@ -336,6 +341,15 @@
 				A00000000000000000000152 /* FloatingArcMenuGeometry.swift */,
 			);
 			path = FloatingBall;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000031F /* MenuBarTools */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000156 /* MenuBarSystemTool.swift */,
+				A00000000000000000000157 /* DiskHealthGuideView.swift */,
+			);
+			path = MenuBarTools;
 			sourceTree = "<group>";
 		};
 		A0000000000000000000031E /* FocusTimer */ = {
@@ -657,6 +671,8 @@
 				A0000000000000000000004B /* FocusTimerStore.swift in Sources */,
 				A0000000000000000000004C /* FocusTimerLauncherPanelController.swift in Sources */,
 				A0000000000000000000004D /* FocusTimerShortcutManager.swift in Sources */,
+				A0000000000000000000004E /* MenuBarSystemTool.swift in Sources */,
+				A0000000000000000000004F /* DiskHealthGuideView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -26,8 +26,6 @@ struct SettingsView: View {
                             .id(SettingsSectionID.threshold)
                         labSection
                             .id(SettingsSectionID.labs)
-                        toolboxSection
-                            .id(SettingsSectionID.toolbox)
                         systemSection
                             .id(SettingsSectionID.system)
                     }
@@ -107,14 +105,6 @@ struct SettingsView: View {
                     isSelected: selectedSection == .labs
                 ) {
                     selectedSection = .labs
-                }
-
-                SidebarItem(
-                    title: "工具箱",
-                    systemImage: "wrench.and.screwdriver.fill",
-                    isSelected: selectedSection == .toolbox
-                ) {
-                    selectedSection = .toolbox
                 }
 
                 SidebarItem(
@@ -285,41 +275,6 @@ struct SettingsView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
             }
-        }
-    }
-
-    private var toolboxSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                SectionTitle("工具箱快捷图标")
-
-                Spacer()
-
-                Text("已显示 \(settings.menuBarQuickTools.count) 个")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-
-            SettingsGroup {
-                ForEach(Array(MenuBarQuickTool.allCases.enumerated()), id: \.element.id) { index, tool in
-                    QuickToolPreferenceRow(
-                        tool: tool,
-                        isSelected: settings.menuBarQuickTools.contains(tool),
-                        isLastSelected: settings.menuBarQuickTools.count <= 1 && settings.menuBarQuickTools.contains(tool)
-                    ) { enabled in
-                        settings.setMenuBarQuickTool(tool, enabled: enabled)
-                    }
-
-                    if index < MenuBarQuickTool.allCases.count - 1 {
-                        InsetDivider()
-                    }
-                }
-            }
-
-            Text("这些图标会显示在菜单栏面板的“工具箱”按钮下面；面板里只显示图标，鼠标悬浮时显示说明。")
-                .font(.system(size: 12.5))
-                .foregroundStyle(.secondary)
-                .lineSpacing(3)
         }
     }
 
@@ -622,7 +577,6 @@ struct SettingsView: View {
 
 private enum SettingsSectionID: Hashable {
     case reminder
-    case toolbox
     case threshold
     case labs
     case system
@@ -895,45 +849,6 @@ private struct PreferenceRow: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 15)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct QuickToolPreferenceRow: View {
-    let tool: MenuBarQuickTool
-    let isSelected: Bool
-    let isLastSelected: Bool
-    let onChange: (Bool) -> Void
-
-    var body: some View {
-        HStack(spacing: 18) {
-            Image(systemName: tool.systemImage)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.blue)
-                .frame(width: 34)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(tool.title)
-                    .font(.system(size: 15, weight: .semibold))
-
-                Text(tool.helpText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { isSelected },
-                set: { onChange($0) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .disabled(isLastSelected)
-            .help(isLastSelected ? "至少保留一个快捷图标" : "显示在菜单栏面板")
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
         .contentShape(Rectangle())
     }
 }
