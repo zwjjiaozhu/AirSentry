@@ -144,7 +144,7 @@ struct NotchStatusView: View {
                     timerPill()
                 }
             }
-            .padding(.trailing, 8)
+            .padding(.trailing, 3)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .background(.black)
         }
