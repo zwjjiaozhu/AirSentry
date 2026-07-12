@@ -30,6 +30,11 @@ struct ToolboxView: View {
     @AppStorage("aiUsageQuotaSectionExpanded") private var aiUsageQuotaSectionExpanded = true
     @AppStorage("aiUsageSelectedProviderIDs") private var aiUsageSelectedProviderIDsRaw = AIUsageProviderID.codex.rawValue
     @State private var selectedAIUsageProviderID: AIUsageProviderID?
+    @State private var hasScreenshotScreenCapturePermission = ScreenshotPermission.canCaptureScreen
+    @State private var hasScreenshotAccessibilityPermission = MouseScrollDirectionManager.isAccessibilityTrusted
+    @State private var isSuperRightClickFinderExtensionEnabled = false
+    @State private var isScreenshotPermissionGuideExpanded = !(ScreenshotPermission.canCaptureScreen && MouseScrollDirectionManager.isAccessibilityTrusted)
+    @State private var isSuperRightClickSetupGuideExpanded = true
 
     var body: some View {
         HStack(spacing: 0) {
@@ -60,6 +65,10 @@ struct ToolboxView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openTranslationSettings)) { _ in
             selectedTool = .translation
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshScreenshotPermissionStatus()
+            refreshSuperRightClickFinderExtensionStatus()
         }
     }
 
@@ -337,6 +346,9 @@ struct ToolboxView: View {
             screenshotShortcutSection
             screenshotActionSection
         }
+        .onAppear {
+            refreshScreenshotPermissionStatus()
+        }
     }
 
     private var ocrContent: some View {
@@ -356,6 +368,12 @@ struct ToolboxView: View {
             superRightClickSetupGuideSection
             superRightClickFolderAuthorizationSection
             superRightClickTemplatesSection
+        }
+        .onAppear {
+            refreshSuperRightClickFinderExtensionStatus()
+        }
+        .onChange(of: finderAuthorizationStore.folders.count) { _ in
+            syncSuperRightClickSetupGuideExpansion(previouslyReady: !isSuperRightClickFinderExtensionEnabled)
         }
     }
 
@@ -568,52 +586,52 @@ struct ToolboxView: View {
                 ZStack(alignment: .topLeading) {
                     ZStack {
                         FloatingArcBandShape(
-                            center: CGPoint(x: 278, y: 204),
-                            outerRadius: 116,
-                            innerRadius: 76,
+                            center: floatingBallPreviewCenter,
+                            outerRadius: floatingBallPreviewOuterRadius,
+                            innerRadius: floatingBallPreviewInnerRadius,
                             startAngle: 240,
                             endAngle: 120,
                             progress: 1
                         )
                             .fill(.regularMaterial)
-                            .shadow(color: .black.opacity(0.12), radius: 16, y: 6)
+                            .shadow(color: .black.opacity(0.12), radius: 14, y: 5)
                         FloatingArcBandShape(
-                            center: CGPoint(x: 278, y: 204),
-                            outerRadius: 116,
-                            innerRadius: 76,
+                            center: floatingBallPreviewCenter,
+                            outerRadius: floatingBallPreviewOuterRadius,
+                            innerRadius: floatingBallPreviewInnerRadius,
                             startAngle: 240,
                             endAngle: 120,
                             progress: 1
                         )
                             .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                         FloatingArcGuideShape(
-                            center: CGPoint(x: 278, y: 204),
-                            radius: 104,
+                            center: floatingBallPreviewCenter,
+                            radius: floatingBallPreviewOuterRadius - 10,
                             startAngle: 240,
                             endAngle: 120,
                             progress: 1
                         )
                             .stroke(Color.primary.opacity(0.07), lineWidth: 2)
                         FloatingArcGuideShape(
-                            center: CGPoint(x: 278, y: 204),
-                            radius: 88,
+                            center: floatingBallPreviewCenter,
+                            radius: floatingBallPreviewInnerRadius + 10,
                             startAngle: 240,
                             endAngle: 120,
                             progress: 1
                         )
                             .stroke(Color.white.opacity(0.48), lineWidth: 2)
                     }
-                    .frame(width: 390, height: 340)
+                    .frame(width: 320, height: 230)
 
                     ForEach(Array(settings.floatingBallActions.filter(\.isEnabled).prefix(5).enumerated()), id: \.element.id) { index, action in
                         let point = floatingBallPreviewPoint(index: index, count: min(settings.floatingBallActions.filter(\.isEnabled).count, 5))
                         Image(systemName: action.kind.systemImage)
-                            .font(.system(size: 15.5, weight: .semibold))
+                            .font(.system(size: floatingBallPreviewActionIconSize, weight: .semibold))
                             .symbolRenderingMode(.hierarchical)
-                            .frame(width: 34, height: 34)
-                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.90), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .frame(width: floatingBallPreviewActionButtonSize, height: floatingBallPreviewActionButtonSize)
+                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.90), in: RoundedRectangle(cornerRadius: floatingBallPreviewActionButtonSize * 0.32, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: floatingBallPreviewActionButtonSize * 0.32, style: .continuous)
                                     .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                             )
                             .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
@@ -630,17 +648,18 @@ struct ToolboxView: View {
                                 )
                             )
                         Image(systemName: "sparkles")
-                            .font(.system(size: 34, weight: .bold))
+                            .font(.system(size: floatingBallPreviewBallDiameter * 0.42, weight: .bold))
                             .foregroundStyle(.white)
                     }
-                    .frame(width: 82, height: 82)
+                    .frame(width: floatingBallPreviewBallDiameter, height: floatingBallPreviewBallDiameter)
                     .overlay(Circle().stroke(.white.opacity(0.45), lineWidth: 1.5))
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
-                    .position(x: 278, y: 204)
+                    .position(floatingBallPreviewCenter)
                 }
-                .frame(width: 390, height: 340)
+                .frame(width: 320, height: 230)
             }
-            .frame(maxWidth: .infinity, minHeight: 350)
+            .frame(maxWidth: .infinity)
+            .frame(height: 250)
 
             Text("点击悬浮球后显示半环菜单，常用动作沿弧线排列，中间保留名称或状态。")
                 .font(.system(size: 13))
@@ -667,11 +686,41 @@ struct ToolboxView: View {
         }
     }
 
+    private var floatingBallPreviewCenter: CGPoint {
+        CGPoint(x: 230, y: 142)
+    }
+
+    private var floatingBallPreviewBallDiameter: CGFloat {
+        min(max(CGFloat(settings.floatingBallSize), 28), 96)
+    }
+
+    private var floatingBallPreviewInnerRadius: CGFloat {
+        floatingBallPreviewBallDiameter / 2 + 29
+    }
+
+    private var floatingBallPreviewOuterRadius: CGFloat {
+        floatingBallPreviewInnerRadius + 34
+    }
+
+    private var floatingBallPreviewActionRadius: CGFloat {
+        (floatingBallPreviewInnerRadius + floatingBallPreviewOuterRadius) / 2
+    }
+
+    private var floatingBallPreviewActionButtonSize: CGFloat {
+        min(max(floatingBallPreviewBallDiameter * 0.44, 26), 36)
+    }
+
+    private var floatingBallPreviewActionIconSize: CGFloat {
+        min(max(floatingBallPreviewActionButtonSize * 0.47, 12.5), 16)
+    }
+
     private func floatingBallPreviewPoint(index: Int, count: Int) -> CGPoint {
         let progress = count > 1 ? Double(index) / Double(count - 1) : 0.5
         let angle = FloatingArcMath.counterClockwiseAngle(from: 240, to: 120, progress: progress) * .pi / 180
-        let radius: CGFloat = 96
-        return CGPoint(x: 278 + cos(angle) * radius, y: 204 + sin(angle) * radius)
+        return CGPoint(
+            x: floatingBallPreviewCenter.x + cos(angle) * floatingBallPreviewActionRadius,
+            y: floatingBallPreviewCenter.y + sin(angle) * floatingBallPreviewActionRadius
+        )
     }
 
     private var uninstallerContent: some View {
@@ -1140,40 +1189,45 @@ struct ToolboxView: View {
 
     private var superRightClickSetupGuideSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .frame(width: 32, height: 32)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("先完成这两步")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Finder 扩展负责显示右键菜单，文件夹授权负责让“新建文件”真正写入目标目录。")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isSuperRightClickSetupGuideExpanded.toggle()
                 }
+            } label: {
+                setupGuideHeader(
+                    icon: superRightClickSetupGuideIcon,
+                    title: superRightClickSetupGuideTitle,
+                    message: superRightClickSetupGuideMessage,
+                    isReady: superRightClickSetupReady,
+                    isExpanded: isSuperRightClickSetupGuideExpanded
+                )
             }
+            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 8) {
-                setupGuideStepRow(
-                    step: "1",
-                    title: "在系统设置里启用 Finder 扩展",
-                    message: "进入「系统设置 - 通用 - 登录项与扩展 - Finder 扩展」，勾选「AirSentry Finder Extension」。",
-                    buttonTitle: "去设置",
-                    systemImage: "gearshape",
-                    action: openSuperRightClickExtensionSettings
-                )
+            if isSuperRightClickSetupGuideExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    setupGuideStepRow(
+                        step: "1",
+                        title: isSuperRightClickFinderExtensionEnabled ? "Finder 扩展已启用" : "在系统设置里启用 Finder 扩展",
+                        message: "进入「系统设置 - 通用 - 登录项与扩展 - Finder 扩展」，勾选「AirSentry Finder Extension」。",
+                        buttonTitle: isSuperRightClickFinderExtensionEnabled ? "已 OK" : "去设置",
+                        systemImage: "gearshape",
+                        isCompleted: isSuperRightClickFinderExtensionEnabled,
+                        action: openSuperRightClickExtensionSettings
+                    )
 
-                setupGuideStepRow(
-                    step: "2",
-                    title: "授权常用文件夹",
-                    message: "给桌面、下载、文稿或需要新建文件的目录授权，否则右键里的“新建文件”不会写入。",
-                    buttonTitle: "添加文件夹",
-                    systemImage: "folder.badge.plus",
-                    action: { finderAuthorizationStore.addFolder() }
-                )
+                    setupGuideStepRow(
+                        step: "2",
+                        title: hasSuperRightClickFolderAuthorization ? "文件夹授权已添加" : "授权常用文件夹",
+                        message: "给桌面、下载、文稿或需要新建文件的目录授权，否则右键里的“新建文件”不会写入。",
+                        buttonTitle: hasSuperRightClickFolderAuthorization ? "已 OK" : "添加文件夹",
+                        systemImage: "folder.badge.plus",
+                        isCompleted: hasSuperRightClickFolderAuthorization,
+                        completedHelp: "继续添加授权文件夹",
+                        action: { finderAuthorizationStore.addFolder() }
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(18)
@@ -1186,14 +1240,23 @@ struct ToolboxView: View {
         message: String,
         buttonTitle: String,
         systemImage: String,
+        isCompleted: Bool = false,
+        completedHelp: String = "打开系统设置查看权限",
         action: @escaping () -> Void
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            Text(step)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 24, height: 24)
-                .background(Circle().fill(.blue))
+            Group {
+                if isCompleted {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                } else {
+                    Text(step)
+                        .font(.system(size: 12, weight: .bold))
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .background(Circle().fill(isCompleted ? Color.green : Color.blue))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -1207,16 +1270,52 @@ struct ToolboxView: View {
             Spacer(minLength: 12)
 
             Button(action: action) {
-                Label(buttonTitle, systemImage: systemImage)
+                Label(buttonTitle, systemImage: isCompleted ? "checkmark.circle" : systemImage)
                     .font(.system(size: 13, weight: .semibold))
             }
             .buttonStyle(.bordered)
+            .help(isCompleted ? completedHelp : buttonTitle)
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.secondary.opacity(0.08))
         )
+    }
+
+    private func setupGuideHeader(
+        icon: String,
+        title: String,
+        message: String,
+        isReady: Bool,
+        isExpanded: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(isReady ? .green : .blue)
+                .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(message)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                .frame(width: 26, height: 26)
+                .background(Color.secondary.opacity(0.08), in: Circle())
+        }
+        .contentShape(Rectangle())
+        .help(isExpanded ? "收起" : "展开")
     }
 
     private var uninstallerPermissionCard: some View {
@@ -1847,40 +1946,44 @@ struct ToolboxView: View {
 
     private var screenshotPermissionGuideSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .frame(width: 32, height: 32)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("先完成这两步")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("截图权限负责读取屏幕内容，辅助功能权限负责识别窗口内控件，让自动高亮和框选更精准。")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isScreenshotPermissionGuideExpanded.toggle()
                 }
+            } label: {
+                setupGuideHeader(
+                    icon: screenshotPermissionGuideIcon,
+                    title: screenshotPermissionGuideTitle,
+                    message: screenshotPermissionGuideMessage,
+                    isReady: screenshotPermissionsReady,
+                    isExpanded: isScreenshotPermissionGuideExpanded
+                )
             }
+            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 10) {
-                setupGuideStepRow(
-                    step: "1",
-                    title: "给截图的权限",
-                    message: "用于读取屏幕画面，才能框选、复制、保存和钉图。请在「系统设置 - 隐私与安全性 - 屏幕与系统音频录制」或「屏幕录制」中允许 AirSentry。",
-                    buttonTitle: "去授权",
-                    systemImage: "camera.viewfinder",
-                    action: openScreenshotScreenCaptureSettings
-                )
+            if isScreenshotPermissionGuideExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    setupGuideStepRow(
+                        step: "1",
+                        title: hasScreenshotScreenCapturePermission ? "截图权限已允许" : "给截图的权限",
+                        message: "用于读取屏幕画面，才能框选、复制、保存和钉图。请在「系统设置 - 隐私与安全性 - 屏幕与系统音频录制」或「屏幕录制」中允许 AirSentry。",
+                        buttonTitle: hasScreenshotScreenCapturePermission ? "已 OK" : "去授权",
+                        systemImage: "camera.viewfinder",
+                        isCompleted: hasScreenshotScreenCapturePermission,
+                        action: openScreenshotScreenCaptureSettings
+                    )
 
-                setupGuideStepRow(
-                    step: "2",
-                    title: "给辅助功能的权限",
-                    message: "用于识别鼠标下方的按钮、图标、文本框等控件，让截图高亮更贴合目标；未开启时仍可使用窗口级识别。请在「系统设置 - 隐私与安全性 - 辅助功能」中允许 AirSentry。",
-                    buttonTitle: "去授权",
-                    systemImage: "accessibility",
-                    action: openScreenshotAccessibilitySettings
-                )
+                    setupGuideStepRow(
+                        step: "2",
+                        title: hasScreenshotAccessibilityPermission ? "辅助功能权限已允许" : "给辅助功能的权限",
+                        message: "用于识别鼠标下方的按钮、图标、文本框等控件，让截图高亮更贴合目标；未开启时仍可使用窗口级识别。请在「系统设置 - 隐私与安全性 - 辅助功能」中允许 AirSentry。",
+                        buttonTitle: hasScreenshotAccessibilityPermission ? "已 OK" : "去授权",
+                        systemImage: "accessibility",
+                        isCompleted: hasScreenshotAccessibilityPermission,
+                        action: openScreenshotAccessibilitySettings
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(18)
@@ -3475,6 +3578,160 @@ struct ToolboxView: View {
         }
     }
 
+    private var hasSuperRightClickFolderAuthorization: Bool {
+        !finderAuthorizationStore.folders.isEmpty
+    }
+
+    private var superRightClickSetupReady: Bool {
+        isSuperRightClickFinderExtensionEnabled && hasSuperRightClickFolderAuthorization
+    }
+
+    private var superRightClickSetupGuideIcon: String {
+        superRightClickSetupReady ? "checkmark.shield" : "checklist"
+    }
+
+    private var superRightClickSetupGuideTitle: String {
+        if superRightClickSetupReady {
+            return "配置已就绪"
+        }
+        if isSuperRightClickFinderExtensionEnabled {
+            return "还差文件夹授权"
+        }
+        if hasSuperRightClickFolderAuthorization {
+            return "还差 Finder 扩展"
+        }
+        return "先完成这两步"
+    }
+
+    private var superRightClickSetupGuideMessage: String {
+        if superRightClickSetupReady {
+            return "Finder 扩展和文件夹授权都已就绪，右键菜单可以显示并在授权目录中新建文件。"
+        }
+        return "Finder 扩展负责显示右键菜单，文件夹授权负责让“新建文件”真正写入目标目录。"
+    }
+
+    private func refreshSuperRightClickFinderExtensionStatus() {
+        DispatchQueue.global(qos: .utility).async {
+            let isEnabled = Self.isFinderExtensionEnabled()
+            DispatchQueue.main.async {
+                let hadReadyState = superRightClickSetupReady
+                isSuperRightClickFinderExtensionEnabled = isEnabled
+                syncSuperRightClickSetupGuideExpansion(previouslyReady: hadReadyState)
+            }
+        }
+    }
+
+    private static func isFinderExtensionEnabled() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
+        process.arguments = ["-m", "-p", "com.apple.FinderSync"]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            NSLog("AirSentry: failed to inspect Finder extension status: \(error.localizedDescription)")
+            return false
+        }
+
+        guard process.terminationStatus == 0 else {
+            NSLog("AirSentry: pluginkit status inspection exited with \(process.terminationStatus)")
+            return false
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else {
+            return false
+        }
+
+        return output
+            .split(whereSeparator: \.isNewline)
+            .contains { line in
+                line.contains(Self.finderExtensionBundleID) &&
+                line.trimmingCharacters(in: .whitespaces).hasPrefix("+")
+            }
+    }
+
+    private static let finderExtensionBundleID = "com.sjzm.airsentry.finderextension"
+
+    private var screenshotPermissionsReady: Bool {
+        hasScreenshotScreenCapturePermission && hasScreenshotAccessibilityPermission
+    }
+
+    private var screenshotPermissionGuideIcon: String {
+        screenshotPermissionsReady ? "checkmark.shield" : "checklist"
+    }
+
+    private var screenshotPermissionGuideTitle: String {
+        if screenshotPermissionsReady {
+            return "权限已就绪"
+        }
+        if hasScreenshotScreenCapturePermission {
+            return "还差辅助功能权限"
+        }
+        if hasScreenshotAccessibilityPermission {
+            return "还差截图权限"
+        }
+        return "先完成这两步"
+    }
+
+    private var screenshotPermissionGuideMessage: String {
+        if screenshotPermissionsReady {
+            return "截图和辅助功能权限都已允许，可以直接开始框选、复制、保存和钉图。"
+        }
+        return "截图权限负责读取屏幕内容，辅助功能权限负责识别窗口内控件，让自动高亮和框选更精准。"
+    }
+
+    private func refreshScreenshotPermissionStatus() {
+        let hadReadyState = screenshotPermissionsReady
+        hasScreenshotScreenCapturePermission = ScreenshotPermission.canCaptureScreen
+        hasScreenshotAccessibilityPermission = MouseScrollDirectionManager.isAccessibilityTrusted
+        syncScreenshotPermissionGuideExpansion(previouslyReady: hadReadyState)
+    }
+
+    private func refreshScreenshotPermissionStatusSoon() {
+        refreshScreenshotPermissionStatus()
+        for delay in [0.4, 1.2, 2.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                refreshScreenshotPermissionStatus()
+            }
+        }
+    }
+
+    private func syncScreenshotPermissionGuideExpansion(previouslyReady: Bool) {
+        let isReady = screenshotPermissionsReady
+        if isReady {
+            if !previouslyReady || isScreenshotPermissionGuideExpanded {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isScreenshotPermissionGuideExpanded = false
+                }
+            }
+        } else if previouslyReady || !isScreenshotPermissionGuideExpanded {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isScreenshotPermissionGuideExpanded = true
+            }
+        }
+    }
+
+    private func syncSuperRightClickSetupGuideExpansion(previouslyReady: Bool) {
+        let isReady = superRightClickSetupReady
+        if isReady {
+            if !previouslyReady || isSuperRightClickSetupGuideExpanded {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isSuperRightClickSetupGuideExpanded = false
+                }
+            }
+        } else if previouslyReady || !isSuperRightClickSetupGuideExpanded {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isSuperRightClickSetupGuideExpanded = true
+            }
+        }
+    }
+
     private func openScreenshotScreenCaptureSettings() {
         if #available(macOS 10.15, *) {
             _ = CGRequestScreenCaptureAccess()
@@ -3483,6 +3740,8 @@ struct ToolboxView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)
         }
+
+        refreshScreenshotPermissionStatusSoon()
     }
 
     private func openScreenshotAccessibilitySettings() {
@@ -3492,6 +3751,8 @@ struct ToolboxView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
+
+        refreshScreenshotPermissionStatusSoon()
     }
 
     private func openSuperRightClickExtensionSettings() {
