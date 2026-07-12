@@ -1990,10 +1990,11 @@ private struct ScreenshotOverlayView: View {
 
     private func toolbarPosition(for selection: CGRect, in size: CGSize) -> CGPoint {
         let toolbarSize = CGSize(width: 580, height: 80)
+        let selectionSpacing: CGFloat = 5
         let rightEdge = min(max(selection.maxX, toolbarSize.width + 10), size.width - 10)
         let x = rightEdge - toolbarSize.width / 2
-        let preferredY = selection.maxY + toolbarSize.height / 2 + 10
-        let y = preferredY <= size.height - 12 ? preferredY : max(toolbarSize.height / 2 + 12, selection.minY - toolbarSize.height / 2 - 10)
+        let preferredY = selection.maxY + toolbarSize.height / 2 + selectionSpacing
+        let y = preferredY <= size.height - 12 ? preferredY : max(toolbarSize.height / 2 + 12, selection.minY - toolbarSize.height / 2 - selectionSpacing)
         return CGPoint(x: x, y: y)
     }
 

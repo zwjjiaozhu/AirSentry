@@ -18,6 +18,10 @@ final class PinnedImageController {
         window.originalImageSize = image.size
         window.contentView = PinnedImageHostingView(
             rootView: pinnedImageView(for: image, in: window, focusState: focusState),
+            onDoubleClick: { [weak self, weak window] in
+                guard let window else { return }
+                self?.closeAfterDoubleClickConfirmation(window)
+            },
             onScroll: { [weak window] event in
                 window?.resizeByScroll(event)
             },
@@ -47,6 +51,10 @@ final class PinnedImageController {
         window.aspectRatio = image.size
         window.contentView = PinnedImageHostingView(
             rootView: pinnedImageView(for: image, in: window, focusState: focusState),
+            onDoubleClick: { [weak self, weak window] in
+                guard let window else { return }
+                self?.closeAfterDoubleClickConfirmation(window)
+            },
             onScroll: { [weak window] event in
                 window?.resizeByScroll(event)
             },
@@ -115,6 +123,15 @@ final class PinnedImageController {
         }
     }
 
+    private func closeAfterDoubleClickConfirmation(_ window: PinnedImageWindow) {
+        guard PinnedImageDoubleClickClosePrompt.shouldClose() else {
+            focus(window)
+            return
+        }
+
+        close(window)
+    }
+
     private func focus(_ window: PinnedImageWindow) {
         windows.forEach { $0.focusState?.isFocused = ($0 === window) }
     }
@@ -151,6 +168,35 @@ final class PinnedImageController {
             x: visibleFrame.midX - size.width / 2,
             y: visibleFrame.midY - size.height / 2
         )
+    }
+}
+
+private enum PinnedImageDoubleClickClosePrompt {
+    private static let skipPromptKey = "pinnedImageDoubleClickCloseSkipPrompt"
+
+    @MainActor
+    static func shouldClose() -> Bool {
+        guard !UserDefaults.standard.bool(forKey: skipPromptKey) else {
+            return true
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "关闭这张钉图？"
+        alert.informativeText = "以后双击钉图会直接关闭它，也可以继续用右键菜单里的「关闭」。"
+        alert.addButton(withTitle: "关闭")
+        alert.addButton(withTitle: "取消")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "以后双击直接关闭"
+
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on {
+            UserDefaults.standard.set(true, forKey: skipPromptKey)
+        }
+
+        return response == .alertFirstButtonReturn
     }
 }
 
@@ -286,20 +332,24 @@ final class PinnedImageWindow: NSPanel {
 }
 
 private final class PinnedImageHostingView<Content: View>: NSHostingView<Content> {
+    private let onDoubleClick: (() -> Void)?
     private let onScroll: ((NSEvent) -> Void)?
     private let onMagnify: ((NSEvent) -> Void)?
 
     init(
         rootView: Content,
+        onDoubleClick: @escaping () -> Void,
         onScroll: @escaping (NSEvent) -> Void,
         onMagnify: @escaping (NSEvent) -> Void
     ) {
+        self.onDoubleClick = onDoubleClick
         self.onScroll = onScroll
         self.onMagnify = onMagnify
         super.init(rootView: rootView)
     }
 
     required init(rootView: Content) {
+        self.onDoubleClick = nil
         self.onScroll = nil
         self.onMagnify = nil
         super.init(rootView: rootView)
@@ -327,6 +377,10 @@ private final class PinnedImageHostingView<Content: View>: NSHostingView<Content
 
     override func mouseDown(with event: NSEvent) {
         window?.makeKeyAndOrderFront(nil)
+        if event.clickCount >= 2 {
+            onDoubleClick?()
+            return
+        }
         super.mouseDown(with: event)
     }
 }

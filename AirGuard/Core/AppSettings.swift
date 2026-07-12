@@ -228,6 +228,14 @@ final class AppSettings: ObservableObject {
         didSet { saveScreenshotShortcut() }
     }
 
+    @Published var clipboardPinShortcutEnabled: Bool {
+        didSet { defaults.set(clipboardPinShortcutEnabled, forKey: Keys.clipboardPinShortcutEnabled) }
+    }
+
+    @Published var clipboardPinShortcut: KeyboardShortcut? {
+        didSet { saveClipboardPinShortcut() }
+    }
+
     @Published var translationShortcutEnabled: Bool {
         didSet { defaults.set(translationShortcutEnabled, forKey: Keys.translationShortcutEnabled) }
     }
@@ -350,6 +358,8 @@ final class AppSettings: ObservableObject {
         appLauncherShortcut = Self.loadAppLauncherShortcut(from: defaults)
         screenshotShortcutEnabled = defaults.object(forKey: Keys.screenshotShortcutEnabled) as? Bool ?? true
         screenshotShortcut = Self.loadScreenshotShortcut(from: defaults)
+        clipboardPinShortcutEnabled = defaults.object(forKey: Keys.clipboardPinShortcutEnabled) as? Bool ?? true
+        clipboardPinShortcut = Self.loadClipboardPinShortcut(from: defaults)
         translationShortcutEnabled = defaults.object(forKey: Keys.translationShortcutEnabled) as? Bool ?? false
         translationShortcut = Self.loadTranslationShortcut(from: defaults)
         translationDefaultSourceLanguage = TranslationLanguage(rawValue: defaults.string(forKey: Keys.translationDefaultSourceLanguage) ?? "") ?? .automatic
@@ -512,6 +522,10 @@ final class AppSettings: ObservableObject {
         screenshotShortcut = shortcut
     }
 
+    func setClipboardPinShortcut(_ shortcut: KeyboardShortcut) {
+        clipboardPinShortcut = shortcut
+    }
+
     func setTranslationShortcut(_ shortcut: KeyboardShortcut) {
         translationShortcut = shortcut
     }
@@ -669,6 +683,20 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    private func saveClipboardPinShortcut() {
+        guard let clipboardPinShortcut else {
+            defaults.removeObject(forKey: Keys.clipboardPinShortcut)
+            return
+        }
+
+        do {
+            let data = try JSONEncoder().encode(clipboardPinShortcut)
+            defaults.set(data, forKey: Keys.clipboardPinShortcut)
+        } catch {
+            NSLog("AirSentry clipboard pin shortcut save failed: \(error.localizedDescription)")
+        }
+    }
+
     private func saveTranslationShortcut() {
         guard let translationShortcut else {
             defaults.removeObject(forKey: Keys.translationShortcut)
@@ -756,6 +784,19 @@ final class AppSettings: ObservableObject {
         } catch {
             NSLog("AirSentry screenshot shortcut load failed: \(error.localizedDescription)")
             return KeyboardShortcut(keyCode: 0, modifiers: UInt32(controlKey | shiftKey))
+        }
+    }
+
+    private static func loadClipboardPinShortcut(from defaults: UserDefaults) -> KeyboardShortcut? {
+        guard let data = defaults.data(forKey: Keys.clipboardPinShortcut) else {
+            return KeyboardShortcut(keyCode: 35, modifiers: UInt32(controlKey | shiftKey))
+        }
+
+        do {
+            return try JSONDecoder().decode(KeyboardShortcut.self, from: data)
+        } catch {
+            NSLog("AirSentry clipboard pin shortcut load failed: \(error.localizedDescription)")
+            return KeyboardShortcut(keyCode: 35, modifiers: UInt32(controlKey | shiftKey))
         }
     }
 
@@ -867,6 +908,8 @@ private enum Keys {
     static let appLauncherShortcut = "appLauncherShortcut"
     static let screenshotShortcutEnabled = "screenshotShortcutEnabled"
     static let screenshotShortcut = "screenshotShortcut"
+    static let clipboardPinShortcutEnabled = "clipboardPinShortcutEnabled"
+    static let clipboardPinShortcut = "clipboardPinShortcut"
     static let translationShortcutEnabled = "translationShortcutEnabled"
     static let translationShortcut = "translationShortcut"
     static let translationDefaultSourceLanguage = "translationDefaultSourceLanguage"

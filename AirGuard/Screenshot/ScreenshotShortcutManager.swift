@@ -19,6 +19,13 @@ final class ScreenshotShortcutManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        Publishers.CombineLatest(settings.$clipboardPinShortcutEnabled, settings.$clipboardPinShortcut)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _ in
+                self?.refreshRegistration()
+            }
+            .store(in: &cancellables)
+
         refreshRegistration()
     }
 
@@ -28,24 +35,41 @@ final class ScreenshotShortcutManager: ObservableObject {
 
     private func refreshRegistration() {
         removeRegistration()
-        guard settings.screenshotShortcutEnabled,
-              let shortcut = settings.screenshotShortcut else { return }
 
-        let status = GlobalHotKeyManager.shared.register(
-            shortcut: shortcut,
-            signature: screenshotHotKeySignature,
-            id: 1
-        ) { [weak captureController] in
-            captureController?.startCapture()
+        if settings.screenshotShortcutEnabled,
+           let shortcut = settings.screenshotShortcut {
+            let status = GlobalHotKeyManager.shared.register(
+                shortcut: shortcut,
+                signature: screenshotHotKeySignature,
+                id: 1
+            ) { [weak captureController] in
+                captureController?.startCapture()
+            }
+
+            if status != noErr {
+                NSLog("AirSentry screenshot hotkey registration failed: \(status)")
+            }
         }
 
-        if status != noErr {
-            NSLog("AirSentry screenshot hotkey registration failed: \(status)")
+        if settings.clipboardPinShortcutEnabled,
+           let shortcut = settings.clipboardPinShortcut {
+            let status = GlobalHotKeyManager.shared.register(
+                shortcut: shortcut,
+                signature: screenshotHotKeySignature,
+                id: 2
+            ) { [weak captureController] in
+                captureController?.pinClipboardImageIfAvailable()
+            }
+
+            if status != noErr {
+                NSLog("AirSentry clipboard pin hotkey registration failed: \(status)")
+            }
         }
     }
 
     private func removeRegistration() {
         GlobalHotKeyManager.shared.unregister(GlobalHotKeyIdentifier(signature: screenshotHotKeySignature, id: 1))
+        GlobalHotKeyManager.shared.unregister(GlobalHotKeyIdentifier(signature: screenshotHotKeySignature, id: 2))
     }
 }
 

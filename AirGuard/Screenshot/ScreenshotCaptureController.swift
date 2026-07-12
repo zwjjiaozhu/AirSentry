@@ -48,7 +48,7 @@ final class ScreenshotCaptureController: ObservableObject {
     }
 
     func pinClipboardImageIfAvailable() {
-        guard let image = NSPasteboard.general.readObjects(forClasses: [NSImage.self])?.first as? NSImage else {
+        guard let image = ClipboardPinnedImageFactory.image(from: NSPasteboard.general) else {
             NSSound.beep()
             return
         }
@@ -91,6 +91,70 @@ final class ScreenshotCaptureController: ObservableObject {
         case .close:
             return
         }
+    }
+}
+
+enum ClipboardPinnedImageFactory {
+    static func image(from pasteboard: NSPasteboard) -> NSImage? {
+        if let image = pasteboard.readObjects(forClasses: [NSImage.self])?.first as? NSImage {
+            return image
+        }
+
+        guard let text = pasteboard.string(forType: .string)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else {
+            return nil
+        }
+
+        return textImage(for: text)
+    }
+
+    private static func textImage(for text: String) -> NSImage? {
+        let maxTextWidth: CGFloat = 520
+        let padding = NSEdgeInsets(top: 18, left: 20, bottom: 18, right: 20)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineBreakMode = .byWordWrapping
+        paragraphStyle.lineSpacing = 4
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 18, weight: .regular),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        let attributedText = NSAttributedString(string: text, attributes: attributes)
+        let measuredSize = attributedText.boundingRect(
+            with: CGSize(width: maxTextWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).integral.size
+        let imageSize = CGSize(
+            width: ceil(measuredSize.width + padding.left + padding.right),
+            height: ceil(measuredSize.height + padding.top + padding.bottom)
+        )
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+
+        let image = NSImage(size: imageSize)
+        image.lockFocus()
+        defer { image.unlockFocus() }
+
+        let rect = CGRect(origin: .zero, size: imageSize)
+        NSColor.windowBackgroundColor.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 14, yRadius: 14).fill()
+
+        NSColor.separatorColor.withAlphaComponent(0.45).setStroke()
+        let borderPath = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 14, yRadius: 14)
+        borderPath.lineWidth = 1
+        borderPath.stroke()
+
+        attributedText.draw(
+            with: CGRect(
+                x: padding.left,
+                y: padding.bottom,
+                width: measuredSize.width,
+                height: measuredSize.height
+            ),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        return image
     }
 }
 

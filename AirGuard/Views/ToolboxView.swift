@@ -19,6 +19,7 @@ struct ToolboxView: View {
     @State private var recordingRuleID: UUID?
     @State private var isRecordingAppLauncherShortcut = false
     @State private var isRecordingScreenshotShortcut = false
+    @State private var isRecordingClipboardPinShortcut = false
     @State private var isRecordingTranslationShortcut = false
     @State private var selectedSuperRightClickMenuItemID: String = SuperRightClickStore.defaultSelectedMenuItemID
     @State private var draggedSuperRightClickMenuItemID: String?
@@ -2108,6 +2109,56 @@ struct ToolboxView: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(.orange)
             }
+
+            Divider()
+
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.blue.opacity(0.12))
+                    Image(systemName: "pin.square")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("剪贴板贴图快捷键")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("剪贴板是图片时直接钉图；是文字时转成图片后钉住。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                ShortcutRecorderButton(
+                    shortcut: settings.clipboardPinShortcut,
+                    isRecording: isRecordingClipboardPinShortcut,
+                    conflictReason: clipboardPinShortcutConflictReason,
+                    startRecording: { isRecordingClipboardPinShortcut = true },
+                    record: { shortcut in
+                        settings.setClipboardPinShortcut(shortcut)
+                        isRecordingClipboardPinShortcut = false
+                    },
+                    cancel: { isRecordingClipboardPinShortcut = false },
+                    clear: {
+                        settings.clipboardPinShortcut = nil
+                        isRecordingClipboardPinShortcut = false
+                    }
+                )
+                .frame(width: 142)
+
+                Toggle("", isOn: $settings.clipboardPinShortcutEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+
+            if let clipboardPinShortcutConflictReason {
+                Label(clipboardPinShortcutConflictReason, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.orange)
+            }
         }
         .padding(18)
         .toolboxCard()
@@ -2150,7 +2201,7 @@ struct ToolboxView: View {
                 Button {
                     screenshotCaptureController.pinClipboardImageIfAvailable()
                 } label: {
-                    Label("钉住剪贴板图片", systemImage: "pin")
+                    Label("钉住剪贴板", systemImage: "pin")
                 }
                 .buttonStyle(.bordered)
 
@@ -3559,6 +3610,9 @@ struct ToolboxView: View {
         if settings.screenshotShortcut == shortcut {
             return "已被截图钉图快捷键使用"
         }
+        if settings.clipboardPinShortcut == shortcut {
+            return "已被剪贴板贴图快捷键使用"
+        }
         if settings.translationShortcut == shortcut {
             return "已被翻译助手快捷键使用"
         }
@@ -3574,6 +3628,9 @@ struct ToolboxView: View {
         if settings.screenshotShortcut == shortcut {
             return "已被截图钉图快捷键使用"
         }
+        if settings.clipboardPinShortcut == shortcut {
+            return "已被剪贴板贴图快捷键使用"
+        }
         if settings.translationShortcut == shortcut {
             return "已被翻译助手快捷键使用"
         }
@@ -3588,6 +3645,27 @@ struct ToolboxView: View {
         }
         if settings.appLauncherShortcut == shortcut {
             return "已被程序面板快捷键使用"
+        }
+        if settings.clipboardPinShortcut == shortcut {
+            return "已被剪贴板贴图快捷键使用"
+        }
+        if settings.translationShortcut == shortcut {
+            return "已被翻译助手快捷键使用"
+        }
+        return nil
+    }
+
+    private var clipboardPinShortcutConflictReason: String? {
+        guard let shortcut = settings.clipboardPinShortcut else { return nil }
+        if let rule = settings.inputMethodShortcutRules.first(where: { $0.shortcut == shortcut }) {
+            let sourceName = inputSources.first { $0.id == rule.inputSourceID }?.name ?? "输入法快捷切换"
+            return "已被 \(sourceName) 使用"
+        }
+        if settings.appLauncherShortcut == shortcut {
+            return "已被程序面板快捷键使用"
+        }
+        if settings.screenshotShortcut == shortcut {
+            return "已被截图钉图快捷键使用"
         }
         if settings.translationShortcut == shortcut {
             return "已被翻译助手快捷键使用"
@@ -3606,6 +3684,9 @@ struct ToolboxView: View {
         }
         if settings.screenshotShortcut == shortcut {
             return "已被截图钉图快捷键使用"
+        }
+        if settings.clipboardPinShortcut == shortcut {
+            return "已被剪贴板贴图快捷键使用"
         }
         return nil
     }
