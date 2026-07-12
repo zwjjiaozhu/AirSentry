@@ -80,7 +80,7 @@ private struct FocusTimerLauncherView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("时间节律")
                     .font(.system(size: 24, weight: .bold))
-                Text(timerStore.isActive ? "\(timerStore.mode?.title ?? "计时中") · \(timerStore.displayTime)" : "选一个节奏，悬浮球会接管展示和提醒")
+                Text(timerStore.isActive ? "\(timerStore.mode?.title ?? "计时中") · \(timerStore.displayTime)" : "选一个节奏，灵动岛会接管展示和提醒")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }

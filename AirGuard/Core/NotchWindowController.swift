@@ -6,6 +6,7 @@ import SwiftUI
 final class NotchWindowController {
     private let store: AgentMonitorStore
     private let settings: AppSettings
+    private let timerStore: FocusTimerStore
     private let panel: AgentNotchPanel
     private let presentation = NotchPresentationState()
     private var isHoverExpanded = false
@@ -18,13 +19,15 @@ final class NotchWindowController {
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
 
-    init(store: AgentMonitorStore, settings: AppSettings) {
+    init(store: AgentMonitorStore, settings: AppSettings, timerStore: FocusTimerStore) {
         self.store = store
         self.settings = settings
+        self.timerStore = timerStore
         panel = AgentNotchPanel()
         panel.contentView = NSHostingView(rootView: NotchStatusView(
             store: store,
             nowPlayingStore: store.nowPlayingStore,
+            timerStore: timerStore,
             presentation: presentation,
             onOpenSession: { [weak store] session in
                 store?.openSession(session)
@@ -48,6 +51,16 @@ final class NotchWindowController {
                 self?.musicTrackDidChange(track, enabled: enabled)
             }
             .store(in: &cancellables)
+
+        Publishers.MergeMany(
+            timerStore.$remainingSeconds.map { _ in () }.eraseToAnyPublisher(),
+            timerStore.$isRunning.map { _ in () }.eraseToAnyPublisher(),
+            timerStore.$isPaused.map { _ in () }.eraseToAnyPublisher(),
+            timerStore.$showsFloatingReminder.map { _ in () }.eraseToAnyPublisher()
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in self?.refresh() }
+        .store(in: &cancellables)
 
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -84,10 +97,11 @@ final class NotchWindowController {
     private func refresh(animated: Bool = true) {
         let agentSession = settings.agentNotchEnabled ? store.primarySession : nil
         let musicTrack = settings.musicNotchEnabled ? store.nowPlayingStore.track : nil
+        let timerIsVisible = timerStore.isActive || timerStore.showsFloatingReminder
         store.nowPlayingStore.setProgressTrackingEnabled(
             isHoverExpanded && agentSession == nil && musicTrack != nil
         )
-        guard agentSession != nil || musicTrack != nil else {
+        guard agentSession != nil || musicTrack != nil || timerIsVisible else {
             isHoverExpanded = false
             isAutoExpanded = false
             hoverFrame = .zero
@@ -109,11 +123,13 @@ final class NotchWindowController {
                 // Keep the resting music pill close to the physical notch:
                 // roughly 40 pt for the artwork wing and 40 pt for the meter.
                 compactWidth = notchWidth + 80
+            } else if timerIsVisible {
+                compactWidth = notchWidth + 80
             } else {
                 compactWidth = notchWidth + 96
             }
         } else {
-            compactWidth = musicTrack == nil ? 300 : 320
+            compactWidth = musicTrack == nil && !timerIsVisible ? 300 : 320
         }
         let expandedWidth: CGFloat = agentSession == nil ? 340 : 440
         let width: CGFloat = isExpanded ? expandedWidth : compactWidth
@@ -123,10 +139,10 @@ final class NotchWindowController {
         let contentHeight: CGFloat
         if hasNotch {
             contentHeight = isExpanded
-                ? expandedTopInset + (agentSession == nil ? musicExpandedContentHeight : expandedContentHeight)
+                ? expandedTopInset + (agentSession == nil ? mediaExpandedContentHeight : expandedContentHeight)
                 : 0
         } else {
-            contentHeight = agentSession == nil ? musicExpandedContentHeight : (isExpanded ? expandedContentHeight : 42)
+            contentHeight = agentSession == nil ? mediaExpandedContentHeight : (isExpanded ? expandedContentHeight : 42)
         }
         let height = notchHeight + contentHeight
         let x = screen.frame.midX - width / 2
@@ -140,6 +156,7 @@ final class NotchWindowController {
         presentation.notchWidth = notchWidth
         presentation.expandedContentTopInset = expandedTopInset
         presentation.showsMusic = agentSession == nil && musicTrack != nil
+        presentation.showsTimer = agentSession == nil && musicTrack == nil && timerIsVisible
 
         panel.level = hasNotch ? .mainMenu + 3 : .statusBar
         if panel.isVisible, animated {
@@ -189,7 +206,7 @@ final class NotchWindowController {
         return 55 + CGFloat(visibleSessionCount * 30) + (visibleSessionCount > 0 ? 9 : 0)
     }
 
-    private var musicExpandedContentHeight: CGFloat {
+    private var mediaExpandedContentHeight: CGFloat {
         100
     }
 

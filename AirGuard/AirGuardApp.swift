@@ -39,7 +39,7 @@ struct AirGuardApp: App {
         _settings = StateObject(wrappedValue: settings)
         _alertManager = StateObject(wrappedValue: alertManager)
         _monitorStore = StateObject(wrappedValue: MonitorStore(settings: settings, alertManager: alertManager))
-        _agentMonitorStore = StateObject(wrappedValue: AgentMonitorStore(settings: settings))
+        _agentMonitorStore = StateObject(wrappedValue: AgentMonitorStore(settings: settings, focusTimerStore: focusTimerStore))
         _inputMethodShortcutController = StateObject(wrappedValue: InputMethodShortcutController(settings: settings))
         _appLauncherStore = StateObject(wrappedValue: appLauncherStore)
         _appLauncherShortcutManager = StateObject(wrappedValue: AppLauncherShortcutManager(settings: settings) {

@@ -4,6 +4,7 @@ import SwiftUI
 struct NotchStatusView: View {
     @ObservedObject var store: AgentMonitorStore
     @ObservedObject var nowPlayingStore: NowPlayingStore
+    @ObservedObject var timerStore: FocusTimerStore
     @ObservedObject var presentation: NotchPresentationState
     let onOpenSession: (AgentSession) -> Void
     let onCollapse: () -> Void
@@ -56,6 +57,28 @@ struct NotchStatusView: View {
                         .background(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+            } else if presentation.showsTimer, timerStore.isActive || timerStore.showsFloatingReminder {
+                if presentation.notchHeight > 0 {
+                    VStack(spacing: 0) {
+                        timerWingRow()
+
+                        if presentation.isExpanded {
+                            Color.black
+                                .frame(height: presentation.expandedContentTopInset)
+                                .transition(.opacity)
+
+                            timerExpandedContent()
+                                .clipped()
+                                .transition(expandedContentTransition)
+                        }
+                    }
+                    .background(.black)
+                    .clipShape(NotchShoulderShape())
+                } else {
+                    timerExpandedContent()
+                        .background(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -81,9 +104,44 @@ struct NotchStatusView: View {
             Color.black.frame(width: presentation.notchWidth)
 
             HStack(spacing: 6) {
+                if timerStore.isActive || timerStore.showsFloatingReminder {
+                    timerStatusCluster(isMusicPlaying: track.isPlaying)
+                } else if !presentation.isExpanded {
+                        MusicActivityIndicator(isPlaying: track.isPlaying)
+                            .frame(width: 29, height: 23)
+                }
+            }
+            .padding(.leading, timerStore.isActive || timerStore.showsFloatingReminder ? 8 : 0)
+            .padding(.trailing, timerStore.isActive || timerStore.showsFloatingReminder ? 0 : 8)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: timerStore.isActive || timerStore.showsFloatingReminder ? .leading : .trailing
+            )
+            .background(.black)
+        }
+        .frame(height: presentation.notchHeight)
+    }
+
+    private func timerWingRow() -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 7) {
                 if !presentation.isExpanded {
-                    MusicActivityIndicator(isPlaying: track.isPlaying)
-                        .frame(width: 29, height: 23)
+                    Image(systemName: timerStore.mode?.icon ?? "timer")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(timerAccentColor)
+                        .frame(width: 24, height: 24)
+                }
+            }
+            .padding(.leading, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(.black)
+
+            Color.black.frame(width: presentation.notchWidth)
+
+            HStack(spacing: 6) {
+                if !presentation.isExpanded {
+                    timerPill()
                 }
             }
             .padding(.trailing, 8)
@@ -91,6 +149,152 @@ struct NotchStatusView: View {
             .background(.black)
         }
         .frame(height: presentation.notchHeight)
+    }
+
+    private func timerPill() -> some View {
+        Button {
+            NotificationCenter.default.post(name: .showFocusTimerLauncher, object: nil)
+        } label: {
+            Text(timerStore.remainingSeconds > 0 ? timerStore.displayTime : "完成")
+                .font(.system(size: 8.8, weight: .bold, design: .rounded))
+                .foregroundStyle(timerStore.isPaused ? .orange : .white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: timerStore.remainingSeconds > 0 ? 35 : 22)
+                .padding(.horizontal, 1.5)
+                .padding(.vertical, 2)
+                .background(.white.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("打开番茄钟")
+    }
+
+    private func timerStatusCluster(isMusicPlaying: Bool) -> some View {
+        ZStack {
+            if isMusicPlaying {
+                MusicCapsuleBars()
+                    .allowsHitTesting(false)
+            }
+            timerPill()
+        }
+        .frame(width: 40, height: 22)
+    }
+
+    private func timerExpandedContent() -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: timerStore.mode?.icon ?? "timer")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(timerAccentColor)
+                .frame(width: 56, height: 56)
+                .background(timerAccentColor.opacity(0.18), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text(timerStore.remainingSeconds > 0 ? timerStore.title : "时间到了")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    if timerStore.isPaused {
+                        Image(systemName: "pause.circle.fill")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.orange.opacity(0.82))
+                    }
+                }
+
+                Text(timerStore.remainingSeconds > 0 ? timerStore.displayTime : timerCompletionText)
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+
+                HStack(spacing: 16) {
+                    if timerStore.isActive {
+                        Button {
+                            timerStore.togglePause()
+                        } label: {
+                            Image(systemName: timerStore.isPaused ? "play.fill" : "pause.fill")
+                        }
+                        .buttonStyle(MusicControlButtonStyle(size: 30, isProminent: true))
+                        .modifier(MusicControlHoverEffect(isProminent: true))
+
+                        Button {
+                            timerStore.extend()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(MusicControlButtonStyle(size: 26))
+                        .modifier(MusicControlHoverEffect())
+                    } else if timerStore.showsFloatingReminder, timerStore.pendingBreakMinutes != nil {
+                        Button {
+                            timerStore.startBreak()
+                        } label: {
+                            Image(systemName: "leaf.fill")
+                        }
+                        .buttonStyle(MusicControlButtonStyle(size: 30, isProminent: true))
+                        .modifier(MusicControlHoverEffect(isProminent: true))
+                    }
+
+                    Button {
+                        timerStore.stop()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(MusicControlButtonStyle(size: 26))
+                    .modifier(MusicControlHoverEffect())
+
+                    Spacer(minLength: 0)
+                }
+
+                timerProgress()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 16)
+        .padding(.top, 11)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, minHeight: 100, alignment: .center)
+        .background(
+            LinearGradient(
+                colors: [timerAccentColor.opacity(0.24), .white.opacity(0.08), .white.opacity(0.04)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private func timerProgress() -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.white.opacity(0.28))
+                Capsule()
+                    .fill(timerAccentColor)
+                    .frame(width: max(4, proxy.size.width * min(max(timerStore.progress, 0), 1)))
+            }
+        }
+        .frame(height: 3)
+    }
+
+    private var timerAccentColor: Color {
+        switch timerStore.mode {
+        case .focus:
+            return Color(red: 0.16, green: 0.63, blue: 0.96)
+        case .breakTime:
+            return Color(red: 0.25, green: 0.78, blue: 0.45)
+        case .quickTimer:
+            return Color(red: 0.95, green: 0.57, blue: 0.20)
+        case .none:
+            return .orange
+        }
+    }
+
+    private var timerCompletionText: String {
+        if timerStore.pendingBreakMinutes != nil {
+            return "可以休息了"
+        }
+        return "已完成"
     }
 
     private func musicExpandedContent(_ track: NowPlayingTrack) -> some View {
@@ -106,26 +310,30 @@ struct NotchStatusView: View {
             .help("打开播放器")
 
             VStack(alignment: .leading, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(track.title)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(track.title)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.82)
+
+                            if !track.isPlaying {
+                                Image(systemName: "pause.circle.fill")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.42))
+                            }
+                        }
+
+                        Text(subtitle(for: track))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.58))
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
-
-                        if !track.isPlaying {
-                            Image(systemName: "pause.circle.fill")
-                                .font(.system(size: 10.5, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.42))
-                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(subtitle(for: track))
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.58))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
                 }
 
                 HStack(spacing: 20) {
@@ -474,6 +682,39 @@ private struct MusicActivityIndicator: View {
     }
 }
 
+private struct MusicCapsuleBars: View {
+    @State private var isAnimating = false
+    private let heights: [CGFloat] = [3, 5, 4, 6, 3]
+
+    var body: some View {
+        barRow()
+            .offset(y: -10)
+        .frame(width: 38, height: 22)
+        .onAppear {
+            isAnimating = true
+        }
+    }
+
+    private func barRow() -> some View {
+        HStack(spacing: 2.5) {
+            ForEach(heights.indices, id: \.self) { index in
+                Capsule()
+                    .fill(.white.opacity(0.68))
+                    .frame(width: 2, height: heights[index])
+                    .scaleEffect(
+                        y: isAnimating ? (0.70 + CGFloat(index % 3) * 0.22) : 1.12,
+                        anchor: .bottom
+                    )
+                    .animation(
+                        .easeInOut(duration: 0.46 + Double(index) * 0.035)
+                            .repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
+            }
+        }
+    }
+}
+
 private struct MusicBarsRepresentable: NSViewRepresentable {
     let isPlaying: Bool
 
@@ -697,4 +938,5 @@ final class NotchPresentationState: ObservableObject {
     @Published var expandedContentTopInset: CGFloat = 0
     @Published var isExpanded = false
     @Published var showsMusic = false
+    @Published var showsTimer = false
 }

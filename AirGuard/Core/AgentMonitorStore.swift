@@ -8,6 +8,7 @@ final class AgentMonitorStore: ObservableObject {
     @Published private(set) var installationStatus = AgentHookInstallationStatus()
     @Published private(set) var listenerError: String?
     let nowPlayingStore = NowPlayingStore()
+    let focusTimerStore: FocusTimerStore
 
     private let settings: AppSettings
     private let hookManager = AgentHookManager()
@@ -15,10 +16,11 @@ final class AgentMonitorStore: ObservableObject {
     private var server: AgentEventServer?
     private var cleanupTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
-    private lazy var windowController = NotchWindowController(store: self, settings: settings)
+    private lazy var windowController = NotchWindowController(store: self, settings: settings, timerStore: focusTimerStore)
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, focusTimerStore: FocusTimerStore) {
         self.settings = settings
+        self.focusTimerStore = focusTimerStore
         token = Self.loadOrCreateToken()
         installationStatus = hookManager.status()
         bindSettings()

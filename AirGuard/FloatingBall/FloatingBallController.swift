@@ -10,7 +10,6 @@ final class FloatingBallController: ObservableObject {
     private let menuModel = FloatingBallMenuModel()
     private var panel: FloatingBallPanel?
     private var contextMenuDelegate: FloatingBallContextMenuDelegate?
-    private var timerDisplayHiddenByUser = false
     private var autoCollapseTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
 
@@ -54,9 +53,7 @@ final class FloatingBallController: ObservableObject {
         NotificationCenter.default.publisher(for: .focusTimerDidStart)
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.timerDisplayHiddenByUser = false
                 self?.collapseMenu()
-                self?.show()
             }
             .store(in: &cancellables)
     }
@@ -144,11 +141,7 @@ final class FloatingBallController: ObservableObject {
     }
 
     private var currentBallVisibleHalfWidth: CGFloat {
-        let ballSize = currentBallSize
-        if timerStore.isActive || timerStore.showsFloatingReminder {
-            return max(ballSize * 1.72, 112) / 2
-        }
-        return ballSize / 2
+        currentBallSize / 2
     }
 
     private var currentBallVisibleHalfHeight: CGFloat {
@@ -203,8 +196,7 @@ final class FloatingBallController: ObservableObject {
     }
 
     private func syncVisibility(settingsEnabled: Bool) {
-        let shouldShowTimerDisplay = (timerStore.isActive || timerStore.showsFloatingReminder) && !timerDisplayHiddenByUser
-        if settingsEnabled || shouldShowTimerDisplay {
+        if settingsEnabled {
             if panel?.isVisible == true {
                 updatePanelVisibleBounds()
             } else {
@@ -243,17 +235,11 @@ final class FloatingBallController: ObservableObject {
     }
 
     fileprivate func closeFromContextMenu() {
-        if timerStore.isActive || timerStore.showsFloatingReminder {
-            timerDisplayHiddenByUser = true
-            hide()
-        } else {
-            settings.floatingBallEnabled = false
-        }
+        settings.floatingBallEnabled = false
     }
 
     fileprivate func stopFocusTimerFromContextMenu() {
         timerStore.stop()
-        timerDisplayHiddenByUser = false
         syncVisibility(settingsEnabled: settings.floatingBallEnabled)
     }
 
@@ -505,7 +491,7 @@ private struct FloatingBallView: View {
     }
 
     private var ballWidth: CGFloat {
-        timerStore.isActive || timerStore.showsFloatingReminder ? max(ballSize * 1.72, 112) : ballSize
+        ballSize
     }
 
     private var arcCenter: CGPoint {
@@ -643,16 +629,13 @@ private struct FloatingBallView: View {
             RoundedRectangle(cornerRadius: ballSize / 2, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: timerGradientColors,
+                        colors: avatarGradientColors,
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
             RoundedRectangle(cornerRadius: ballSize / 2, style: .continuous)
                 .stroke(.white.opacity(0.45), lineWidth: 1.5)
-            if timerStore.isActive || timerStore.showsFloatingReminder {
-                timerProgressOverlay
-            }
             avatarContent
                 .padding(settings.floatingBallPetImagePath.isEmpty ? 0 : 7)
         }
@@ -661,42 +644,13 @@ private struct FloatingBallView: View {
         .shadow(color: .black.opacity(0.22), radius: 12, y: 5)
     }
 
-    private var timerGradientColors: [Color] {
-        guard let mode = timerStore.mode else {
-            return [.cyan.opacity(0.92), .indigo.opacity(0.88)]
-        }
-        switch mode {
-        case .focus:
-            return [.orange.opacity(0.95), .red.opacity(0.86)]
-        case .breakTime:
-            return [.mint.opacity(0.95), .teal.opacity(0.88)]
-        case .quickTimer:
-            return [.cyan.opacity(0.94), .blue.opacity(0.88)]
-        }
-    }
-
-    private var timerProgressOverlay: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.22))
-                    Capsule()
-                        .fill(Color.white.opacity(0.72))
-                        .frame(width: proxy.size.width * max(timerStore.progress, 0.02))
-                }
-            }
-            .frame(height: 2)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 3)
-        }
+    private var avatarGradientColors: [Color] {
+        [.cyan.opacity(0.92), .indigo.opacity(0.88)]
     }
 
     @ViewBuilder
     private var avatarContent: some View {
         if
-            !(timerStore.isActive || timerStore.showsFloatingReminder),
             !settings.floatingBallPetImagePath.isEmpty,
             let image = NSImage(contentsOfFile: settings.floatingBallPetImagePath)
         {
@@ -704,17 +658,6 @@ private struct FloatingBallView: View {
                 .resizable()
                 .scaledToFit()
                 .clipShape(Circle())
-        } else if timerStore.isActive || timerStore.showsFloatingReminder {
-            HStack(spacing: 7) {
-                Image(systemName: timerStore.mode?.icon ?? "timer")
-                    .font(.system(size: 17, weight: .bold))
-                Text(timerStore.remainingSeconds > 0 ? timerStore.displayTime : "完成")
-                    .font(.system(size: 20, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
-            .foregroundStyle(.white)
-            .offset(y: -2)
         } else {
             Image(systemName: "sparkles")
                 .font(.system(size: max(settings.floatingBallSize * 0.42, 12), weight: .bold))
