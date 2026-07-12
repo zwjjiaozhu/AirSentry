@@ -532,13 +532,18 @@ struct MenuBarPanelView: View {
             runner: systemToolRunner,
             close: { showsQuickActionsPopover = false },
             openActivityMonitor: openActivityMonitor,
-            openToolbox: { openToolboxWindow() }
+            openToolbox: { openToolboxWindow() },
+            actions: displayedQuickActions
         )
     }
 
     private var displayedQuickTools: [MenuBarQuickTool] {
         let tools = settings.menuBarQuickTools.isEmpty ? MenuBarQuickTool.defaultTools : settings.menuBarQuickTools
         return Array(tools.prefix(8))
+    }
+
+    private var displayedQuickActions: [MenuBarSystemToolAction] {
+        settings.menuBarQuickActions.isEmpty ? MenuBarSystemToolAction.defaultActions : settings.menuBarQuickActions
     }
 
     private func runQuickTool(_ tool: MenuBarQuickTool) {
@@ -555,6 +560,9 @@ struct MenuBarPanelView: View {
         case .translation:
             dismiss()
             NotificationCenter.default.post(name: .showTranslationPanel, object: nil)
+        case .pomodoro:
+            dismiss()
+            NotificationCenter.default.post(name: .showFocusTimerLauncher, object: nil)
         case .imageProcessing, .superRightClick, .storage, .uninstaller, .inputMethod:
             openToolboxWindow(selecting: tool)
         }

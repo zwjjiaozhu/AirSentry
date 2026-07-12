@@ -113,7 +113,7 @@ final class MenuBarSystemToolRunner: ObservableObject {
     }
 }
 
-enum MenuBarSystemToolAction: String, CaseIterable, Identifiable {
+enum MenuBarSystemToolAction: String, CaseIterable, Codable, Identifiable {
     case toggleDesktopIcons
     case preventSleep
     case lockScreen
@@ -122,6 +122,15 @@ enum MenuBarSystemToolAction: String, CaseIterable, Identifiable {
     case toolbox
 
     var id: String { rawValue }
+
+    static let defaultActions: [MenuBarSystemToolAction] = [
+        .toggleDesktopIcons,
+        .preventSleep,
+        .lockScreen,
+        .sleep,
+        .activityMonitor,
+        .toolbox
+    ]
 
     var title: String {
         switch self {
@@ -219,6 +228,7 @@ struct MenuBarQuickActionsPopover: View {
     let close: () -> Void
     let openActivityMonitor: () -> Void
     let openToolbox: () -> Void
+    let actions: [MenuBarSystemToolAction]
 
     @State private var actionNeedingConfirmation: MenuBarSystemToolAction?
 
@@ -235,8 +245,12 @@ struct MenuBarQuickActionsPopover: View {
                 }
             }
 
-            quickActionGroup("系统动作", actions: [.toggleDesktopIcons, .preventSleep, .lockScreen, .sleep])
-            quickActionGroup("效率动作", actions: [.activityMonitor, .toolbox])
+            if !systemActions.isEmpty {
+                quickActionGroup("系统动作", actions: systemActions)
+            }
+            if !productivityActions.isEmpty {
+                quickActionGroup("效率动作", actions: productivityActions)
+            }
         }
         .padding(14)
         .frame(width: 292)
@@ -271,6 +285,18 @@ struct MenuBarQuickActionsPopover: View {
                 endPoint: .bottomTrailing
             )
         }
+    }
+
+    private var systemActions: [MenuBarSystemToolAction] {
+        filteredActions([.toggleDesktopIcons, .preventSleep, .lockScreen, .sleep])
+    }
+
+    private var productivityActions: [MenuBarSystemToolAction] {
+        filteredActions([.activityMonitor, .toolbox])
+    }
+
+    private func filteredActions(_ candidates: [MenuBarSystemToolAction]) -> [MenuBarSystemToolAction] {
+        candidates.filter { actions.contains($0) }
     }
 
     private func quickActionGroup(_ title: String, actions: [MenuBarSystemToolAction]) -> some View {

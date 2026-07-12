@@ -943,7 +943,7 @@ struct ToolboxView: View {
 
             Spacer()
 
-            Text("已固定 \(settings.menuBarQuickTools.count) 个")
+            Text("已显示 \(settings.menuBarQuickTools.count) 个")
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 11)
@@ -958,7 +958,7 @@ struct ToolboxView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("菜单栏固定图标")
                         .font(.system(size: 17, weight: .semibold))
-                    Text("这些工具会显示在菜单栏面板底部，面板里只显示图标，悬浮时显示说明。")
+                    Text("这些工具会显示在菜单栏面板底部，面板里只显示图标；拖动可调整顺序。")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
@@ -966,23 +966,50 @@ struct ToolboxView: View {
                 Spacer()
             }
 
-            VStack(spacing: 0) {
-                ForEach(Array(MenuBarQuickTool.allCases.enumerated()), id: \.element.id) { index, tool in
+            VStack(alignment: .leading, spacing: 10) {
+                ToolboxPreferenceSubheader(title: "已显示", systemImage: "line.3.horizontal")
+
+                List {
+                    ForEach(settings.menuBarQuickTools) { tool in
                     QuickToolPreferenceRow(
                         tool: tool,
-                        isSelected: settings.menuBarQuickTools.contains(tool),
-                        isLastSelected: settings.menuBarQuickTools.count <= 1 && settings.menuBarQuickTools.contains(tool)
+                            isSelected: true,
+                            isLastSelected: settings.menuBarQuickTools.count <= 1,
+                            showsDragHandle: true
                     ) { enabled in
                         settings.setMenuBarQuickTool(tool, enabled: enabled)
                     }
+                }
+                    .onMove(perform: settings.moveMenuBarQuickTool)
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .frame(height: CGFloat(max(settings.menuBarQuickTools.count, 1)) * 63)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                    if index < MenuBarQuickTool.allCases.count - 1 {
-                        Divider()
-                            .padding(.leading, 72)
+                if !hiddenMenuBarQuickTools.isEmpty {
+                    ToolboxPreferenceSubheader(title: "未显示", systemImage: "plus.circle")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(hiddenMenuBarQuickTools.enumerated()), id: \.element.id) { index, tool in
+                            QuickToolPreferenceRow(
+                                tool: tool,
+                                isSelected: false,
+                                isLastSelected: false,
+                                showsDragHandle: false
+                            ) { enabled in
+                                settings.setMenuBarQuickTool(tool, enabled: enabled)
+                            }
+
+                            if index < hiddenMenuBarQuickTools.count - 1 {
+                                Divider()
+                                    .padding(.leading, 72)
+                            }
+                        }
                     }
+                    .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
             }
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .padding(18)
         .toolboxCard()
@@ -990,32 +1017,74 @@ struct ToolboxView: View {
 
     private var quickActionsGuideSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.blue)
-                    .frame(width: 32, height: 32)
-
+            HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("更多快捷动作")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("隐藏桌面、防止休眠、锁屏和休眠等一次性操作，会收在菜单栏面板底部的“更多”按钮里，避免主面板被拉长。")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("这些动作会收在菜单栏面板底部的“更多”按钮里，适合放状态切换和低频系统动作；拖动可调整顺序。")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                Spacer()
             }
 
-            HStack(spacing: 8) {
-                quickActionPreviewBadge("隐藏桌面", "rectangle.dashed")
-                quickActionPreviewBadge("防休眠", "cup.and.saucer")
-                quickActionPreviewBadge("锁屏", "lock")
-                quickActionPreviewBadge("休眠", "moon.zzz")
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 10) {
+                ToolboxPreferenceSubheader(title: "已显示", systemImage: "line.3.horizontal")
+
+                List {
+                    ForEach(settings.menuBarQuickActions) { action in
+                    QuickActionPreferenceRow(
+                        action: action,
+                            isSelected: true,
+                            isLastSelected: settings.menuBarQuickActions.count <= 1,
+                            showsDragHandle: true
+                    ) { enabled in
+                        settings.setMenuBarQuickAction(action, enabled: enabled)
+                    }
+                }
+                    .onMove(perform: settings.moveMenuBarQuickAction)
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .frame(height: CGFloat(max(settings.menuBarQuickActions.count, 1)) * 63)
+                .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                if !hiddenMenuBarQuickActions.isEmpty {
+                    ToolboxPreferenceSubheader(title: "未显示", systemImage: "plus.circle")
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(hiddenMenuBarQuickActions.enumerated()), id: \.element.id) { index, action in
+                            QuickActionPreferenceRow(
+                                action: action,
+                                isSelected: false,
+                                isLastSelected: false,
+                                showsDragHandle: false
+                            ) { enabled in
+                                settings.setMenuBarQuickAction(action, enabled: enabled)
+                            }
+
+                            if index < hiddenMenuBarQuickActions.count - 1 {
+                                Divider()
+                                    .padding(.leading, 72)
+                            }
+                        }
+                    }
+                    .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
             }
         }
         .padding(18)
         .toolboxCard()
+    }
+
+    private var hiddenMenuBarQuickTools: [MenuBarQuickTool] {
+        MenuBarQuickTool.allCases.filter { !settings.menuBarQuickTools.contains($0) }
+    }
+
+    private var hiddenMenuBarQuickActions: [MenuBarSystemToolAction] {
+        MenuBarSystemToolAction.allCases.filter { !settings.menuBarQuickActions.contains($0) }
     }
 
     private var mouseScrollContent: some View {
@@ -3855,6 +3924,8 @@ private enum ToolboxSection {
             self = .inputMethod
         case .translation:
             self = .translation
+        case .pomodoro:
+            return nil
         }
     }
 }
@@ -3897,10 +3968,18 @@ private struct QuickToolPreferenceRow: View {
     let tool: MenuBarQuickTool
     let isSelected: Bool
     let isLastSelected: Bool
+    let showsDragHandle: Bool
     let onChange: (Bool) -> Void
 
     var body: some View {
         HStack(spacing: 18) {
+            if showsDragHandle {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .frame(width: 12)
+            }
+
             Image(systemName: tool.systemImage)
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(.blue)
@@ -3925,6 +4004,65 @@ private struct QuickToolPreferenceRow: View {
             .toggleStyle(.switch)
             .disabled(isLastSelected)
             .help(isLastSelected ? "至少保留一个快捷图标" : "显示在菜单栏面板")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ToolboxPreferenceSubheader: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 2)
+    }
+}
+
+private struct QuickActionPreferenceRow: View {
+    let action: MenuBarSystemToolAction
+    let isSelected: Bool
+    let isLastSelected: Bool
+    let showsDragHandle: Bool
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 18) {
+            if showsDragHandle {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary.opacity(0.7))
+                    .frame(width: 12)
+            }
+
+            Image(systemName: action.systemImage)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(action.tint)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(action.title)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(action.helpText)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { isSelected },
+                set: { onChange($0) }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .disabled(isLastSelected)
+            .help(isLastSelected ? "至少保留一个更多动作" : "显示在更多快捷动作")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)

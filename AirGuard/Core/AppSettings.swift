@@ -12,6 +12,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
     case uninstaller
     case inputMethod
     case translation
+    case pomodoro
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         case .uninstaller: "软件卸载助手"
         case .inputMethod: "输入法快捷切换"
         case .translation: "翻译助手"
+        case .pomodoro: "添加番茄"
         }
     }
 
@@ -40,6 +42,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         case .uninstaller: "打开软件卸载助手"
         case .inputMethod: "打开输入法快捷切换"
         case .translation: "打开翻译助手"
+        case .pomodoro: "打开番茄专注入口"
         }
     }
 
@@ -54,6 +57,7 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         case .uninstaller: "trash"
         case .inputMethod: "keyboard"
         case .translation: "character.book.closed"
+        case .pomodoro: "timer"
         }
     }
 
@@ -63,7 +67,8 @@ enum MenuBarQuickTool: String, CaseIterable, Codable, Identifiable {
         .ocr,
         .imageProcessing,
         .storage,
-        .translation
+        .translation,
+        .pomodoro
     ]
 }
 
@@ -193,6 +198,10 @@ final class AppSettings: ObservableObject {
 
     @Published var menuBarQuickTools: [MenuBarQuickTool] {
         didSet { saveMenuBarQuickTools() }
+    }
+
+    @Published var menuBarQuickActions: [MenuBarSystemToolAction] {
+        didSet { saveMenuBarQuickActions() }
     }
 
     @Published var inputMethodShortcutsEnabled: Bool {
@@ -334,6 +343,7 @@ final class AppSettings: ObservableObject {
         agentCompletionDisplayDuration = savedAgentCompletionDuration > 0 ? savedAgentCompletionDuration : 4
         musicNotchEnabled = defaults.object(forKey: Keys.musicNotchEnabled) as? Bool ?? true
         menuBarQuickTools = Self.loadMenuBarQuickTools(from: defaults)
+        menuBarQuickActions = Self.loadMenuBarQuickActions(from: defaults)
         inputMethodShortcutsEnabled = defaults.object(forKey: Keys.inputMethodShortcutsEnabled) as? Bool ?? false
         inputMethodShortcutRules = Self.loadInputMethodShortcutRules(from: defaults)
         appLauncherShortcutEnabled = defaults.object(forKey: Keys.appLauncherShortcutEnabled) as? Bool ?? false
@@ -443,19 +453,38 @@ final class AppSettings: ObservableObject {
         if enabled {
             guard !menuBarQuickTools.contains(tool) else { return }
             menuBarQuickTools.append(tool)
-            menuBarQuickTools.sort { lhs, rhs in
-                guard
-                    let lhsIndex = MenuBarQuickTool.allCases.firstIndex(of: lhs),
-                    let rhsIndex = MenuBarQuickTool.allCases.firstIndex(of: rhs)
-                else {
-                    return lhs.rawValue < rhs.rawValue
-                }
-                return lhsIndex < rhsIndex
-            }
         } else {
             guard menuBarQuickTools.count > 1 else { return }
             menuBarQuickTools.removeAll { $0 == tool }
         }
+    }
+
+    func moveMenuBarQuickTool(from source: IndexSet, to destination: Int) {
+        var tools = menuBarQuickTools
+        let moving = source.map { tools[$0] }
+        tools.removeAll { tool in moving.contains(tool) }
+        let insertionIndex = min(max(destination - source.filter { $0 < destination }.count, 0), tools.count)
+        tools.insert(contentsOf: moving, at: insertionIndex)
+        menuBarQuickTools = tools
+    }
+
+    func setMenuBarQuickAction(_ action: MenuBarSystemToolAction, enabled: Bool) {
+        if enabled {
+            guard !menuBarQuickActions.contains(action) else { return }
+            menuBarQuickActions.append(action)
+        } else {
+            guard menuBarQuickActions.count > 1 else { return }
+            menuBarQuickActions.removeAll { $0 == action }
+        }
+    }
+
+    func moveMenuBarQuickAction(from source: IndexSet, to destination: Int) {
+        var actions = menuBarQuickActions
+        let moving = source.map { actions[$0] }
+        actions.removeAll { action in moving.contains(action) }
+        let insertionIndex = min(max(destination - source.filter { $0 < destination }.count, 0), actions.count)
+        actions.insert(contentsOf: moving, at: insertionIndex)
+        menuBarQuickActions = actions
     }
 
     func setInputMethodShortcutRules(_ rules: [InputMethodShortcutRule]) {
@@ -596,6 +625,11 @@ final class AppSettings: ObservableObject {
     private func saveMenuBarQuickTools() {
         let tools = menuBarQuickTools.isEmpty ? MenuBarQuickTool.defaultTools : menuBarQuickTools
         defaults.set(tools.map(\.rawValue), forKey: Keys.menuBarQuickTools)
+    }
+
+    private func saveMenuBarQuickActions() {
+        let actions = menuBarQuickActions.isEmpty ? MenuBarSystemToolAction.defaultActions : menuBarQuickActions
+        defaults.set(actions.map(\.rawValue), forKey: Keys.menuBarQuickActions)
     }
 
     private func saveInputMethodShortcutRules() {
@@ -775,6 +809,15 @@ final class AppSettings: ObservableObject {
         return tools.isEmpty ? MenuBarQuickTool.defaultTools : tools
     }
 
+    private static func loadMenuBarQuickActions(from defaults: UserDefaults) -> [MenuBarSystemToolAction] {
+        guard let rawValues = defaults.stringArray(forKey: Keys.menuBarQuickActions) else {
+            return MenuBarSystemToolAction.defaultActions
+        }
+
+        let actions = rawValues.compactMap(MenuBarSystemToolAction.init(rawValue:))
+        return actions.isEmpty ? MenuBarSystemToolAction.defaultActions : actions
+    }
+
     private static var defaultFloatingBallActions: [FloatingBallAction] {
         [
             FloatingBallAction(kind: .pomodoro),
@@ -817,6 +860,7 @@ private enum Keys {
     static let agentCompletionDisplayDuration = "agentCompletionDisplayDuration"
     static let musicNotchEnabled = "musicNotchEnabled"
     static let menuBarQuickTools = "menuBarQuickTools"
+    static let menuBarQuickActions = "menuBarQuickActions"
     static let inputMethodShortcutsEnabled = "inputMethodShortcutsEnabled"
     static let inputMethodShortcutRules = "inputMethodShortcutRules"
     static let appLauncherShortcutEnabled = "appLauncherShortcutEnabled"
