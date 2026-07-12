@@ -20,6 +20,7 @@ struct MenuBarPanelView: View {
     @State private var moreStatusDiskIO: DiskIOInfo = .empty
     @State private var moreStatusSmartWrittenText: String?
     @State private var isRefreshingMoreSystemStatus = false
+    @State private var isPanelVisible = false
 
     private var snapshot: SystemSnapshot { monitorStore.snapshot }
     private let batteryReader = BatteryReader()
@@ -28,6 +29,25 @@ struct MenuBarPanelView: View {
     private let storageReader = StorageReader()
 
     var body: some View {
+        Group {
+            if isPanelVisible {
+                panelContent
+            } else {
+                Color.clear
+                    .frame(width: 1, height: 1)
+            }
+        }
+        .onAppear {
+            isPanelVisible = true
+        }
+        .onDisappear {
+            isPanelVisible = false
+            showsSystemStatusPopover = false
+            showsQuickActionsPopover = false
+        }
+    }
+
+    private var panelContent: some View {
         VStack(spacing: 12) {
             header
             thermalHero
