@@ -302,6 +302,8 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
             FinderUtilityHandler.copyToClipboard(text: path, label: "path")
         case "copyName":
             FinderUtilityHandler.copyToClipboard(text: path, label: "name")
+        case "renamePanel":
+            FinderRenameRequestHandler.showPanel(path: path)
         case "toggleShowHidden":
             FinderUtilityHandler.toggleShowHidden()
         case "toggleHideDesktop":
@@ -407,12 +409,25 @@ private enum FinderURLRouter {
                 let label = url.path == "/copyPath" ? "path" : "name"
                 FinderUtilityHandler.copyToClipboard(text: path, label: label)
             }
+        case "/renamePanel":
+            if let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryValue(named: "path") {
+                FinderRenameRequestHandler.showPanel(path: path)
+            }
         case "/toggleShowHidden":
             FinderUtilityHandler.toggleShowHidden()
         case "/toggleHideDesktop":
             FinderUtilityHandler.toggleHideDesktop()
         default:
             NSLog("AirSentry ignored unknown finder URL path: %{public}@", url.path)
+        }
+    }
+}
+
+private enum FinderRenameRequestHandler {
+    static func showPanel(path: String) {
+        let fileURL = URL(fileURLWithPath: path)
+        DispatchQueue.main.async {
+            FinderRenamePanelController.shared.show(fileURL: fileURL)
         }
     }
 }

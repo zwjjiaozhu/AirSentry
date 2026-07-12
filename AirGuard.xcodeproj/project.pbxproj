@@ -87,6 +87,11 @@
 		A0000000000000000000004E /* MenuBarSystemTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000156 /* MenuBarSystemTool.swift */; };
 		A0000000000000000000004F /* DiskHealthGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000157 /* DiskHealthGuideView.swift */; };
 		A00000000000000000000050 /* MouseScrollDirectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000158 /* MouseScrollDirectionManager.swift */; };
+		A00000000000000000000051 /* FinderRenameModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000159 /* FinderRenameModels.swift */; };
+		A00000000000000000000052 /* FinderRenameConfigStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000015A /* FinderRenameConfigStore.swift */; };
+		A00000000000000000000053 /* FinderVersionRenameService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000015B /* FinderVersionRenameService.swift */; };
+		A00000000000000000000054 /* FinderRenamePanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000015C /* FinderRenamePanelController.swift */; };
+		A00000000000000000000055 /* FinderRenamePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000015D /* FinderRenamePanelView.swift */; };
 		B00000000000000000000001 /* FinderSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000101 /* FinderSync.swift */; };
 		B00000000000000000000002 /* FinderSync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B00000000000000000000103 /* FinderSync.framework */; };
 		B00000000000000000000003 /* AirSentryFinderExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B00000000000000000000100 /* AirSentryFinderExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -218,6 +223,11 @@
 		A00000000000000000000156 /* MenuBarSystemTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSystemTool.swift; sourceTree = "<group>"; };
 		A00000000000000000000157 /* DiskHealthGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskHealthGuideView.swift; sourceTree = "<group>"; };
 		A00000000000000000000158 /* MouseScrollDirectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseScrollDirectionManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000159 /* FinderRenameModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderRenameModels.swift; sourceTree = "<group>"; };
+		A0000000000000000000015A /* FinderRenameConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderRenameConfigStore.swift; sourceTree = "<group>"; };
+		A0000000000000000000015B /* FinderVersionRenameService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderVersionRenameService.swift; sourceTree = "<group>"; };
+		A0000000000000000000015C /* FinderRenamePanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderRenamePanelController.swift; sourceTree = "<group>"; };
+		A0000000000000000000015D /* FinderRenamePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderRenamePanelView.swift; sourceTree = "<group>"; };
 		B00000000000000000000100 /* AirSentryFinderExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AirSentryFinderExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B00000000000000000000101 /* FinderSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSync.swift; sourceTree = "<group>"; };
 		B00000000000000000000102 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -303,6 +313,7 @@
 				A00000000000000000000123 /* NotchStatusView.swift */,
 				A0000000000000000000012D /* ToolboxView.swift */,
 				A00000000000000000000139 /* AppLauncherPanelView.swift */,
+				A0000000000000000000015D /* FinderRenamePanelView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -328,6 +339,10 @@
 				A00000000000000000000138 /* AppLauncherShortcutManager.swift */,
 				A0000000000000000000013A /* GlobalHotKeyManager.swift */,
 				A0000000000000000000013B /* FinderNewFileAuthorizationStore.swift */,
+				A00000000000000000000159 /* FinderRenameModels.swift */,
+				A0000000000000000000015A /* FinderRenameConfigStore.swift */,
+				A0000000000000000000015B /* FinderVersionRenameService.swift */,
+				A0000000000000000000015C /* FinderRenamePanelController.swift */,
 				A0000000000000000000012E /* InputMethodShortcut.swift */,
 				A0000000000000000000012F /* InputMethodSwitcher.swift */,
 				A00000000000000000000130 /* InputMethodShortcutManager.swift */,
@@ -685,6 +700,11 @@
 				A0000000000000000000004E /* MenuBarSystemTool.swift in Sources */,
 				A0000000000000000000004F /* DiskHealthGuideView.swift in Sources */,
 				A00000000000000000000050 /* MouseScrollDirectionManager.swift in Sources */,
+				A00000000000000000000051 /* FinderRenameModels.swift in Sources */,
+				A00000000000000000000052 /* FinderRenameConfigStore.swift in Sources */,
+				A00000000000000000000053 /* FinderVersionRenameService.swift in Sources */,
+				A00000000000000000000054 /* FinderRenamePanelController.swift in Sources */,
+				A00000000000000000000055 /* FinderRenamePanelView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -849,7 +869,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.5;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -877,7 +897,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.5;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -906,7 +926,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.5;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
@@ -937,7 +957,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.5;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;

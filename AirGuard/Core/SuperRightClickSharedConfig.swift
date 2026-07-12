@@ -12,6 +12,8 @@ struct SuperRightClickSharedConfig: Codable {
     let openWithApps: [OpenWithAppMeta]
     /// "常用目录"子菜单中的目录列表（按顺序）
     let favoriteFolders: [FavoriteFolderMeta]
+    /// “重命名”面板字段列表（按顺序）
+    let renameFields: [RenameFieldMeta]?
     /// 是否在右键菜单中显示菜单栏（AirSentry 子菜单）
     let showMenuBar: Bool
 
@@ -36,6 +38,13 @@ struct SuperRightClickSharedConfig: Codable {
         let id: String
         let name: String
         let path: String
+        let systemImage: String
+    }
+
+    /// “重命名”面板字段元数据
+    struct RenameFieldMeta: Codable {
+        let id: String
+        let title: String
         let systemImage: String
     }
 

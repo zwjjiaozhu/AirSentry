@@ -226,28 +226,33 @@ final class FinderSync: FIFinderSync {
             foldersItem.submenu = foldersSubmenu
             submenu.addItem(foldersItem)
         }
+
+        // 4. 重命名
+        if enabledIDs.contains("rename") {
+            submenu.addItem(menuItem("重命名", systemImage: "pencil.and.list.clipboard", action: #selector(showRenamePanel)))
+        }
         
-        // 4. 隔空投送
+        // 5. 隔空投送
         if enabledIDs.contains("airdrop") {
             submenu.addItem(menuItem("隔空投送", systemImage: "airplayaudio", action: #selector(airdropAction)))
         }
         
-        // 5. 拷贝路径
+        // 6. 拷贝路径
         if enabledIDs.contains("copyPath") {
             submenu.addItem(menuItem("拷贝路径", systemImage: "doc.on.clipboard", action: #selector(copySelectedPath)))
         }
         
-        // 6. 拷贝名称
+        // 7. 拷贝名称
         if enabledIDs.contains("copyName") {
             submenu.addItem(menuItem("拷贝名称", systemImage: "tag", action: #selector(copySelectedName)))
         }
         
-        // 7. 显示隐藏
+        // 8. 显示隐藏
         if enabledIDs.contains("showHidden") {
             submenu.addItem(menuItem("显示隐藏", systemImage: "eye", action: #selector(toggleShowHidden)))
         }
         
-        // 8. 隐藏桌面
+        // 9. 隐藏桌面
         if enabledIDs.contains("hideDesktop") {
             submenu.addItem(menuItem("隐藏桌面", systemImage: "desktopcomputer", action: #selector(toggleHideDesktop)))
         }
@@ -336,6 +341,15 @@ final class FinderSync: FIFinderSync {
             FinderExtensionLog.info("openFolder: \(path)")
             forwardActionRequest(action: "openFolder", path: path, extra: nil)
         }
+    }
+
+    @objc private func showRenamePanel() {
+        guard let targetURL = FIFinderSyncController.default().selectedItemURLs()?.first else {
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("rename panel: \(targetURL.path)")
+        forwardActionRequest(action: "renamePanel", path: targetURL.path, extra: nil)
     }
     
     @objc private func airdropAction() {
