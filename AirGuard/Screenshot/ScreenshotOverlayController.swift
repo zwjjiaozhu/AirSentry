@@ -2172,8 +2172,9 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func toolbarPosition(for selection: CGRect, in size: CGSize) -> CGPoint {
-        let toolbarSize = CGSize(width: 580, height: 80)
-        let selectionSpacing: CGFloat = 5
+        let toolbarHeight: CGFloat = toolbarControlMode == nil ? 38 : 76
+        let toolbarSize = CGSize(width: 580, height: toolbarHeight)
+        let selectionSpacing: CGFloat = 3
         let rightEdge = min(max(selection.maxX, toolbarSize.width + 10), size.width - 10)
         let x = rightEdge - toolbarSize.width / 2
         let preferredY = selection.maxY + toolbarSize.height / 2 + selectionSpacing
@@ -3259,12 +3260,12 @@ private struct ScreenshotSelectionToolbar: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         controlRow(for: controlMode)
                     }
-                    .frame(width: 560, height: 36, alignment: .trailing)
+                    .frame(width: 560, height: 32, alignment: .trailing)
                 }
             }
             .frame(width: 580, alignment: .trailing)
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
             .background(.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -3862,7 +3863,7 @@ private struct ScreenshotSelectionToolbar: View {
     ) -> some View {
         ZStack(alignment: .bottom) {
             content()
-                .frame(width: 34, height: 32)
+                .frame(width: 32, height: 28)
                 .background(
                     isSelected ? Color.blue.opacity(0.92) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -3874,7 +3875,7 @@ private struct ScreenshotSelectionToolbar: View {
                 .opacity(hoveredItemID == id ? 1 : 0)
                 .padding(.horizontal, 4)
         }
-        .frame(width: 34, height: 34)
+        .frame(width: 32, height: 30)
         .contentShape(Rectangle())
     }
 
@@ -3885,8 +3886,8 @@ private struct ScreenshotSelectionToolbar: View {
     ) -> some View {
         ZStack(alignment: .bottom) {
             content()
-                .frame(height: 32)
-                .padding(.horizontal, 7)
+                .frame(height: 28)
+                .padding(.horizontal, 6)
                 .background(
                     isSelected ? Color.blue.opacity(0.92) : Color.clear,
                     in: RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -3898,7 +3899,7 @@ private struct ScreenshotSelectionToolbar: View {
                 .opacity(hoveredItemID == id ? 1 : 0)
                 .padding(.horizontal, 4)
         }
-        .frame(height: 34)
+        .frame(height: 30)
         .contentShape(Rectangle())
     }
 
