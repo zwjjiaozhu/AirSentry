@@ -29,6 +29,7 @@
 		A00000000000000000000014 /* HIDTemperatureReader.m in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000115 /* HIDTemperatureReader.m */; };
 		A00000000000000000000015 /* logo.png in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000118 /* logo.png */; };
 		A00000000000000000000016 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000119 /* Assets.xcassets */; };
+		A0000000000000000000006F /* NewFileTemplates in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000016F /* NewFileTemplates */; };
 		A00000000000000000000017 /* AgentEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000011E /* AgentEvent.swift */; };
 		A00000000000000000000018 /* AgentEventServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000011F /* AgentEventServer.swift */; };
 		A00000000000000000000019 /* AgentHookManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000120 /* AgentHookManager.swift */; };
@@ -160,6 +161,7 @@
 		A00000000000000000000117 /* AirGuard-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "AirGuard-Bridging-Header.h"; sourceTree = "<group>"; };
 		A00000000000000000000118 /* logo.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = logo.png; sourceTree = "<group>"; };
 		A00000000000000000000119 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0000000000000000000016F /* NewFileTemplates */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources/NewFileTemplates; sourceTree = "<group>"; };
 		A0000000000000000000011A /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
 		A0000000000000000000011B /* build-release.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "build-release.sh"; sourceTree = "<group>"; };
 		A0000000000000000000011C /* archive-app-store.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "archive-app-store.sh"; sourceTree = "<group>"; };
@@ -276,6 +278,7 @@
 				A00000000000000000000114 /* Info.plist */,
 				A00000000000000000000117 /* AirGuard-Bridging-Header.h */,
 				A00000000000000000000119 /* Assets.xcassets */,
+				A0000000000000000000016F /* NewFileTemplates */,
 				A0000000000000000000011A /* AppStore.entitlements */,
 				A00000000000000000000310 /* Views */,
 				A00000000000000000000311 /* Core */,
@@ -613,6 +616,7 @@
 			files = (
 				A00000000000000000000015 /* logo.png in Resources */,
 				A00000000000000000000016 /* Assets.xcassets in Resources */,
+				A0000000000000000000006F /* NewFileTemplates in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

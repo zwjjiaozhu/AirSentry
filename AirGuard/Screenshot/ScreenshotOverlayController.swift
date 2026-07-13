@@ -68,8 +68,9 @@ final class ScreenshotOverlayController {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
+            NSApp.activate(ignoringOtherApps: true)
             windows.forEach { $0.orderFrontRegardless() }
-            windows.first?.makeKey()
+            windows.first?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -152,7 +153,7 @@ final class ScreenshotOverlayWindow: NSPanel {
     init(screen: NSScreen) {
         super.init(
             contentRect: screen.frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -167,7 +168,7 @@ final class ScreenshotOverlayWindow: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    override var canBecomeMain: Bool { true }
 
     override func cancelOperation(_ sender: Any?) {
         NotificationCenter.default.post(name: .screenshotOverlayCancelRequested, object: nil)
@@ -187,12 +188,17 @@ private struct ScreenshotOverlayView: View {
     @State private var interactionStartRect: CGRect?
     @State private var selectedTool: ScreenshotAnnotationTool?
     @State private var selectedColor: ScreenshotAnnotationColor = .red
+    @State private var selectedCustomColor: Color?
+    @State private var selectedFillEnabled = false
+    @State private var selectedFillColor: ScreenshotAnnotationColor = .yellow
+    @State private var selectedCustomFillColor: Color?
     @State private var selectedLineWidth: CGFloat = 3
     @State private var selectedFontSize: CGFloat = 18
     @State private var selectedTextColor: Color = .red
     @State private var selectedFontName = ScreenshotTextStyle.defaultFontName
     @State private var selectedTextBold = true
     @State private var selectedTextItalic = false
+    @State private var nextCounterValue = 1
     @State private var annotations: [ScreenshotAnnotation] = []
     @State private var redoAnnotations: [ScreenshotAnnotation] = []
     @State private var selectedAnnotationID: UUID?
@@ -255,12 +261,21 @@ private struct ScreenshotOverlayView: View {
                         ScreenshotSelectionToolbar(
                             selectedTool: $selectedTool,
                             selectedColor: $selectedColor,
+                            selectedCustomColor: $selectedCustomColor,
+                            selectedFillEnabled: $selectedFillEnabled,
+                            selectedFillColor: $selectedFillColor,
+                            selectedCustomFillColor: $selectedCustomFillColor,
                             selectedLineWidth: $selectedLineWidth,
                             selectedFontSize: $selectedFontSize,
                             controlMode: toolbarControlMode,
+                            canFillShape: canFillSelectedShape,
                             canUndo: !annotations.isEmpty,
                             canRedo: !redoAnnotations.isEmpty,
                             setColor: updateSelectedColor,
+                            setCustomColor: updateSelectedCustomColor,
+                            setFillEnabled: updateSelectedFillEnabled,
+                            setFillColor: updateSelectedFillColor,
+                            setCustomFillColor: updateSelectedCustomFillColor,
                             setLineWidth: updateSelectedLineWidth,
                             setFontSize: updateSelectedFontSize,
                             selectedTextColor: $selectedTextColor,
@@ -271,7 +286,9 @@ private struct ScreenshotOverlayView: View {
                             setFontName: updateSelectedFontName,
                             setTextBold: updateSelectedTextBold,
                             setTextItalic: updateSelectedTextItalic,
-                            openTextColorPanel: openTextColorPanel,
+                            openTextColorPanel: { openColorPanel(.text) },
+                            openStrokeColorPanel: { openColorPanel(.stroke) },
+                            openFillColorPanel: { openColorPanel(.fill) },
                             isOCREnabled: isOCRRecognizing || ocrResult != nil,
                             hasOCRText: ocrResult?.textItems.isEmpty == false,
                             showAllOCRTextItems: $showAllOCRTextItems,
@@ -327,7 +344,7 @@ private struct ScreenshotOverlayView: View {
                     focusedTextAnnotationID = nil
                     pendingFocusAnnotationID = nil
                 }
-                if tool != .text {
+                if tool?.isTextLike != true {
                     finishTextEditing()
                     resetTextCursor()
                 }
@@ -487,7 +504,7 @@ private struct ScreenshotOverlayView: View {
     private func annotationCanvas(_ selection: CGRect) -> some View {
         Canvas { context, _ in
             for annotation in annotations {
-                if annotation.tool != .text {
+                if !annotation.tool.isTextLike {
                     draw(annotation, selection: selection, in: &context)
                 }
                 drawSelectionOutline(for: annotation, in: &context)
@@ -515,11 +532,13 @@ private struct ScreenshotOverlayView: View {
                 at: origin,
                 anchor: .topLeading
             )
+        case .counter:
+            return
         case .pen:
             guard let firstPoint = annotation.points.first else { return }
             path.move(to: firstPoint)
             annotation.points.dropFirst().forEach { path.addLine(to: $0) }
-            context.stroke(path, with: .color(annotation.color.swiftUIColor), style: stroke)
+            context.stroke(path, with: .color(annotation.effectiveStrokeSwiftUIColor), style: stroke)
         case .mosaic:
             let blockSize = max(10, annotation.lineWidth * 5)
             guard let mosaicSampler else {
@@ -544,7 +563,7 @@ private struct ScreenshotOverlayView: View {
                   let end = annotation.points.last else { return }
             path.move(to: start)
             path.addLine(to: end)
-            context.stroke(path, with: .color(annotation.color.swiftUIColor), style: stroke)
+            context.stroke(path, with: .color(annotation.effectiveStrokeSwiftUIColor), style: stroke)
         case .arrow:
             guard let start = annotation.points.first,
                   let end = annotation.points.last else { return }
@@ -555,15 +574,21 @@ private struct ScreenshotOverlayView: View {
             path.addLine(to: heads.0)
             path.move(to: end)
             path.addLine(to: heads.1)
-            context.stroke(path, with: .color(annotation.color.swiftUIColor), style: stroke)
+            context.stroke(path, with: .color(annotation.effectiveStrokeSwiftUIColor), style: stroke)
         case .rectangle:
             guard let rect = localRect(for: annotation) else { return }
             path.addRect(rect)
-            context.stroke(path, with: .color(annotation.color.swiftUIColor), style: stroke)
+            if let fillColor = annotation.effectiveFillSwiftUIColor {
+                context.fill(path, with: .color(fillColor.opacity(0.24)))
+            }
+            context.stroke(path, with: .color(annotation.effectiveStrokeSwiftUIColor), style: stroke)
         case .ellipse:
             guard let rect = localRect(for: annotation) else { return }
             path.addEllipse(in: rect)
-            context.stroke(path, with: .color(annotation.color.swiftUIColor), style: stroke)
+            if let fillColor = annotation.effectiveFillSwiftUIColor {
+                context.fill(path, with: .color(fillColor.opacity(0.24)))
+            }
+            context.stroke(path, with: .color(annotation.effectiveStrokeSwiftUIColor), style: stroke)
         }
     }
 
@@ -587,7 +612,7 @@ private struct ScreenshotOverlayView: View {
     private func drawSelectionOutline(for annotation: ScreenshotAnnotation, in context: inout GraphicsContext) {
         // 文本框的选中虚线由 TextField 自己的 overlay 绘制。
         // 如果这里也绘制一次，文本标注会出现两层虚线。
-        guard annotation.tool != .text,
+        guard !annotation.tool.isTextLike,
               selectedAnnotationID == annotation.id,
               let rect = annotationBounds(annotation)?.insetBy(dx: -4, dy: -4) else { return }
         var path = Path()
@@ -599,24 +624,33 @@ private struct ScreenshotOverlayView: View {
         ZStack(alignment: .topLeading) {
             ForEach($annotations) { $annotation in
                 if shouldShowTextAnnotation(annotation), let origin = annotation.points.first {
+                    let bounds = textBounds(for: annotation)
                     TextField("文字", text: $annotation.text)
                         .textFieldStyle(.plain)
                         .focused($focusedTextAnnotationID, equals: annotation.id)
                         .font(annotation.swiftUIFont)
-                        .foregroundStyle(annotation.effectiveSwiftUIColor)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 2)
+                        .foregroundStyle(annotation.tool == .counter ? counterTextColor(annotation) : annotation.effectiveSwiftUIColor)
+                        .multilineTextAlignment(annotation.tool == .counter ? .center : .leading)
+                        .padding(.horizontal, annotation.tool == .counter ? 0 : 3)
+                        .padding(.vertical, annotation.tool == .counter ? 0 : 2)
                         .frame(
-                            width: textBounds(for: annotation).width,
-                            height: textBounds(for: annotation).height,
-                            alignment: .leading
+                            width: bounds.width,
+                            height: bounds.height,
+                            alignment: annotation.tool == .counter ? .center : .leading
                         )
                         .background(
-                            selectedAnnotationID == annotation.id ? Color.black.opacity(0.14) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            textAnnotationBackground(annotation),
+                            in: ScreenshotTextAnnotationShape(isCounter: annotation.tool == .counter)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            ScreenshotTextAnnotationShape(isCounter: annotation.tool == .counter)
+                                .stroke(
+                                    annotation.tool == .counter ? annotation.effectiveStrokeSwiftUIColor : Color.clear,
+                                    lineWidth: annotation.tool == .counter ? max(1.5, annotation.lineWidth) : 0
+                                )
+                        )
+                        .overlay(
+                            ScreenshotTextAnnotationShape(isCounter: annotation.tool == .counter)
                                 .stroke(
                                     selectedAnnotationID == annotation.id ? Color.accentColor.opacity(0.90) : Color.clear,
                                     style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
@@ -630,8 +664,8 @@ private struct ScreenshotOverlayView: View {
                                 }
                             }
                         }
-                        .position(x: origin.x + textBounds(for: annotation).width / 2,
-                                  y: origin.y + textBounds(for: annotation).height / 2)
+                        .position(x: origin.x + bounds.width / 2,
+                                  y: origin.y + bounds.height / 2)
                         .onTapGesture {
                             selectAnnotation(annotation)
                         }
@@ -649,6 +683,17 @@ private struct ScreenshotOverlayView: View {
         }
         .frame(width: selection.width, height: selection.height)
         .position(x: selection.midX, y: selection.midY)
+    }
+
+    private func textAnnotationBackground(_ annotation: ScreenshotAnnotation) -> Color {
+        if annotation.tool == .counter {
+            return annotation.effectiveFillSwiftUIColor?.opacity(0.94) ?? .clear
+        }
+        return selectedAnnotationID == annotation.id ? Color.black.opacity(0.14) : Color.clear
+    }
+
+    private func counterTextColor(_ annotation: ScreenshotAnnotation) -> Color {
+        annotation.effectiveFillSwiftUIColor == nil ? annotation.effectiveStrokeSwiftUIColor : .white
     }
 
     private func ocrContentLayer(_ selection: CGRect) -> some View {
@@ -1231,9 +1276,9 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func annotationGesture(in selection: CGRect) -> some Gesture {
-        DragGesture(minimumDistance: selectedTool == .text ? 0 : 1, coordinateSpace: .local)
+        DragGesture(minimumDistance: selectedTool?.isTextLike == true ? 0 : 1, coordinateSpace: .local)
             .onChanged { value in
-                if selectedTool == .text {
+                if selectedTool?.isTextLike == true {
                     return
                 }
 
@@ -1245,7 +1290,7 @@ private struct ScreenshotOverlayView: View {
                     )
                     if let id = selectedAnnotationID,
                        let index = annotations.firstIndex(where: { $0.id == id }),
-                       annotations[index].tool != .text,
+                       !annotations[index].tool.isTextLike,
                        let bounds = annotationBounds(annotations[index]),
                        bounds.insetBy(dx: -6, dy: -6).contains(localStart) {
                         movingAnnotationStartPoints = annotations[index].points
@@ -1279,6 +1324,9 @@ private struct ScreenshotOverlayView: View {
                     draftAnnotation = ScreenshotAnnotation(
                         tool: selectedTool.drawableTool,
                         color: selectedColor,
+                        customColor: selectedCustomColor.map(NSColor.init),
+                        fillColor: selectedTool.isFillable && selectedFillEnabled ? selectedFillColor : nil,
+                        customFillColor: selectedTool.isFillable && selectedFillEnabled ? selectedCustomFillColor.map(NSColor.init) : nil,
                         lineWidth: selectedLineWidth,
                         fontSize: selectedFontSize,
                         points: [localStart]
@@ -1300,7 +1348,7 @@ private struct ScreenshotOverlayView: View {
                     return
                 }
 
-                if selectedTool == .text {
+                if selectedTool?.isTextLike == true {
                     let localPoint = CGPoint(
                         x: value.location.x - selection.minX,
                         y: value.location.y - selection.minY
@@ -1310,7 +1358,11 @@ private struct ScreenshotOverlayView: View {
                         finishTextEditing(keeping: annotationID)
                         selectAnnotation(annotation)
                     } else {
-                        addTextAnnotation(at: value.location, in: selection)
+                        if selectedTool == .counter {
+                            addCounterAnnotation(at: value.location, in: selection)
+                        } else {
+                            addTextAnnotation(at: value.location, in: selection)
+                        }
                     }
                 } else if let draftAnnotation, draftAnnotation.points.count >= 2 {
                     annotations.append(draftAnnotation)
@@ -1334,7 +1386,7 @@ private struct ScreenshotOverlayView: View {
                     )
                     if let id = selectedAnnotationID,
                        let index = annotations.firstIndex(where: { $0.id == id }),
-                       annotations[index].tool != .text,
+                       !annotations[index].tool.isTextLike,
                        let bounds = annotationBounds(annotations[index]),
                        bounds.insetBy(dx: -6, dy: -6).contains(localStart) {
                         movingAnnotationStartPoints = annotations[index].points
@@ -1383,14 +1435,7 @@ private struct ScreenshotOverlayView: View {
                     )
                     selectedAnnotationID = annotationID(at: localPoint)
                     if let annotation = selectedAnnotation {
-                        selectedColor = annotation.color
-                        selectedLineWidth = annotation.lineWidth
-                        selectedFontSize = annotation.fontSize
-                        selectedTextColor = annotation.effectiveSwiftUIColor
-                        selectedFontName = annotation.fontName
-                        selectedTextBold = annotation.isBold
-                        selectedTextItalic = annotation.isItalic
-                        focusedTextAnnotationID = annotation.tool == .text ? annotation.id : nil
+                        syncToolbarState(with: annotation)
                     } else {
                         focusedTextAnnotationID = nil
                     }
@@ -1448,7 +1493,7 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func updateSelectionCursor(at point: CGPoint) {
-        if selectedTool == .text || focusedTextAnnotationID != nil {
+        if selectedTool?.isTextLike == true || selectedAnnotation?.tool.isTextLike == true || focusedTextAnnotationID != nil {
             resetTextCursor()
 
             guard let selection = selectedRect, selection.contains(point) else {
@@ -1483,7 +1528,11 @@ private struct ScreenshotOverlayView: View {
                 return
             }
 
-            pushSelectionCursor(.iBeam)
+            if selectedTool?.isTextLike == true || focusedTextAnnotationID != nil {
+                pushSelectionCursor(.iBeam)
+            } else {
+                popSelectionCursor()
+            }
             return
         }
 
@@ -1523,7 +1572,7 @@ private struct ScreenshotOverlayView: View {
             // 靠近标注手柄 -> 十字光标
             if let id = selectedAnnotationID,
                let index = annotations.firstIndex(where: { $0.id == id }),
-               annotations[index].tool != .text,
+               !annotations[index].tool.isTextLike,
                annotations[index].tool != .pen,
                annotations[index].tool != .mosaic {
                 let handleRadius: CGFloat = 12
@@ -1556,7 +1605,7 @@ private struct ScreenshotOverlayView: View {
             // 任何工具下，靠近选中的标注 -> 拖动光标
             if let id = selectedAnnotationID,
                let index = annotations.firstIndex(where: { $0.id == id }),
-               annotations[index].tool != .text,
+               !annotations[index].tool.isTextLike,
                let bounds = annotationBounds(annotations[index]) {
                 if bounds.insetBy(dx: -6, dy: -6).contains(localPoint) {
                     pushSelectionCursor(.openHand)
@@ -1580,7 +1629,7 @@ private struct ScreenshotOverlayView: View {
         ZStack(alignment: .topLeading) {
             if let id = selectedAnnotationID,
                let index = annotations.firstIndex(where: { $0.id == id }),
-               annotations[index].tool != .text,
+               !annotations[index].tool.isTextLike,
                annotations[index].tool != .pen,
                annotations[index].tool != .mosaic {
                 let annotation = annotations[index]
@@ -1693,7 +1742,7 @@ private struct ScreenshotOverlayView: View {
         DragGesture(minimumDistance: 1, coordinateSpace: .global)
             .onChanged { value in
                 guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
-                      annotations[index].tool == .text,
+                      annotations[index].tool.isTextLike,
                       let origin = annotations[index].points.first else { return }
 
                 if resizingTextAnnotationID != annotationID {
@@ -1710,12 +1759,19 @@ private struct ScreenshotOverlayView: View {
                       let startSize = resizingTextStartSize,
                       let startFontSize = resizingTextStartFontSize else { return }
 
-                let result = handle.resized(
-                    origin: startPoint,
-                    size: startSize,
-                    translation: value.translation,
-                    bounds: selectionBoundsForTextResize()
-                )
+                let result = annotations[index].tool == .counter
+                    ? handle.resizedCircle(
+                        origin: startPoint,
+                        size: startSize,
+                        translation: value.translation,
+                        bounds: selectionBoundsForTextResize()
+                    )
+                    : handle.resized(
+                        origin: startPoint,
+                        size: startSize,
+                        translation: value.translation,
+                        bounds: selectionBoundsForTextResize()
+                    )
                 let scale = handle.scale(startSize: startSize, newSize: result.size)
                 let fontSize = max(12, min(72, startFontSize * scale))
 
@@ -1737,7 +1793,7 @@ private struct ScreenshotOverlayView: View {
         DragGesture(minimumDistance: 1, coordinateSpace: .local)
             .onChanged { value in
                 guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
-                      annotations[index].tool == .text else { return }
+                      annotations[index].tool.isTextLike else { return }
 
                 if scalingTextAnnotationID != annotationID {
                     scalingTextAnnotationID = annotationID
@@ -1752,10 +1808,15 @@ private struct ScreenshotOverlayView: View {
 
                 let delta = max(value.translation.width, value.translation.height)
                 let scale = max(0.45, min(3.0, 1 + delta / 90))
-                annotations[index].textBoxSize = CGSize(
-                    width: max(72, startSize.width * scale),
-                    height: max(26, startSize.height * scale)
-                )
+                if annotations[index].tool == .counter {
+                    let side = max(24, max(startSize.width, startSize.height) * scale)
+                    annotations[index].textBoxSize = CGSize(width: side, height: side)
+                } else {
+                    annotations[index].textBoxSize = CGSize(
+                        width: max(72, startSize.width * scale),
+                        height: max(26, startSize.height * scale)
+                    )
+                }
                 annotations[index].fontSize = max(12, min(72, startFontSize * scale))
                 selectedFontSize = annotations[index].fontSize
             }
@@ -1771,7 +1832,7 @@ private struct ScreenshotOverlayView: View {
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .onChanged { value in
                 guard let index = annotations.firstIndex(where: { $0.id == annotationID }),
-                      annotations[index].tool == .text,
+                      annotations[index].tool.isTextLike,
                       let origin = annotations[index].points.first else { return }
 
                 if movingTextAnnotationStartPoint == nil {
@@ -2164,7 +2225,7 @@ private struct ScreenshotOverlayView: View {
         if isOCRRecognizing || ocrResult != nil {
             return .ocr
         }
-        if selectedAnnotation?.tool == .text || selectedTool == .text {
+        if selectedAnnotation?.tool.isTextLike == true || selectedTool?.isTextLike == true {
             return .text
         }
         if selectedTool != nil, selectedTool != .cursor {
@@ -2176,6 +2237,13 @@ private struct ScreenshotOverlayView: View {
         return nil
     }
 
+    private var canFillSelectedShape: Bool {
+        if let selectedAnnotation {
+            return selectedAnnotation.tool.isFillable
+        }
+        return selectedTool?.isFillable == true
+    }
+
     private func addTextAnnotation(at point: CGPoint, in selection: CGRect) {
         finishTextEditing()
         let localPoint = CGPoint(
@@ -2185,6 +2253,7 @@ private struct ScreenshotOverlayView: View {
         let annotation = ScreenshotAnnotation(
             tool: .text,
             color: selectedColor,
+            customColor: selectedCustomColor.map(NSColor.init),
             lineWidth: selectedLineWidth,
             fontSize: selectedFontSize,
             textColor: NSColor(selectedTextColor),
@@ -2203,24 +2272,80 @@ private struct ScreenshotOverlayView: View {
         redoAnnotations.removeAll()
     }
 
+    private func addCounterAnnotation(at point: CGPoint, in selection: CGRect) {
+        finishTextEditing()
+        let size = CGSize(width: 34, height: 34)
+        let localPoint = CGPoint(
+            x: (point.x - selection.minX - size.width / 2).clamped(to: 0...(selection.width - size.width)),
+            y: (point.y - selection.minY - size.height / 2).clamped(to: 0...(selection.height - size.height))
+        )
+        let value = nextAvailableCounterValue()
+        let annotation = ScreenshotAnnotation(
+            tool: .counter,
+            color: selectedColor,
+            customColor: selectedCustomColor.map(NSColor.init),
+            fillColor: selectedFillEnabled ? selectedFillColor : selectedColor,
+            customFillColor: selectedFillEnabled ? selectedCustomFillColor.map(NSColor.init) : nil,
+            lineWidth: max(2, selectedLineWidth),
+            fontSize: 18,
+            textColor: .white,
+            fontName: selectedFontName,
+            isBold: true,
+            isItalic: false,
+            text: "\(value)",
+            textBoxSize: size,
+            points: [localPoint]
+        )
+        annotations.append(annotation)
+        selectedAnnotationID = annotation.id
+        focusedTextAnnotationID = nil
+        pendingFocusAnnotationID = annotation.id
+        nextCounterValue = value + 1
+        redoAnnotations.removeAll()
+    }
+
+    private func nextAvailableCounterValue() -> Int {
+        let maxExistingValue = annotations
+            .filter { $0.tool == .counter }
+            .compactMap { Int($0.text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            .max() ?? 0
+        return max(nextCounterValue, maxExistingValue + 1)
+    }
+
     private func selectAnnotation(_ annotation: ScreenshotAnnotation) {
+        syncToolbarState(with: annotation)
+    }
+
+    private func syncToolbarState(with annotation: ScreenshotAnnotation) {
         selectedAnnotationID = annotation.id
         selectedColor = annotation.color
+        selectedCustomColor = annotation.customColor.map(Color.init)
+        selectedFillEnabled = annotation.fillColor != nil
+        selectedCustomFillColor = annotation.customFillColor.map(Color.init)
+        if let fillColor = annotation.fillColor {
+            selectedFillColor = fillColor
+        }
         selectedLineWidth = annotation.lineWidth
         selectedFontSize = annotation.fontSize
         selectedTextColor = annotation.effectiveSwiftUIColor
         selectedFontName = annotation.fontName
         selectedTextBold = annotation.isBold
         selectedTextItalic = annotation.isItalic
-        focusedTextAnnotationID = annotation.tool == .text ? annotation.id : nil
+        focusedTextAnnotationID = annotation.tool.isTextLike ? annotation.id : nil
     }
 
     private func syncSelectionWithFocusedText(_ annotationID: UUID?) {
         guard let annotationID,
               let annotation = annotations.first(where: { $0.id == annotationID }),
-              annotation.tool == .text else { return }
+              annotation.tool.isTextLike else { return }
         selectedAnnotationID = annotation.id
         selectedColor = annotation.color
+        selectedCustomColor = annotation.customColor.map(Color.init)
+        selectedFillEnabled = annotation.fillColor != nil
+        selectedCustomFillColor = annotation.customFillColor.map(Color.init)
+        if let fillColor = annotation.fillColor {
+            selectedFillColor = fillColor
+        }
         selectedLineWidth = annotation.lineWidth
         selectedFontSize = annotation.fontSize
         selectedTextColor = annotation.effectiveSwiftUIColor
@@ -2231,7 +2356,47 @@ private struct ScreenshotOverlayView: View {
 
     private func updateSelectedColor(_ color: ScreenshotAnnotationColor) {
         selectedColor = color
-        updateSelectedAnnotation { $0.color = color }
+        selectedCustomColor = nil
+        updateSelectedAnnotation {
+            $0.color = color
+            $0.customColor = nil
+        }
+    }
+
+    private func updateSelectedCustomColor(_ color: Color) {
+        selectedCustomColor = color
+        updateSelectedAnnotation { $0.customColor = NSColor(color) }
+    }
+
+    private func updateSelectedFillEnabled(_ isEnabled: Bool) {
+        selectedFillEnabled = isEnabled
+        updateSelectedAnnotation { annotation in
+            guard annotation.tool.isFillable else { return }
+            annotation.fillColor = isEnabled ? selectedFillColor : nil
+            annotation.customFillColor = isEnabled ? selectedCustomFillColor.map(NSColor.init) : nil
+        }
+    }
+
+    private func updateSelectedFillColor(_ color: ScreenshotAnnotationColor) {
+        selectedFillColor = color
+        selectedCustomFillColor = nil
+        updateSelectedAnnotation { annotation in
+            guard annotation.tool.isFillable else { return }
+            annotation.fillColor = selectedFillEnabled ? color : nil
+            annotation.customFillColor = nil
+        }
+    }
+
+    private func updateSelectedCustomFillColor(_ color: Color) {
+        selectedCustomFillColor = color
+        selectedFillEnabled = true
+        updateSelectedAnnotation { annotation in
+            guard annotation.tool.isFillable else { return }
+            annotation.customFillColor = NSColor(color)
+            if annotation.fillColor == nil {
+                annotation.fillColor = selectedFillColor
+            }
+        }
     }
 
     private func updateSelectedLineWidth(_ width: CGFloat) {
@@ -2247,22 +2412,26 @@ private struct ScreenshotOverlayView: View {
     private func updateSelectedTextColor(_ color: Color) {
         selectedTextColor = color
         updateSelectedAnnotation { annotation in
-            guard annotation.tool == .text else { return }
+            guard annotation.tool.isTextLike else { return }
             annotation.textColor = NSColor(color)
         }
     }
 
-    private func openTextColorPanel() {
+    private func openColorPanel(_ target: ScreenshotColorPanelTarget) {
         let panel = NSColorPanel.shared
         panel.setTarget(nil)
         panel.setAction(nil)
-        panel.color = NSColor(selectedTextColor)
+        panel.isContinuous = true
+        switch target {
+        case .text:
+            panel.color = NSColor(selectedTextColor)
+        case .stroke:
+            panel.color = selectedCustomColor.map(NSColor.init) ?? selectedColor.nsColor
+        case .fill:
+            panel.color = selectedCustomFillColor.map(NSColor.init) ?? selectedFillColor.nsColor
+        }
 
-        // 截图遮罩窗口是 .screenSaver 层级，系统调色盘默认会被遮住，这里强制置顶到遮罩之上。
-        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        configureColorPanelForScreenshotOverlay(panel)
 
         if let colorPanelObserver {
             NotificationCenter.default.removeObserver(colorPanelObserver)
@@ -2275,18 +2444,90 @@ private struct ScreenshotOverlayView: View {
             queue: .main
         ) { _ in
             let color = Color(panel.color)
-            selectedTextColor = color
-            updateSelectedTextColor(color)
+            switch target {
+            case .text:
+                selectedTextColor = color
+                updateSelectedTextColor(color)
+            case .stroke:
+                updateSelectedCustomColor(color)
+            case .fill:
+                updateSelectedCustomFillColor(color)
+            }
         }
 
-        panel.makeKeyAndOrderFront(nil)
+        presentColorPanelAboveScreenshotOverlay(panel)
+    }
+
+    private func configureColorPanelForScreenshotOverlay(_ panel: NSColorPanel) {
+        // 截图遮罩窗口是 .screenSaver 层级，系统调色盘需要在同一层级之上。
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.worksWhenModal = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+    }
+
+    private func presentColorPanelAboveScreenshotOverlay(_ panel: NSColorPanel) {
+        if let parent = panel.parent {
+            parent.removeChildWindow(panel)
+        }
+
+        let overlayWindow = activeOverlayWindowForColorPanel()
+        NSApp.activate(ignoringOtherApps: true)
+        overlayWindow?.makeKeyAndOrderFront(nil)
+        positionColorPanel(panel, relativeTo: overlayWindow)
+        NSApp.orderFrontColorPanel(nil)
         panel.orderFrontRegardless()
+        panel.makeKeyAndOrderFront(nil)
+
+        DispatchQueue.main.async {
+            self.configureColorPanelForScreenshotOverlay(panel)
+            self.positionColorPanel(panel, relativeTo: self.activeOverlayWindowForColorPanel())
+            NSApp.orderFrontColorPanel(nil)
+            panel.orderFrontRegardless()
+            panel.makeKey()
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            guard panel.isVisible else {
+                panel.orderFrontRegardless()
+                panel.makeKeyAndOrderFront(nil)
+                return
+            }
+            self.configureColorPanelForScreenshotOverlay(panel)
+            panel.orderFrontRegardless()
+            panel.makeKey()
+        }
+    }
+
+    private func activeOverlayWindowForColorPanel() -> NSWindow? {
+        NSApp.windows.first { window in
+            guard window is ScreenshotOverlayWindow, window.isVisible else { return false }
+            return window.frame.intersects(screenFrame)
+        } ?? NSApp.windows.first { window in
+            window is ScreenshotOverlayWindow && window.isVisible
+        }
+    }
+
+    private func positionColorPanel(_ panel: NSColorPanel, relativeTo overlayWindow: NSWindow?) {
+        guard let overlayWindow else { return }
+        let panelSize = panel.frame.size
+        let visibleFrame = overlayWindow.screen?.visibleFrame ?? overlayWindow.frame
+        let fallbackOrigin = CGPoint(
+            x: overlayWindow.frame.maxX - panelSize.width - 24,
+            y: overlayWindow.frame.maxY - panelSize.height - 118
+        )
+        let origin = CGPoint(
+            x: min(max(fallbackOrigin.x, visibleFrame.minX + 12), visibleFrame.maxX - panelSize.width - 12),
+            y: min(max(fallbackOrigin.y, visibleFrame.minY + 12), visibleFrame.maxY - panelSize.height - 12)
+        )
+        panel.setFrameOrigin(origin)
     }
 
     private func updateSelectedFontName(_ fontName: String) {
         selectedFontName = fontName
         updateSelectedAnnotation { annotation in
-            guard annotation.tool == .text else { return }
+            guard annotation.tool.isTextLike else { return }
             annotation.fontName = fontName
         }
     }
@@ -2294,7 +2535,7 @@ private struct ScreenshotOverlayView: View {
     private func updateSelectedTextBold(_ isBold: Bool) {
         selectedTextBold = isBold
         updateSelectedAnnotation { annotation in
-            guard annotation.tool == .text else { return }
+            guard annotation.tool.isTextLike else { return }
             annotation.isBold = isBold
         }
     }
@@ -2302,7 +2543,7 @@ private struct ScreenshotOverlayView: View {
     private func updateSelectedTextItalic(_ isItalic: Bool) {
         selectedTextItalic = isItalic
         updateSelectedAnnotation { annotation in
-            guard annotation.tool == .text else { return }
+            guard annotation.tool.isTextLike else { return }
             annotation.isItalic = isItalic
         }
     }
@@ -2331,12 +2572,12 @@ private struct ScreenshotOverlayView: View {
 
     private var visibleAnnotations: [ScreenshotAnnotation] {
         annotations.filter { annotation in
-            annotation.tool != .text || !annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            !annotation.tool.isTextLike || !annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
     private func shouldShowTextAnnotation(_ annotation: ScreenshotAnnotation) -> Bool {
-        annotation.tool == .text &&
+        annotation.tool.isTextLike &&
         (annotation.id == selectedAnnotationID ||
          annotation.id == focusedTextAnnotationID ||
          !annotation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -2354,7 +2595,7 @@ private struct ScreenshotOverlayView: View {
 
     private func removeEmptyTextAnnotations(keeping annotationID: UUID? = nil) {
         let idsToRemove = annotations.filter {
-            $0.tool == .text &&
+            $0.tool.isTextLike &&
             $0.id != annotationID &&
             $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }.map { $0.id }
@@ -2372,7 +2613,7 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func textFrame(for annotation: ScreenshotAnnotation) -> CGRect? {
-        guard annotation.tool == .text,
+        guard annotation.tool.isTextLike,
               let origin = annotation.points.first else { return nil }
 
         return CGRect(origin: origin, size: textBounds(for: annotation))
@@ -2390,7 +2631,7 @@ private struct ScreenshotOverlayView: View {
     private func selectedTextAnnotationBorderHit(at localPoint: CGPoint) -> UUID? {
         guard let selectedAnnotationID,
               let annotation = annotations.first(where: { $0.id == selectedAnnotationID }),
-              annotation.tool == .text,
+              annotation.tool.isTextLike,
               isTextBorderHit(annotation: annotation, at: localPoint) else {
             return nil
         }
@@ -2402,7 +2643,7 @@ private struct ScreenshotOverlayView: View {
     private func selectedTextResizeHandleHit(at localPoint: CGPoint) -> TextResizeHandle? {
         guard let selectedAnnotationID,
               let annotation = annotations.first(where: { $0.id == selectedAnnotationID }),
-              annotation.tool == .text,
+              annotation.tool.isTextLike,
               let rect = textFrame(for: annotation) else { return nil }
 
         let hitRadius: CGFloat = 13
@@ -2429,7 +2670,7 @@ private struct ScreenshotOverlayView: View {
 
     private func annotationBounds(_ annotation: ScreenshotAnnotation) -> CGRect? {
         switch annotation.tool {
-        case .text:
+        case .text, .counter:
             guard let origin = annotation.points.first else { return nil }
             let size = textBounds(for: annotation)
             return CGRect(origin: origin, size: size)
@@ -2444,6 +2685,10 @@ private struct ScreenshotOverlayView: View {
     }
 
     private func textBounds(for annotation: ScreenshotAnnotation) -> CGSize {
+        if annotation.tool == .counter {
+            let side = max(28, max(annotation.textBoxSize.width, annotation.textBoxSize.height), annotation.fontSize + 16)
+            return CGSize(width: side, height: side)
+        }
         let intrinsicSize = textBoxSize(text: annotation.text, fontSize: annotation.fontSize)
         return CGSize(
             width: max(annotation.textBoxSize.width, intrinsicSize.width),
@@ -2461,6 +2706,17 @@ private extension CGRect {
     var area: CGFloat {
         guard !isNull, !isEmpty else { return 0 }
         return width * height
+    }
+}
+
+private struct ScreenshotTextAnnotationShape: Shape {
+    let isCounter: Bool
+
+    func path(in rect: CGRect) -> Path {
+        if isCounter {
+            return Circle().path(in: rect)
+        }
+        return RoundedRectangle(cornerRadius: 4, style: .continuous).path(in: rect)
     }
 }
 
@@ -2498,15 +2754,89 @@ private struct ScreenshotTextPaletteColor: Identifiable {
     }
 }
 
+private struct ScreenshotCustomColorSwatch: Identifiable {
+    let id: String
+    let title: String
+    let color: Color
+}
+
+private enum ScreenshotCustomColorPalette {
+    static let swatches: [ScreenshotCustomColorSwatch] = [
+        ScreenshotCustomColorSwatch(id: "red", title: "红色", color: .red),
+        ScreenshotCustomColorSwatch(id: "orange", title: "橙色", color: .orange),
+        ScreenshotCustomColorSwatch(id: "yellow", title: "黄色", color: .yellow),
+        ScreenshotCustomColorSwatch(id: "green", title: "绿色", color: .green),
+        ScreenshotCustomColorSwatch(id: "mint", title: "薄荷", color: .mint),
+        ScreenshotCustomColorSwatch(id: "cyan", title: "青色", color: .cyan),
+        ScreenshotCustomColorSwatch(id: "blue", title: "蓝色", color: .blue),
+        ScreenshotCustomColorSwatch(id: "purple", title: "紫色", color: .purple),
+        ScreenshotCustomColorSwatch(id: "pink", title: "粉色", color: .pink),
+        ScreenshotCustomColorSwatch(id: "brown", title: "棕色", color: .brown),
+        ScreenshotCustomColorSwatch(id: "white", title: "白色", color: .white),
+        ScreenshotCustomColorSwatch(id: "gray", title: "灰色", color: .gray),
+        ScreenshotCustomColorSwatch(id: "black", title: "黑色", color: .black),
+        ScreenshotCustomColorSwatch(id: "deep-red", title: "深红", color: Color(red: 0.72, green: 0.06, blue: 0.10)),
+        ScreenshotCustomColorSwatch(id: "deep-blue", title: "深蓝", color: Color(red: 0.05, green: 0.22, blue: 0.76)),
+        ScreenshotCustomColorSwatch(id: "lime", title: "亮绿", color: Color(red: 0.58, green: 0.86, blue: 0.12))
+    ]
+}
+
+private extension Color {
+    var hsbaComponents: (hue: CGFloat, saturation: CGFloat, brightness: CGFloat, alpha: CGFloat) {
+        let nsColor = NSColor(self).usingColorSpace(.sRGB) ?? NSColor(self)
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        nsColor.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return (
+            hue: hue.clamped(to: 0...1),
+            saturation: saturation.clamped(to: 0...1),
+            brightness: brightness.clamped(to: 0...1),
+            alpha: alpha.clamped(to: 0...1)
+        )
+    }
+
+    var hexRGBString: String {
+        let nsColor = NSColor(self).usingColorSpace(.sRGB) ?? NSColor(self)
+        let red = Int(round(nsColor.redComponent.clamped(to: 0...1) * 255))
+        let green = Int(round(nsColor.greenComponent.clamped(to: 0...1) * 255))
+        let blue = Int(round(nsColor.blueComponent.clamped(to: 0...1) * 255))
+        return String(format: "%02X%02X%02X", red, green, blue)
+    }
+
+    init?(hexRGB: String, alpha: CGFloat) {
+        let cleaned = hexRGB
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "#", with: "")
+        guard cleaned.count == 6, let value = Int(cleaned, radix: 16) else { return nil }
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255,
+            opacity: Double(alpha.clamped(to: 0...1))
+        )
+    }
+}
+
 private struct ScreenshotSelectionToolbar: View {
     @Binding var selectedTool: ScreenshotAnnotationTool?
     @Binding var selectedColor: ScreenshotAnnotationColor
+    @Binding var selectedCustomColor: Color?
+    @Binding var selectedFillEnabled: Bool
+    @Binding var selectedFillColor: ScreenshotAnnotationColor
+    @Binding var selectedCustomFillColor: Color?
     @Binding var selectedLineWidth: CGFloat
     @Binding var selectedFontSize: CGFloat
     let controlMode: ScreenshotToolbarControlMode?
+    let canFillShape: Bool
     let canUndo: Bool
     let canRedo: Bool
     let setColor: (ScreenshotAnnotationColor) -> Void
+    let setCustomColor: (Color) -> Void
+    let setFillEnabled: (Bool) -> Void
+    let setFillColor: (ScreenshotAnnotationColor) -> Void
+    let setCustomFillColor: (Color) -> Void
     let setLineWidth: (CGFloat) -> Void
     let setFontSize: (CGFloat) -> Void
     @Binding var selectedTextColor: Color
@@ -2518,6 +2848,8 @@ private struct ScreenshotSelectionToolbar: View {
     let setTextBold: (Bool) -> Void
     let setTextItalic: (Bool) -> Void
     let openTextColorPanel: () -> Void
+    let openStrokeColorPanel: () -> Void
+    let openFillColorPanel: () -> Void
     let isOCREnabled: Bool
     let hasOCRText: Bool
     @Binding var showAllOCRTextItems: Bool
@@ -2525,6 +2857,12 @@ private struct ScreenshotSelectionToolbar: View {
     let action: (ScreenshotToolbarAction) -> Void
     @State private var hoveredTooltip: String?
     @State private var hoveredItemID: String?
+    @State private var customColorTarget: ScreenshotColorPanelTarget?
+    @State private var customColorHue: CGFloat = 0
+    @State private var customColorSaturation: CGFloat = 1
+    @State private var customColorBrightness: CGFloat = 1
+    @State private var customColorOpacity: CGFloat = 1
+    @State private var customColorHex = "FF0000"
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -2574,163 +2912,16 @@ private struct ScreenshotSelectionToolbar: View {
                         action(.perform(.copy))
                     }
                 }
+                .frame(width: 560, alignment: .trailing)
 
                 if let controlMode {
-                    HStack(spacing: 4) {
-                        if controlMode == .ocr {
-                            iconButton(
-                                showAllOCRTextItems ? "eye.slash" : "eye",
-                                showAllOCRTextItems ? "隐藏所有识别区域" : "显示所有识别区域",
-                                isSelected: showAllOCRTextItems
-                            ) {
-                                showAllOCRTextItems.toggle()
-                            }
-                            .disabled(!hasOCRText)
-                            .opacity(hasOCRText ? 1 : 0.45)
-
-                            iconButton("doc.on.doc", "复制所有 OCR 文本", isSelected: false) {
-                                copyAllOCRText()
-                            }
-                            .disabled(!hasOCRText)
-                            .opacity(hasOCRText ? 1 : 0.45)
-                        } else if controlMode == .text {
-                            textToggleButton("B", "加粗", id: "bold", isSelected: selectedTextBold) {
-                                setTextBold(!selectedTextBold)
-                            }
-
-                            textToggleButton("I", "斜体", id: "italic", isSelected: selectedTextItalic) {
-                                setTextItalic(!selectedTextItalic)
-                            }
-
-                            Divider()
-                                .frame(height: 18)
-                                .overlay(Color.black.opacity(0.16))
-                                .padding(.horizontal, 4)
-
-                            Menu {
-                                ForEach([CGFloat(12), CGFloat(14), CGFloat(18), CGFloat(24), CGFloat(32), CGFloat(48)], id: \.self) { size in
-                                    Button("\(Int(size))") {
-                                        setFontSize(size)
-                                    }
-                                }
-                            } label: {
-                                toolbarLabelItem(id: "font-size", isSelected: false) {
-                                    Text("\(Int(selectedFontSize))")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.black.opacity(0.72))
-                                }
-                            }
-                            .menuStyle(.borderlessButton)
-                            .buttonStyle(.plain)
-                            .onHover { hovering in
-                                hoveredItemID = hovering ? "font-size" : nil
-                                hoveredTooltip = hovering ? "字体大小" : nil
-                            }
-
-                            ForEach(ScreenshotTextPaletteColor.common) { item in
-                                Button {
-                                    setTextColor(item.color)
-                                } label: {
-                                    toolbarItemFrame(id: "text-palette-\(item.id)", isSelected: item.matches(selectedTextColor)) {
-                                        Circle()
-                                            .fill(item.color)
-                                            .frame(width: 15, height: 15)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(item.borderColor, lineWidth: item.matches(selectedTextColor) ? 2 : 1.2)
-                                            )
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .onHover { hovering in
-                                    hoveredItemID = hovering ? "text-palette-\(item.id)" : nil
-                                    hoveredTooltip = hovering ? "字体颜色：\(item.title)" : nil
-                                }
-                            }
-
-                            Button {
-                                openTextColorPanel()
-                            } label: {
-                                toolbarItemFrame(id: "text-color-picker", isSelected: false) {
-                                    Image(systemName: "paintpalette")
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundStyle(.black.opacity(0.72))
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .onHover { hovering in
-                                hoveredItemID = hovering ? "text-color-picker" : nil
-                                hoveredTooltip = hovering ? "更多颜色" : nil
-                            }
-
-                            Menu {
-                                ForEach(ScreenshotTextStyle.fontChoices, id: \.name) { font in
-                                    Button(font.title) {
-                                        setFontName(font.name)
-                                    }
-                                }
-                            } label: {
-                                toolbarLabelItem(id: "font-family", isSelected: false) {
-                                    Text(ScreenshotTextStyle.title(for: selectedFontName))
-                                        .font(.system(size: 12.5, weight: .semibold))
-                                        .foregroundStyle(.black.opacity(0.72))
-                                        .lineLimit(1)
-                                        .frame(width: 78)
-                                }
-                            }
-                            .menuStyle(.borderlessButton)
-                            .buttonStyle(.plain)
-                            .onHover { hovering in
-                                hoveredItemID = hovering ? "font-family" : nil
-                                hoveredTooltip = hovering ? "字体" : nil
-                            }
-                        } else {
-                            ForEach(ScreenshotAnnotationColor.allCases) { color in
-                                Button {
-                                    setColor(color)
-                                } label: {
-                                    toolbarItemFrame(id: "color-\(color.id)", isSelected: selectedColor == color) {
-                                        Circle()
-                                            .fill(color.swiftUIColor)
-                                            .frame(width: 15, height: 15)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(selectedColor == color ? Color.black.opacity(0.40) : Color.white.opacity(0.62), lineWidth: 1.5)
-                                            )
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .onHover { hovering in
-                                    hoveredItemID = hovering ? "color-\(color.id)" : nil
-                                    hoveredTooltip = hovering ? "批注颜色：\(color.title)" : nil
-                                }
-                            }
-
-                            Divider()
-                                .frame(height: 18)
-                                .overlay(Color.black.opacity(0.16))
-                                .padding(.horizontal, 4)
-
-                            ForEach([CGFloat(2), CGFloat(4), CGFloat(7)], id: \.self) { width in
-                                Button {
-                                    setLineWidth(width)
-                                } label: {
-                                    toolbarItemFrame(id: "line-\(Int(width))", isSelected: selectedLineWidth == width) {
-                                        Circle()
-                                            .fill(selectedLineWidth == width ? Color.white : Color.black.opacity(0.72))
-                                            .frame(width: width + 5, height: width + 5)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .onHover { hovering in
-                                    hoveredItemID = hovering ? "line-\(Int(width))" : nil
-                                    hoveredTooltip = hovering ? "批注线宽：\(lineWidthTitle(width))" : nil
-                                }
-                            }
-                        }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        controlRow(for: controlMode)
                     }
+                    .frame(width: 560, height: 36, alignment: .trailing)
                 }
             }
+            .frame(width: 580, alignment: .trailing)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -2757,6 +2948,166 @@ private struct ScreenshotSelectionToolbar: View {
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
+
+            if let customColorTarget {
+                customColorPicker(for: customColorTarget)
+                    .offset(y: 84)
+                    .zIndex(40)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func controlRow(for controlMode: ScreenshotToolbarControlMode) -> some View {
+        HStack(spacing: 4) {
+            if controlMode == .ocr {
+                iconButton(
+                    showAllOCRTextItems ? "eye.slash" : "eye",
+                    showAllOCRTextItems ? "隐藏所有识别区域" : "显示所有识别区域",
+                    isSelected: showAllOCRTextItems
+                ) {
+                    showAllOCRTextItems.toggle()
+                }
+                .disabled(!hasOCRText)
+                .opacity(hasOCRText ? 1 : 0.45)
+
+                iconButton("doc.on.doc", "复制所有 OCR 文本", isSelected: false) {
+                    copyAllOCRText()
+                }
+                .disabled(!hasOCRText)
+                .opacity(hasOCRText ? 1 : 0.45)
+            } else if controlMode == .text {
+                textControls()
+            } else {
+                shapeControls()
+            }
+        }
+        .frame(minWidth: 560, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private func textControls() -> some View {
+        textToggleButton("B", "加粗", id: "bold", isSelected: selectedTextBold) {
+            setTextBold(!selectedTextBold)
+        }
+
+        textToggleButton("I", "斜体", id: "italic", isSelected: selectedTextItalic) {
+            setTextItalic(!selectedTextItalic)
+        }
+
+        Divider()
+            .frame(height: 18)
+            .overlay(Color.black.opacity(0.16))
+            .padding(.horizontal, 4)
+
+        Menu {
+            ForEach([CGFloat(12), CGFloat(14), CGFloat(18), CGFloat(24), CGFloat(32), CGFloat(48)], id: \.self) { size in
+                Button("\(Int(size))") {
+                    setFontSize(size)
+                }
+            }
+        } label: {
+            toolbarLabelItem(id: "font-size", isSelected: false) {
+                Text("\(Int(selectedFontSize))")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.black.opacity(0.72))
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredItemID = hovering ? "font-size" : nil
+            hoveredTooltip = hovering ? "字体大小" : nil
+        }
+
+        ForEach(ScreenshotTextPaletteColor.common) { item in
+            Button {
+                setTextColor(item.color)
+            } label: {
+                toolbarItemFrame(id: "text-palette-\(item.id)", isSelected: item.matches(selectedTextColor)) {
+                    Circle()
+                        .fill(item.color)
+                        .frame(width: 15, height: 15)
+                        .overlay(
+                            Circle()
+                                .stroke(item.borderColor, lineWidth: item.matches(selectedTextColor) ? 2 : 1.2)
+                        )
+                }
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                hoveredItemID = hovering ? "text-palette-\(item.id)" : nil
+                hoveredTooltip = hovering ? "字体颜色：\(item.title)" : nil
+            }
+        }
+
+        Button {
+            showCustomColorPicker(.text)
+        } label: {
+            toolbarItemFrame(id: "text-color-picker", isSelected: false) {
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.black.opacity(0.72))
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredItemID = hovering ? "text-color-picker" : nil
+            hoveredTooltip = hovering ? "更多颜色" : nil
+        }
+
+        Menu {
+            ForEach(ScreenshotTextStyle.fontChoices, id: \.name) { font in
+                Button(font.title) {
+                    setFontName(font.name)
+                }
+            }
+        } label: {
+            toolbarLabelItem(id: "font-family", isSelected: false) {
+                Text(ScreenshotTextStyle.title(for: selectedFontName))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.black.opacity(0.72))
+                    .lineLimit(1)
+                    .frame(width: 78)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredItemID = hovering ? "font-family" : nil
+            hoveredTooltip = hovering ? "字体" : nil
+        }
+
+        if canFillShape {
+            Divider()
+                .frame(height: 18)
+                .overlay(Color.black.opacity(0.16))
+                .padding(.horizontal, 4)
+
+            fillToggleButton()
+            fillColorButtons()
+        }
+    }
+
+    @ViewBuilder
+    private func shapeControls() -> some View {
+        strokeColorControls()
+
+        Divider()
+            .frame(height: 18)
+            .overlay(Color.black.opacity(0.16))
+            .padding(.horizontal, 4)
+
+        lineWidthSlider()
+
+        if canFillShape {
+            Divider()
+                .frame(height: 18)
+                .overlay(Color.black.opacity(0.16))
+                .padding(.horizontal, 4)
+
+            fillToggleButton()
+            fillColorButtons()
         }
     }
 
@@ -2802,6 +3153,364 @@ private struct ScreenshotSelectionToolbar: View {
         .onHover { hovering in
             hoveredItemID = hovering ? id : nil
             hoveredTooltip = hovering ? tooltip : nil
+        }
+    }
+
+    private func fillToggleButton() -> some View {
+        iconButton(
+            selectedFillEnabled ? "drop.fill" : "drop",
+            selectedFillEnabled ? "关闭填充" : "开启填充",
+            isSelected: selectedFillEnabled
+        ) {
+            setFillEnabled(!selectedFillEnabled)
+        }
+    }
+
+    private func strokeColorControls() -> some View {
+        HStack(spacing: 4) {
+            toolbarLabelItem(id: "stroke-label", isSelected: false) {
+                Text("边框")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.black.opacity(0.62))
+            }
+
+            ForEach(ScreenshotAnnotationColor.allCases) { color in
+                Button {
+                    setColor(color)
+                } label: {
+                    toolbarItemFrame(id: "color-\(color.id)", isSelected: selectedCustomColor == nil && selectedColor == color) {
+                        Circle()
+                            .fill(color.swiftUIColor)
+                            .frame(width: 15, height: 15)
+                            .overlay(
+                                Circle()
+                                    .stroke(selectedCustomColor == nil && selectedColor == color ? Color.black.opacity(0.40) : Color.white.opacity(0.62), lineWidth: 1.5)
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    hoveredItemID = hovering ? "color-\(color.id)" : nil
+                    hoveredTooltip = hovering ? "边框颜色：\(color.title)" : nil
+                }
+            }
+
+            colorPickerButton(
+                id: "stroke-custom",
+                title: "自定义边框颜色",
+                color: selectedCustomColor ?? selectedColor.swiftUIColor,
+                isSelected: selectedCustomColor != nil,
+                perform: {
+                    showCustomColorPicker(.stroke)
+                }
+            )
+        }
+    }
+
+    private func lineWidthSlider() -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "lineweight")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.black.opacity(0.64))
+
+            Slider(
+                value: Binding(
+                    get: { Double(selectedLineWidth) },
+                    set: { setLineWidth(CGFloat($0)) }
+                ),
+                in: 1...12,
+                step: 0.5
+            )
+            .frame(width: 108)
+
+            Text("\(String(format: "%.1g", selectedLineWidth))")
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.black.opacity(0.66))
+                .frame(width: 26, alignment: .trailing)
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 34)
+        .onHover { hovering in
+            hoveredItemID = hovering ? "line-slider" : nil
+            hoveredTooltip = hovering ? "边框宽度" : nil
+        }
+    }
+
+    private func fillColorButtons() -> some View {
+        HStack(spacing: 4) {
+            ForEach(ScreenshotAnnotationColor.allCases) { color in
+                Button {
+                    setFillColor(color)
+                } label: {
+                    toolbarItemFrame(id: "fill-\(color.id)", isSelected: selectedFillEnabled && selectedCustomFillColor == nil && selectedFillColor == color) {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(color.swiftUIColor.opacity(0.34))
+                            .frame(width: 18, height: 18)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(color.swiftUIColor, lineWidth: selectedCustomFillColor == nil && selectedFillColor == color ? 2 : 1.2)
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!selectedFillEnabled)
+                .opacity(selectedFillEnabled ? 1 : 0.45)
+                .onHover { hovering in
+                    hoveredItemID = hovering ? "fill-\(color.id)" : nil
+                    hoveredTooltip = hovering ? "填充颜色：\(color.title)" : nil
+                }
+            }
+
+            colorPickerButton(
+                id: "fill-custom",
+                title: "自定义填充颜色",
+                color: selectedCustomFillColor ?? selectedFillColor.swiftUIColor,
+                isSelected: selectedFillEnabled && selectedCustomFillColor != nil,
+                perform: {
+                    showCustomColorPicker(.fill)
+                }
+            )
+            .opacity(selectedFillEnabled ? 1 : 0.70)
+        }
+    }
+
+    private func showCustomColorPicker(_ target: ScreenshotColorPanelTarget) {
+        hoveredTooltip = nil
+        if customColorTarget == target {
+            customColorTarget = nil
+            return
+        }
+        if target == .fill, !selectedFillEnabled {
+            setFillEnabled(true)
+        }
+        syncCustomColorPicker(with: currentColor(for: target))
+        customColorTarget = target
+    }
+
+    private func syncCustomColorPicker(with color: Color) {
+        let components = color.hsbaComponents
+        customColorHue = components.hue
+        customColorSaturation = components.saturation
+        customColorBrightness = components.brightness
+        customColorOpacity = components.alpha
+        customColorHex = color.hexRGBString
+    }
+
+    private func currentColor(for target: ScreenshotColorPanelTarget) -> Color {
+        switch target {
+        case .text:
+            return selectedTextColor
+        case .stroke:
+            return selectedCustomColor ?? selectedColor.swiftUIColor
+        case .fill:
+            return selectedCustomFillColor ?? selectedFillColor.swiftUIColor
+        }
+    }
+
+    private func applyCustomColor(_ color: Color, to target: ScreenshotColorPanelTarget) {
+        syncCustomColorPicker(with: color)
+        switch target {
+        case .text:
+            setTextColor(color)
+        case .stroke:
+            setCustomColor(color)
+        case .fill:
+            if !selectedFillEnabled {
+                setFillEnabled(true)
+            }
+            setCustomFillColor(color)
+        }
+    }
+
+    private var customPickerColor: Color {
+        Color(
+            hue: Double(customColorHue),
+            saturation: Double(customColorSaturation),
+            brightness: Double(customColorBrightness),
+            opacity: Double(customColorOpacity)
+        )
+    }
+
+    private func updateCustomPickerColor(_ target: ScreenshotColorPanelTarget) {
+        let color = customPickerColor
+        customColorHex = color.hexRGBString
+        switch target {
+        case .text:
+            setTextColor(color)
+        case .stroke:
+            setCustomColor(color)
+        case .fill:
+            setCustomFillColor(color)
+        }
+    }
+
+    private func customColorPicker(for target: ScreenshotColorPanelTarget) -> some View {
+        let title: String = {
+            switch target {
+            case .text: return "文字颜色"
+            case .stroke: return "边框颜色"
+            case .fill: return "填充颜色"
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(customPickerColor)
+                    .frame(width: 28, height: 28)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(.black.opacity(0.22), lineWidth: 1)
+                    )
+
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.black.opacity(0.78))
+
+                Spacer(minLength: 8)
+
+                Button {
+                    customColorTarget = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.black.opacity(0.62))
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(24), spacing: 6), count: 8), spacing: 6) {
+                ForEach(ScreenshotCustomColorPalette.swatches) { swatch in
+                    Button {
+                        applyCustomColor(swatch.color, to: target)
+                    } label: {
+                        Circle()
+                            .fill(swatch.color)
+                            .frame(width: 20, height: 20)
+                            .overlay(Circle().stroke(.black.opacity(0.22), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .help(swatch.title)
+                }
+            }
+
+            customColorSlider("H", value: $customColorHue, range: 0...1, tint: Color(hue: Double(customColorHue), saturation: 1, brightness: 1)) {
+                updateCustomPickerColor(target)
+            }
+            customColorSlider("S", value: $customColorSaturation, range: 0...1, tint: .blue) {
+                updateCustomPickerColor(target)
+            }
+            customColorSlider("B", value: $customColorBrightness, range: 0...1, tint: .black) {
+                updateCustomPickerColor(target)
+            }
+            customColorSlider("A", value: $customColorOpacity, range: 0.05...1, tint: .gray) {
+                updateCustomPickerColor(target)
+            }
+
+            HStack(spacing: 8) {
+                Text("#")
+                    .font(.system(size: 12, weight: .bold).monospaced())
+                    .foregroundStyle(.black.opacity(0.58))
+
+                TextField("RRGGBB", text: $customColorHex)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold).monospaced())
+                    .foregroundStyle(.black.opacity(0.76))
+                    .padding(.horizontal, 7)
+                    .frame(width: 82, height: 26)
+                    .background(.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .onSubmit {
+                        if let color = Color(hexRGB: customColorHex, alpha: customColorOpacity) {
+                            applyCustomColor(color, to: target)
+                        } else {
+                            customColorHex = customPickerColor.hexRGBString
+                        }
+                    }
+
+                Button("应用") {
+                    if let color = Color(hexRGB: customColorHex, alpha: customColorOpacity) {
+                        applyCustomColor(color, to: target)
+                    }
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .foregroundStyle(.blue)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12)
+        .frame(width: 282)
+        .background(.white.opacity(0.96), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.black.opacity(0.16), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.22), radius: 16, y: 7)
+    }
+
+    private func customColorSlider(
+        _ title: String,
+        value: Binding<CGFloat>,
+        range: ClosedRange<CGFloat>,
+        tint: Color,
+        onChange: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 7) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold).monospaced())
+                .foregroundStyle(tint)
+                .frame(width: 12)
+
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: { newValue in
+                        value.wrappedValue = CGFloat(newValue)
+                        onChange()
+                    }
+                ),
+                in: Double(range.lowerBound)...Double(range.upperBound)
+            )
+
+            Text(title == "H" ? "\(Int(round(value.wrappedValue * 360)))" : "\(Int(round(value.wrappedValue * 100)))")
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.black.opacity(0.62))
+                .frame(width: 30, alignment: .trailing)
+        }
+        .frame(height: 20)
+    }
+
+    private func colorPickerButton(
+        id: String,
+        title: String,
+        color: Color,
+        isSelected: Bool,
+        perform: @escaping () -> Void
+    ) -> some View {
+        Button(action: perform) {
+            toolbarItemFrame(id: id, isSelected: isSelected) {
+                ZStack {
+                    Image(systemName: "paintpalette")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(isSelected ? .white : .black.opacity(0.72))
+                    Circle()
+                        .fill(color)
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().stroke(.white.opacity(0.92), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.28), radius: 1, y: 0.5)
+                        .offset(x: 8, y: 8)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredItemID = hovering ? id : nil
+            hoveredTooltip = hovering ? title : nil
         }
     }
 
@@ -3228,6 +3937,12 @@ private enum ScreenshotToolbarControlMode {
     case text
 }
 
+private enum ScreenshotColorPanelTarget {
+    case text
+    case stroke
+    case fill
+}
+
 struct ScreenshotCapturePayload {
     let rect: CGRect
     let image: NSImage?
@@ -3239,6 +3954,9 @@ struct ScreenshotAnnotation: Identifiable {
     let id = UUID()
     let tool: ScreenshotDrawableTool
     var color: ScreenshotAnnotationColor
+    var customColor: NSColor? = nil
+    var fillColor: ScreenshotAnnotationColor? = nil
+    var customFillColor: NSColor? = nil
     var lineWidth: CGFloat
     var fontSize: CGFloat = 18
     var textColor: NSColor?
@@ -3250,11 +3968,27 @@ struct ScreenshotAnnotation: Identifiable {
     var points: [CGPoint]
 
     var effectiveNSColor: NSColor {
-        textColor ?? color.nsColor
+        textColor ?? effectiveStrokeNSColor
+    }
+
+    var effectiveStrokeNSColor: NSColor {
+        customColor ?? color.nsColor
+    }
+
+    var effectiveFillNSColor: NSColor? {
+        customFillColor ?? fillColor?.nsColor
     }
 
     var effectiveSwiftUIColor: Color {
         Color(nsColor: effectiveNSColor)
+    }
+
+    var effectiveStrokeSwiftUIColor: Color {
+        Color(nsColor: effectiveStrokeNSColor)
+    }
+
+    var effectiveFillSwiftUIColor: Color? {
+        effectiveFillNSColor.map(Color.init)
     }
 
     var swiftUIFont: Font {
@@ -3307,12 +4041,21 @@ enum ScreenshotTextStyle {
 
 enum ScreenshotDrawableTool {
     case text
+    case counter
     case pen
     case mosaic
     case line
     case arrow
     case rectangle
     case ellipse
+
+    var isFillable: Bool {
+        self == .rectangle || self == .ellipse || self == .counter
+    }
+
+    var isTextLike: Bool {
+        self == .text || self == .counter
+    }
 }
 
 enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
@@ -3320,6 +4063,7 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
 
     case cursor
     case text
+    case counter
     case rectangle
     case ellipse
     case line
@@ -3335,6 +4079,8 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
             return .pen
         case .text:
             return .text
+        case .counter:
+            return .counter
         case .rectangle:
             return .rectangle
         case .ellipse:
@@ -3350,12 +4096,22 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
         }
     }
 
+    var isFillable: Bool {
+        drawableTool.isFillable
+    }
+
+    var isTextLike: Bool {
+        drawableTool.isTextLike
+    }
+
     var systemImage: String {
         switch self {
         case .cursor:
             return "cursorarrow"
         case .text:
             return Self.textGlyphName
+        case .counter:
+            return "1.circle"
         case .rectangle:
             return "rectangle"
         case .ellipse:
@@ -3377,6 +4133,8 @@ enum ScreenshotAnnotationTool: CaseIterable, Identifiable {
             return "移动选区"
         case .text:
             return "文字"
+        case .counter:
+            return "序号"
         case .rectangle:
             return "矩形"
         case .ellipse:
@@ -3784,6 +4542,50 @@ private enum TextResizeHandle: CaseIterable, Identifiable {
         return TextResizeResult(
             origin: CGPoint(x: minX, y: minY),
             size: CGSize(width: maxX - minX, height: maxY - minY)
+        )
+    }
+
+    func resizedCircle(origin: CGPoint, size: CGSize, translation: CGSize, bounds: CGRect) -> TextResizeResult {
+        let minimumSide: CGFloat = 24
+        let startSide = max(size.width, size.height, minimumSide)
+        var proposedSide: CGFloat
+        var proposedOrigin = origin
+
+        switch self {
+        case .topLeft:
+            let delta = max(-translation.width, -translation.height)
+            proposedSide = startSide + delta
+            proposedOrigin = CGPoint(x: origin.x + startSide - proposedSide, y: origin.y + startSide - proposedSide)
+        case .top:
+            proposedSide = startSide - translation.height
+            proposedOrigin = CGPoint(x: origin.x, y: origin.y + startSide - proposedSide)
+        case .topRight:
+            let delta = max(translation.width, -translation.height)
+            proposedSide = startSide + delta
+            proposedOrigin = CGPoint(x: origin.x, y: origin.y + startSide - proposedSide)
+        case .left:
+            proposedSide = startSide - translation.width
+            proposedOrigin = CGPoint(x: origin.x + startSide - proposedSide, y: origin.y)
+        case .right:
+            proposedSide = startSide + translation.width
+        case .bottomLeft:
+            let delta = max(-translation.width, translation.height)
+            proposedSide = startSide + delta
+            proposedOrigin = CGPoint(x: origin.x + startSide - proposedSide, y: origin.y)
+        case .bottom:
+            proposedSide = startSide + translation.height
+        case .bottomRight:
+            let delta = max(translation.width, translation.height)
+            proposedSide = startSide + delta
+        }
+
+        proposedSide = max(minimumSide, proposedSide)
+        proposedOrigin.x = proposedOrigin.x.clamped(to: bounds.minX...max(bounds.minX, bounds.maxX - proposedSide))
+        proposedOrigin.y = proposedOrigin.y.clamped(to: bounds.minY...max(bounds.minY, bounds.maxY - proposedSide))
+
+        return TextResizeResult(
+            origin: proposedOrigin,
+            size: CGSize(width: proposedSide, height: proposedSide)
         )
     }
 

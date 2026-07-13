@@ -357,7 +357,7 @@ enum ScreenshotAnnotationRenderer {
         outputHeight: CGFloat,
         mosaicSampler: ScreenshotMosaicSampler?
     ) {
-        let color = annotation.effectiveNSColor
+        let color = annotation.tool == .text ? annotation.effectiveNSColor : annotation.effectiveStrokeNSColor
         color.setStroke()
         color.setFill()
 
@@ -379,6 +379,13 @@ enum ScreenshotAnnotationRenderer {
             text.draw(
                 at: CGPoint(x: point.x, y: point.y - textSize.height),
                 withAttributes: attributes
+            )
+        case .counter:
+            drawCounterAnnotation(
+                annotation,
+                scaleX: scaleX,
+                scaleY: scaleY,
+                outputHeight: outputHeight
             )
         case .pen:
             guard let firstPoint = annotation.points.first else { return }
@@ -407,12 +414,69 @@ enum ScreenshotAnnotationRenderer {
         case .rectangle:
             guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight) else { return }
             path.appendRect(rect)
+            if let fillColor = annotation.effectiveFillNSColor {
+                fillColor.withAlphaComponent(0.24).setFill()
+                path.fill()
+                color.setStroke()
+            }
             path.stroke()
         case .ellipse:
             guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight) else { return }
             path.appendOval(in: rect)
+            if let fillColor = annotation.effectiveFillNSColor {
+                fillColor.withAlphaComponent(0.24).setFill()
+                path.fill()
+                color.setStroke()
+            }
             path.stroke()
         }
+    }
+
+    private static func drawCounterAnnotation(
+        _ annotation: ScreenshotAnnotation,
+        scaleX: CGFloat,
+        scaleY: CGFloat,
+        outputHeight: CGFloat
+    ) {
+        guard let origin = annotation.points.first else { return }
+        let scale = min(scaleX, scaleY)
+        let topLeft = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+        let size = CGSize(
+            width: annotation.textBoxSize.width * scaleX,
+            height: annotation.textBoxSize.height * scaleY
+        )
+        let rect = CGRect(
+            x: topLeft.x,
+            y: topLeft.y - size.height,
+            width: size.width,
+            height: size.height
+        )
+
+        let path = NSBezierPath(ovalIn: rect)
+        if let fillColor = annotation.effectiveFillNSColor {
+            fillColor.withAlphaComponent(0.94).setFill()
+            path.fill()
+        }
+        annotation.effectiveStrokeNSColor.setStroke()
+        path.lineWidth = max(1.5, annotation.lineWidth * scale)
+        path.stroke()
+
+        let text = NSString(string: annotation.text)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: annotation.nsFont(scale: scale),
+            .foregroundColor: annotation.effectiveFillNSColor == nil ? annotation.effectiveStrokeNSColor : NSColor.white,
+            .paragraphStyle: paragraph
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let textRect = CGRect(
+            x: rect.minX,
+            y: rect.midY - textSize.height / 2,
+            width: rect.width,
+            height: textSize.height
+        )
+        text.draw(in: textRect, withAttributes: attributes)
     }
 
     private static func drawMosaic(
