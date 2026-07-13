@@ -10,13 +10,14 @@ enum FinderVersionRenameResult {
 
 enum FinderVersionRenameService {
     static func suggestedDraft(for fileURL: URL, date: Date = Date()) -> FinderRenameDraft {
-        let parsed = parse(fileURL: fileURL)
+        let statuses = FinderRenameConfigStore.statuses()
+        let parsed = parse(fileURL: fileURL, statuses: statuses)
         return FinderRenameDraft(
             originalURL: fileURL,
             baseName: parsed.baseName,
             version: parsed.version.map { $0 + 1 } ?? 1,
             date: date,
-            status: parsed.status ?? FinderRenameDefaults.statuses[0]
+            status: parsed.status ?? statuses[0]
         )
     }
 
@@ -57,10 +58,10 @@ enum FinderVersionRenameService {
         }
     }
 
-    private static func parse(fileURL: URL) -> (baseName: String, version: Int?, status: String?) {
+    private static func parse(fileURL: URL, statuses: [String]) -> (baseName: String, version: Int?, status: String?) {
         let name = fileURL.deletingPathExtension().lastPathComponent
-        let statuses = FinderRenameDefaults.statuses.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
-        let pattern = #"^(.*)_v(\d{1,4})_\d{8}_("# + statuses + #")$"#
+        let statusPattern = statuses.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+        let pattern = #"^(.*)_v(\d{1,4})_\d{8}_("# + statusPattern + #")$"#
 
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
@@ -146,4 +147,3 @@ private enum FinderNewFileAuthorizationStoreMirrorForRename {
         return decoded
     }
 }
-

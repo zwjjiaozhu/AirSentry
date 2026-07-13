@@ -23,6 +23,10 @@ final class FinderRenamePanelViewModel: ObservableObject {
         configStore.enabledFields
     }
 
+    var statuses: [String] {
+        configStore.statuses
+    }
+
     func rename(onSuccess: () -> Void) {
         errorMessage = nil
         switch FinderVersionRenameService.rename(draft: draft) {
@@ -43,9 +47,17 @@ final class FinderRenamePanelViewModel: ObservableObject {
 
 struct FinderRenamePanelView: View {
     @ObservedObject var viewModel: FinderRenamePanelViewModel
+    @ObservedObject private var configStore: FinderRenameConfigStore
     let onClose: () -> Void
     @State private var showsFieldSettings = false
     @State private var draggedFieldID: String?
+    @State private var newStatusName = ""
+
+    init(viewModel: FinderRenamePanelViewModel, onClose: @escaping () -> Void) {
+        self.viewModel = viewModel
+        self.configStore = viewModel.configStore
+        self.onClose = onClose
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -124,47 +136,124 @@ struct FinderRenamePanelView: View {
     }
 
     private var fieldSettingsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("字段显示")
-                        .font(.system(size: 14.5, weight: .semibold))
-                    Text("拖拽调整面板字段顺序，关闭后不会显示在重命名面板中。")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("字段显示")
+                            .font(.system(size: 14.5, weight: .semibold))
+                        Text("拖拽调整面板字段顺序，关闭后不会显示在重命名面板中。")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
                 }
-                Spacer()
-            }
 
-            VStack(spacing: 0) {
-                ForEach(Array(viewModel.configStore.fields.enumerated()), id: \.element.id) { index, field in
-                    fieldSettingRow(field)
-                        .onDrag {
-                            draggedFieldID = field.id
-                            return NSItemProvider(object: finderRenameFieldDragPayload(field.id) as NSString)
-                        }
-                        .onDrop(
-                            of: [.plainText],
-                            delegate: FinderRenamePanelFieldDropDelegate(
-                                store: viewModel.configStore,
-                                targetFieldID: field.id,
-                                draggedFieldID: $draggedFieldID
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.configStore.fields.enumerated()), id: \.element.id) { index, field in
+                        fieldSettingRow(field)
+                            .onDrag {
+                                draggedFieldID = field.id
+                                return NSItemProvider(object: finderRenameFieldDragPayload(field.id) as NSString)
+                            }
+                            .onDrop(
+                                of: [.plainText],
+                                delegate: FinderRenamePanelFieldDropDelegate(
+                                    store: viewModel.configStore,
+                                    targetFieldID: field.id,
+                                    draggedFieldID: $draggedFieldID
+                                )
                             )
-                        )
 
-                    if index < viewModel.configStore.fields.count - 1 {
-                        Divider().padding(.leading, 48)
+                        if index < viewModel.configStore.fields.count - 1 {
+                            Divider().padding(.leading, 48)
+                        }
                     }
                 }
+                .background(.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.primary.opacity(0.075), lineWidth: 1)
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("文件状态")
+                                .font(.system(size: 14.5, weight: .semibold))
+                            Text("内置状态会保留；自定义状态可删除。")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("输入新状态", text: $newStatusName)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(addCustomStatus)
+                        Button {
+                            addCustomStatus()
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(newStatusName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
+                        ForEach(viewModel.statuses, id: \.self) { status in
+                            statusSettingChip(status)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.primary.opacity(0.075), lineWidth: 1)
+                )
             }
-            .background(.primary.opacity(0.028), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.primary.opacity(0.075), lineWidth: 1)
-            )
+            .padding(.horizontal, 18)
+            .padding(.bottom, 18)
         }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 18)
+    }
+
+    private func addCustomStatus() {
+        let status = newStatusName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !status.isEmpty else { return }
+        viewModel.configStore.addStatus(status)
+        viewModel.draft.status = status
+        newStatusName = ""
+    }
+
+    private func statusSettingChip(_ status: String) -> some View {
+        let isCustom = viewModel.configStore.isCustomStatus(status)
+        return HStack(spacing: 6) {
+            Text(status)
+                .font(.system(size: 12.5, weight: .semibold))
+                .lineLimit(1)
+            if isCustom {
+                Button {
+                    viewModel.configStore.removeCustomStatus(status)
+                    if viewModel.draft.status == status {
+                        viewModel.draft.status = viewModel.statuses.first ?? FinderRenameDefaults.statuses[0]
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .background(isCustom ? Color.blue.opacity(0.10) : Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(isCustom ? Color.blue.opacity(0.18) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func fieldSettingRow(_ field: FinderRenameField) -> some View {
@@ -217,11 +306,10 @@ struct FinderRenamePanelView: View {
         case .status:
             controlCard {
                 fieldLabel(field)
-                HStack(spacing: 8) {
-                    ForEach(FinderRenameDefaults.statuses, id: \.self) { status in
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(viewModel.statuses, id: \.self) { status in
                         statusButton(status)
                     }
-                    Spacer(minLength: 0)
                 }
             }
         case .version:

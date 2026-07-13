@@ -6,8 +6,16 @@ final class FinderRenameConfigStore: ObservableObject {
         didSet { saveFields(); syncSharedConfig?() }
     }
 
+    @Published var customStatuses: [String] {
+        didSet { saveCustomStatuses() }
+    }
+
     var enabledFields: [FinderRenameField] {
         fields.filter(\.isEnabled)
+    }
+
+    var statuses: [String] {
+        Self.mergedStatuses(customStatuses)
     }
 
     var syncSharedConfig: (() -> Void)?
@@ -17,6 +25,7 @@ final class FinderRenameConfigStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         fields = Self.loadFields(from: defaults)
+        customStatuses = Self.loadCustomStatuses(from: defaults)
     }
 
     func setField(_ fieldID: String, isEnabled: Bool) {
@@ -33,6 +42,23 @@ final class FinderRenameConfigStore: ObservableObject {
         fields.insert(field, at: targetIndex)
     }
 
+    func addStatus(_ rawStatus: String) {
+        let status = rawStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !status.isEmpty,
+              !statuses.contains(where: { $0.localizedCaseInsensitiveCompare(status) == .orderedSame }) else {
+            return
+        }
+        customStatuses.append(status)
+    }
+
+    func removeCustomStatus(_ status: String) {
+        customStatuses.removeAll { $0 == status }
+    }
+
+    func isCustomStatus(_ status: String) -> Bool {
+        customStatuses.contains(status)
+    }
+
     private func saveFields() {
         do {
             let data = try JSONEncoder().encode(fields)
@@ -42,7 +68,16 @@ final class FinderRenameConfigStore: ObservableObject {
         }
     }
 
-    private static func loadFields(from defaults: UserDefaults) -> [FinderRenameField] {
+    private func saveCustomStatuses() {
+        do {
+            let data = try JSONEncoder().encode(customStatuses)
+            defaults.set(data, forKey: Self.customStatusesKey)
+        } catch {
+            NSLog("AirSentry rename statuses save failed: \(error.localizedDescription)")
+        }
+    }
+
+    nonisolated private static func loadFields(from defaults: UserDefaults) -> [FinderRenameField] {
         guard let data = defaults.data(forKey: fieldsKey),
               let decoded = try? JSONDecoder().decode([FinderRenameField].self, from: data),
               !decoded.isEmpty else {
@@ -60,9 +95,34 @@ final class FinderRenameConfigStore: ObservableObject {
         return preserved + missing
     }
 
-    static func enabledFields(from defaults: UserDefaults = .standard) -> [FinderRenameField] {
+    nonisolated private static func loadCustomStatuses(from defaults: UserDefaults) -> [String] {
+        guard let data = defaults.data(forKey: customStatusesKey),
+              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return decoded
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !FinderRenameDefaults.statuses.contains($0) }
+    }
+
+    nonisolated static func statuses(from defaults: UserDefaults = .standard) -> [String] {
+        mergedStatuses(loadCustomStatuses(from: defaults))
+    }
+
+    nonisolated private static func mergedStatuses(_ customStatuses: [String]) -> [String] {
+        var seen = Set(FinderRenameDefaults.statuses)
+        var result = FinderRenameDefaults.statuses
+        for status in customStatuses where !seen.contains(status) {
+            seen.insert(status)
+            result.append(status)
+        }
+        return result
+    }
+
+    nonisolated static func enabledFields(from defaults: UserDefaults = .standard) -> [FinderRenameField] {
         loadFields(from: defaults).filter(\.isEnabled)
     }
 
     private static let fieldsKey = "finderRenameFields"
+    private static let customStatusesKey = "finderRenameCustomStatuses"
 }

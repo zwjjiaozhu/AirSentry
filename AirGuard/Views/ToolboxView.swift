@@ -4211,6 +4211,7 @@ private final class SuperRightClickStore: ObservableObject {
     static let openWithMenuItemID = "openWith"
     static let favoriteFoldersMenuItemID = "favoriteFolders"
     static let renameMenuItemID = "rename"
+    static let shortcutMenuItemID = "shortcut"
     static let defaultSelectedMenuItemID = newFileMenuItemID
 
     @Published var menuItems: [SuperRightClickMenuItem] {
@@ -4466,6 +4467,7 @@ private final class SuperRightClickStore: ObservableObject {
         SuperRightClickMenuItem(id: "openWith", title: "其他应用打开", subtitle: "快速选择指定应用", detail: "为文件或目录提供快捷打开方式，后续可在这里维护应用列表。", systemImage: "app.badge", accent: .purple, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "favoriteFolders", title: "常用目录", subtitle: "复制或跳转常用路径", detail: "把高频目录放进右键菜单，便于快速复制路径或在 Finder 中打开。", systemImage: "folder.badge.gearshape", accent: .orange, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: renameMenuItemID, title: "重命名", subtitle: "版本号、日期和状态", detail: "右键文件后打开重命名面板，按配置顺序选择状态、版本号和日期，并预览最终文件名。", systemImage: "pencil.and.list.clipboard", accent: .blue, hasChildren: true, isEnabled: true),
+        SuperRightClickMenuItem(id: shortcutMenuItemID, title: "快捷方式", subtitle: "创建或发送到桌面", detail: "为所选文件、文件夹或应用创建 Finder 快捷方式，可直接生成在当前目录，也可发送到桌面。", systemImage: "arrow.up.forward.app", accent: .teal, hasChildren: true, isEnabled: true),
         SuperRightClickMenuItem(id: "airdrop", title: "隔空投送", subtitle: "调用系统 AirDrop", detail: "把系统隔空投送动作放到统一菜单中，减少在 Finder 分享菜单里的查找成本。", systemImage: "airplayaudio", accent: .teal, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "copyPath", title: "拷贝路径", subtitle: "复制完整文件路径", detail: "复制所选文件或目录的完整路径，方便在终端、编辑器和脚本中使用。", systemImage: "doc.on.clipboard", accent: .gray, hasChildren: false, isEnabled: true),
         SuperRightClickMenuItem(id: "copyName", title: "拷贝名称", subtitle: "复制文件名", detail: "仅复制所选项目名称，不包含父级目录路径。", systemImage: "tag", accent: .gray, hasChildren: false, isEnabled: true),

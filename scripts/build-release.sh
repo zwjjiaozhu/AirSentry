@@ -102,6 +102,12 @@ finder_extension_bundle_id() {
     /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$extension_path/Contents/Info.plist" 2>/dev/null || true
 }
 
+refresh_app_bundle_timestamp() {
+    local app_path="$1"
+    [[ -d "$app_path" ]] || return 0
+    /usr/bin/touch "$app_path"
+}
+
 unregister_finder_extension() {
     local app_path="$1"
     local extension_path
@@ -227,6 +233,8 @@ else
     echo "Install a certificate or rerun with --identity \"CERTIFICATE NAME\"." >&2
 fi
 
+refresh_app_bundle_timestamp "$APP_PATH"
+
 echo
 echo "Release app: $APP_PATH"
 du -sh "$APP_PATH"
@@ -237,6 +245,7 @@ if [[ "$install" == true ]]; then
     unregister_finder_extension "$INSTALL_PATH"
     rm -rf "$INSTALL_PATH"
     ditto "$APP_PATH" "$INSTALL_PATH"
+    refresh_app_bundle_timestamp "$INSTALL_PATH"
     refresh_finder_extension "$INSTALL_PATH"
     echo "Installed app: $INSTALL_PATH"
 fi

@@ -304,6 +304,13 @@ private final class AirSentryAppDelegate: NSObject, NSApplicationDelegate {
             FinderUtilityHandler.copyToClipboard(text: path, label: "name")
         case "renamePanel":
             FinderRenameRequestHandler.showPanel(path: path)
+        case "createShortcut":
+            guard let destinationPath = extra else {
+                finderLog.warning("[createShortcut] missing destination path")
+                NSSound.beep()
+                return
+            }
+            FinderShortcutRequestHandler.handle(targetPath: path, destinationDirectoryPath: destinationPath)
         case "toggleShowHidden":
             FinderUtilityHandler.toggleShowHidden()
         case "toggleHideDesktop":
@@ -413,6 +420,12 @@ private enum FinderURLRouter {
             if let path = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryValue(named: "path") {
                 FinderRenameRequestHandler.showPanel(path: path)
             }
+        case "/createShortcut":
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let path = components.queryValue(named: "path"),
+               let destinationPath = components.queryValue(named: "extra") {
+                FinderShortcutRequestHandler.handle(targetPath: path, destinationDirectoryPath: destinationPath)
+            }
         case "/toggleShowHidden":
             FinderUtilityHandler.toggleShowHidden()
         case "/toggleHideDesktop":
@@ -503,6 +516,127 @@ private enum FinderOpenWithRequestHandler {
         alert.informativeText = "未检测到已安装的 \(appName)（\(bundleID)）。请确认该应用已安装后重试。"
         alert.addButton(withTitle: "确定")
         alert.runModal()
+    }
+}
+
+private enum FinderShortcutRequestHandler {
+    static func handle(targetPath: String, destinationDirectoryPath: String) {
+        let targetURL = URL(fileURLWithPath: targetPath)
+        let destinationDirectoryURL = URL(fileURLWithPath: destinationDirectoryPath, isDirectory: true)
+        NSLog("AirSentry handling shortcut request: target=%{public}@, destination=%{public}@", targetURL.path, destinationDirectoryURL.path)
+
+        switch FinderShortcutService.createShortcut(to: targetURL, in: destinationDirectoryURL) {
+        case .created(let shortcutURL):
+            DispatchQueue.main.async {
+                NSWorkspace.shared.activateFileViewerSelecting([shortcutURL])
+            }
+        case .unauthorized(let requestedURL):
+            NSLog("AirSentry failed to create shortcut because destination is not authorized: %{public}@", requestedURL.path)
+            NSSound.beep()
+            FinderNewFilePermissionPrompter.showUnauthorizedFolderAlert(for: requestedURL)
+        case .writeFailed(let shortcutURL, let error):
+            NSLog("AirSentry failed to create shortcut at %{public}@: %{public}@", shortcutURL.path, error.localizedDescription)
+            NSSound.beep()
+            FinderNewFilePermissionPrompter.showWriteFailedAlert(for: shortcutURL)
+        }
+    }
+}
+
+private enum FinderShortcutService {
+    enum Result {
+        case created(URL)
+        case unauthorized(URL)
+        case writeFailed(URL, Error)
+    }
+
+    static func createShortcut(to targetURL: URL, in destinationDirectoryURL: URL, defaults: UserDefaults = .standard) -> Result {
+        let requestedURL = uniqueShortcutURL(for: targetURL, in: destinationDirectoryURL)
+        guard let scope = authorizedScope(for: requestedURL, defaults: defaults) else {
+            return .unauthorized(requestedURL)
+        }
+
+        let didAccess = scope.url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccess {
+                scope.url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
+            let bookmarkData = try targetURL.bookmarkData(
+                options: [.suitableForBookmarkFile],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            try URL.writeBookmarkData(bookmarkData, to: requestedURL)
+            return .created(requestedURL)
+        } catch {
+            return .writeFailed(requestedURL, error)
+        }
+    }
+
+    private static func authorizedScope(for requestedURL: URL, defaults: UserDefaults) -> AuthorizedScope? {
+        let folders = FinderNewFileAuthorizationStoreMirrorForShortcut.loadFolders(from: defaults)
+
+        for folder in folders {
+            var isStale = false
+            do {
+                let url = try URL(
+                    resolvingBookmarkData: folder.bookmarkData,
+                    options: [.withSecurityScope],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+
+                if isDescendant(requestedURL, of: url) {
+                    if isStale {
+                        NSLog("AirSentry shortcut bookmark is stale for \(url.path)")
+                    }
+                    return AuthorizedScope(url: url)
+                }
+            } catch {
+                NSLog("AirSentry failed to resolve shortcut authorization bookmark: \(error.localizedDescription)")
+            }
+        }
+
+        return nil
+    }
+
+    private static func uniqueShortcutURL(for targetURL: URL, in destinationDirectoryURL: URL) -> URL {
+        let fileManager = FileManager.default
+        let requestedURL = destinationDirectoryURL.appendingPathComponent("\(targetURL.lastPathComponent) 快捷方式")
+        guard fileManager.fileExists(atPath: requestedURL.path) else { return requestedURL }
+
+        for index in 2...999 {
+            let candidateURL = destinationDirectoryURL.appendingPathComponent("\(targetURL.lastPathComponent) 快捷方式 \(index)")
+            if !fileManager.fileExists(atPath: candidateURL.path) {
+                return candidateURL
+            }
+        }
+
+        return destinationDirectoryURL.appendingPathComponent("\(targetURL.lastPathComponent) 快捷方式 \(UUID().uuidString.prefix(8))")
+    }
+
+    private static func isDescendant(_ childURL: URL, of parentURL: URL) -> Bool {
+        let childPath = childURL.standardizedFileURL.path
+        let parentPath = parentURL.standardizedFileURL.path
+        if parentPath == "/" { return childPath.hasPrefix("/") }
+        return childPath == parentPath || childPath.hasPrefix(parentPath + "/")
+    }
+
+    private struct AuthorizedScope {
+        let url: URL
+    }
+}
+
+private enum FinderNewFileAuthorizationStoreMirrorForShortcut {
+    static func loadFolders(from defaults: UserDefaults) -> [FinderAuthorizedFolder] {
+        guard let data = defaults.data(forKey: "finderNewFileAuthorizedFolders"),
+              let decoded = try? JSONDecoder().decode([FinderAuthorizedFolder].self, from: data) else {
+            return []
+        }
+
+        return decoded
     }
 }
 

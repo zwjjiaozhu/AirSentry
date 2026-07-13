@@ -232,27 +232,38 @@ final class FinderSync: FIFinderSync {
             submenu.addItem(menuItem("重命名", systemImage: "pencil.and.list.clipboard", action: #selector(showRenamePanel)))
         }
         
-        // 5. 隔空投送
+        // 5. 快捷方式
+        if enabledIDs.contains("shortcut") {
+            let shortcutItem = NSMenuItem(title: "快捷方式", action: nil, keyEquivalent: "")
+            shortcutItem.image = menuImage(systemName: "arrow.up.forward.app")
+            let shortcutSubmenu = NSMenu(title: "快捷方式")
+            shortcutSubmenu.addItem(menuItem("创建快捷方式", systemImage: "link.badge.plus", action: #selector(createShortcutHere)))
+            shortcutSubmenu.addItem(menuItem("发送到桌面", systemImage: "desktopcomputer", action: #selector(sendShortcutToDesktop)))
+            shortcutItem.submenu = shortcutSubmenu
+            submenu.addItem(shortcutItem)
+        }
+        
+        // 6. 隔空投送
         if enabledIDs.contains("airdrop") {
             submenu.addItem(menuItem("隔空投送", systemImage: "airplayaudio", action: #selector(airdropAction)))
         }
         
-        // 6. 拷贝路径
+        // 7. 拷贝路径
         if enabledIDs.contains("copyPath") {
             submenu.addItem(menuItem("拷贝路径", systemImage: "doc.on.clipboard", action: #selector(copySelectedPath)))
         }
         
-        // 7. 拷贝名称
+        // 8. 拷贝名称
         if enabledIDs.contains("copyName") {
             submenu.addItem(menuItem("拷贝名称", systemImage: "tag", action: #selector(copySelectedName)))
         }
         
-        // 8. 显示隐藏
+        // 9. 显示隐藏
         if enabledIDs.contains("showHidden") {
             submenu.addItem(menuItem("显示隐藏", systemImage: "eye", action: #selector(toggleShowHidden)))
         }
         
-        // 9. 隐藏桌面
+        // 10. 隐藏桌面
         if enabledIDs.contains("hideDesktop") {
             submenu.addItem(menuItem("隐藏桌面", systemImage: "desktopcomputer", action: #selector(toggleHideDesktop)))
         }
@@ -329,18 +340,35 @@ final class FinderSync: FIFinderSync {
             FinderExtensionLog.info("copyCurrentPath: \(url.path)")
             forwardActionRequest(action: "copyPath", path: url.path, extra: nil)
         default:
-            guard let realHome = Self.realHomeDirectory else { return }
-            let path: String
-            switch sender.title {
-            case "桌面": path = realHome.appendingPathComponent("Desktop").path
-            case "文稿": path = realHome.appendingPathComponent("Documents").path
-            case "下载": path = realHome.appendingPathComponent("Downloads").path
-            case "应用程序": path = "/Applications"
-            default: return
+            let (_, _, _, favoriteFolders, _) = loadLightweightConfig()
+            guard let folder = favoriteFolders.first(where: { $0.name == sender.title }) else {
+                NSSound.beep()
+                return
             }
+            let path = expandedPath(folder.path)
             FinderExtensionLog.info("openFolder: \(path)")
             forwardActionRequest(action: "openFolder", path: path, extra: nil)
         }
+    }
+
+    @objc private func createShortcutHere() {
+        guard let targetURL = resolveSelectedItem(),
+              let destinationURL = resolveShortcutDestinationDirectory(sendToDesktop: false) else {
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("create shortcut: target=\(targetURL.path), destination=\(destinationURL.path)")
+        forwardActionRequest(action: "createShortcut", path: targetURL.path, extra: destinationURL.path)
+    }
+    
+    @objc private func sendShortcutToDesktop() {
+        guard let targetURL = resolveSelectedItem(),
+              let desktopURL = Self.realHomeDirectory?.appendingPathComponent("Desktop", isDirectory: true) else {
+            NSSound.beep()
+            return
+        }
+        FinderExtensionLog.info("send shortcut to desktop: target=\(targetURL.path), destination=\(desktopURL.path)")
+        forwardActionRequest(action: "createShortcut", path: targetURL.path, extra: desktopURL.path)
     }
 
     @objc private func showRenamePanel() {
@@ -401,6 +429,24 @@ final class FinderSync: FIFinderSync {
             return selectedURL
         }
         return FIFinderSyncController.default().targetedURL()
+    }
+
+    private func resolveShortcutDestinationDirectory(sendToDesktop: Bool) -> URL? {
+        if sendToDesktop {
+            return Self.realHomeDirectory?.appendingPathComponent("Desktop", isDirectory: true)
+        }
+        if let selectedURL = FIFinderSyncController.default().selectedItemURLs()?.first {
+            return selectedURL.deletingLastPathComponent()
+        }
+        return resolveTargetDirectoryForAction()
+    }
+
+    private func expandedPath(_ path: String) -> String {
+        guard path.hasPrefix("~/"),
+              let realHome = Self.realHomeDirectory else {
+            return path
+        }
+        return realHome.appendingPathComponent(String(path.dropFirst(2))).path
     }
     
     // MARK: - 请求转发
