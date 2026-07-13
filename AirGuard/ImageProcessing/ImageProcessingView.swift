@@ -1,7 +1,9 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ImageProcessingView: View {
     @ObservedObject var store: ImageProcessingStore
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -26,6 +28,23 @@ struct ImageProcessingView: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(.orange)
             }
+        }
+        .alert(
+            "导出成功",
+            isPresented: Binding(
+                get: { store.exportSuccessMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        store.clearExportSuccessMessage()
+                    }
+                }
+            )
+        ) {
+            Button("知道了", role: .cancel) {
+                store.clearExportSuccessMessage()
+            }
+        } message: {
+            Text(store.exportSuccessMessage ?? "")
         }
     }
 
@@ -87,6 +106,24 @@ struct ImageProcessingView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            HStack(spacing: 8) {
+                Button {
+                    store.reset()
+                } label: {
+                    Label("重置", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!store.hasImages)
+
+                Button {
+                    store.exportImages()
+                } label: {
+                    Label("批量导出", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!store.hasImages || store.exportableCount == 0)
+            }
         }
         .padding(16)
         .imageProcessingCard()
@@ -109,10 +146,10 @@ struct ImageProcessingView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "photo.stack")
                         .font(.system(size: 28, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Text("还没有图片")
+                        .foregroundStyle(isDropTargeted ? .blue : .secondary)
+                    Text(isDropTargeted ? "松开即可添加图片" : "拖入图片或点击选择")
                         .font(.system(size: 13.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(isDropTargeted ? .blue : .secondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 300)
             } else {
@@ -128,6 +165,15 @@ struct ImageProcessingView: View {
         }
         .padding(14)
         .imageProcessingCard()
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isDropTargeted ? Color.blue : Color.clear, style: StrokeStyle(lineWidth: 2, dash: [7, 5]))
+        )
+        .onDrop(
+            of: [.fileURL, .image, .png, .jpeg, .tiff, .heic],
+            isTargeted: $isDropTargeted,
+            perform: handleDrop
+        )
     }
 
     private func queueRow(_ item: ImageProcessingItem) -> some View {
@@ -314,32 +360,40 @@ struct ImageProcessingView: View {
 
                 controlDivider
 
-                HStack(spacing: 12) {
-                    Button {
-                        store.reset()
-                    } label: {
-                        Label("重置", systemImage: "arrow.counterclockwise")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .disabled(!store.hasImages)
-
-                    Button {
-                        store.exportImages()
-                    } label: {
-                        Label("批量导出", systemImage: "square.and.arrow.down")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                    .disabled(!store.hasImages || store.exportableCount == 0)
-                }
-                .padding(.top, 4)
+                Text("导出按钮已放在上方摘要区，调整参数后可直接操作。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
             .padding(18)
         }
         .imageProcessingCard()
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        var didRequestLoad = false
+
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                didRequestLoad = true
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                    guard let url = droppedFileURL(from: item) else { return }
+                    Task { @MainActor in
+                        store.appendDroppedImages(from: [url])
+                    }
+                }
+            } else if provider.canLoadObject(ofClass: NSImage.self) {
+                didRequestLoad = true
+                provider.loadObject(ofClass: NSImage.self) { image, _ in
+                    guard let image = image as? NSImage,
+                          let url = temporaryImageURL(for: image) else { return }
+                    Task { @MainActor in
+                        store.appendDroppedImages(from: [url])
+                    }
+                }
+            }
+        }
+
+        return didRequestLoad
     }
 
     private var controlDivider: some View {
@@ -469,6 +523,42 @@ struct ImageProcessingView: View {
     private func byteText(_ bytes: Int) -> String {
         guard bytes > 0 else { return "-" }
         return ByteFormatter.string(from: UInt64(bytes))
+    }
+}
+
+private func droppedFileURL(from item: NSSecureCoding?) -> URL? {
+    if let url = item as? URL {
+        return url
+    }
+
+    if let data = item as? Data,
+       let value = String(data: data, encoding: .utf8) {
+        return URL(string: value)
+    }
+
+    if let value = item as? String {
+        return URL(string: value)
+    }
+
+    return nil
+}
+
+private func temporaryImageURL(for image: NSImage) -> URL? {
+    guard let tiffData = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiffData),
+          let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        return nil
+    }
+
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("AirGuard-Dropped-Image-\(UUID().uuidString)")
+        .appendingPathExtension("png")
+
+    do {
+        try pngData.write(to: url, options: .atomic)
+        return url
+    } catch {
+        return nil
     }
 }
 

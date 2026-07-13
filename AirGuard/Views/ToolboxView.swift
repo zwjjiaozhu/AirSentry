@@ -2192,13 +2192,6 @@ struct ToolboxView: View {
 
             HStack(spacing: 10) {
                 Button {
-                    screenshotCaptureController.startCapture()
-                } label: {
-                    Label("框选截图", systemImage: "viewfinder")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
                     screenshotCaptureController.pinClipboardImageIfAvailable()
                 } label: {
                     Label("钉住剪贴板", systemImage: "pin")

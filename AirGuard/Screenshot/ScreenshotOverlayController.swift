@@ -233,6 +233,12 @@ private struct ScreenshotOverlayView: View {
     @State private var copyFeedbackMessage: String?
     @State private var copyFeedbackToken = UUID()
     @State private var showAllOCRTextItems = false
+    @State private var exportToolbarDragOffset = CGSize.zero
+    @State private var exportToolbarDragStartOffset: CGSize?
+    @AppStorage("screenshot.outputQualityPercent") private var outputQualityPercent: Double = 90
+    @AppStorage("screenshot.selectionCornerRadius") private var selectionCornerRadius: Double = 0
+    @AppStorage("screenshot.selectionShadowEnabled") private var selectionShadowEnabled = false
+    @AppStorage("screenshot.recentSelectionSizes") private var recentSelectionSizesRawValue = ""
     private let textBorderHitPadding: CGFloat = 8
 
     // Accessibility 控件检测相关状态
@@ -258,6 +264,29 @@ private struct ScreenshotOverlayView: View {
                         .position(x: selection.minX + 48, y: max(18, selection.minY - 16))
 
                     if selectedRect != nil {
+                        ScreenshotSelectionExportToolbar(
+                            outputQualityPercent: $outputQualityPercent,
+                            selectionCornerRadius: $selectionCornerRadius,
+                            selectionShadowEnabled: $selectionShadowEnabled,
+                            selectionSize: selection.size,
+                            recentSelectionSizes: recentSelectionSizes,
+                            applyPreset: { preset in
+                                applySelectionPreset(preset, from: selection, in: proxy.size)
+                            },
+                            dragChanged: { translation in
+                                updateExportToolbarDragOffset(
+                                    translation: translation,
+                                    selection: selection,
+                                    in: proxy.size
+                                )
+                            },
+                            dragEnded: {
+                                exportToolbarDragStartOffset = nil
+                            }
+                        )
+                        .position(exportToolbarPosition(for: selection, in: proxy.size))
+                        .zIndex(19)
+
                         ScreenshotSelectionToolbar(
                             selectedTool: $selectedTool,
                             selectedColor: $selectedColor,
@@ -351,6 +380,10 @@ private struct ScreenshotOverlayView: View {
             }
             .onChange(of: focusedTextAnnotationID) { annotationID in
                 syncSelectionWithFocusedText(annotationID)
+            }
+            .onChange(of: selectedRect) { rect in
+                guard let rect else { return }
+                rememberSelectionSize(rect.size)
             }
             .onDisappear {
                 resetTextCursor()
@@ -472,7 +505,7 @@ private struct ScreenshotOverlayView: View {
 
             annotationHandlesLayer(selection)
 
-            Rectangle()
+            RoundedRectangle(cornerRadius: selectionCornerRadius, style: .continuous)
                 .stroke(Color.accentColor, lineWidth: 2)
                 .frame(width: selection.width, height: selection.height)
                 .position(x: selection.midX, y: selection.midY)
@@ -2027,7 +2060,12 @@ private struct ScreenshotOverlayView: View {
             rect: rect,
             image: frozenImage,
             canvasSize: selection.size,
-            annotations: visibleAnnotations
+            annotations: visibleAnnotations,
+            outputStyle: ScreenshotOutputStyle(
+                qualityPercent: outputQualityPercent.clamped(to: 1...100),
+                cornerRadius: CGFloat(selectionCornerRadius),
+                shadowEnabled: selectionShadowEnabled
+            )
         )
     }
 
@@ -2047,6 +2085,90 @@ private struct ScreenshotOverlayView: View {
         case .cancel:
             cancel()
         }
+    }
+
+    private var recentSelectionSizes: [CGSize] {
+        recentSelectionSizesRawValue
+            .split(separator: ",")
+            .compactMap { item -> CGSize? in
+                let parts = item.split(separator: "x")
+                guard parts.count == 2,
+                      let width = Double(parts[0]),
+                      let height = Double(parts[1]),
+                      width >= 4,
+                      height >= 4 else { return nil }
+                return CGSize(width: width, height: height)
+            }
+    }
+
+    private func rememberSelectionSize(_ size: CGSize) {
+        let roundedSize = CGSize(width: size.width.rounded(), height: size.height.rounded())
+        guard roundedSize.width >= 4, roundedSize.height >= 4 else { return }
+        let updated = ([roundedSize] + recentSelectionSizes)
+            .reduce(into: [CGSize]()) { result, candidate in
+                guard !result.contains(where: { Int($0.width) == Int(candidate.width) && Int($0.height) == Int(candidate.height) }) else { return }
+                result.append(candidate)
+            }
+            .prefix(5)
+        recentSelectionSizesRawValue = updated
+            .map { "\(Int($0.width))x\(Int($0.height))" }
+            .joined(separator: ",")
+    }
+
+    private func applySelectionPreset(_ preset: ScreenshotSelectionSizePreset, from selection: CGRect, in size: CGSize) {
+        let presetSize = preset.size
+        guard presetSize.width >= 4, presetSize.height >= 4 else { return }
+        let width = min(presetSize.width, size.width - 2)
+        let height = min(presetSize.height, size.height - 2)
+        let origin = CGPoint(
+            x: min(selection.minX, max(1, size.width - width - 1)),
+            y: min(selection.minY, max(1, size.height - height - 1))
+        )
+        selectedRect = CGRect(x: origin.x, y: origin.y, width: width, height: height)
+    }
+
+    private func exportToolbarPosition(for selection: CGRect, in size: CGSize) -> CGPoint {
+        let automaticPosition = exportToolbarAutomaticPosition(for: selection, in: size)
+        return clampedExportToolbarPosition(
+            CGPoint(
+                x: automaticPosition.x + exportToolbarDragOffset.width,
+                y: automaticPosition.y + exportToolbarDragOffset.height
+            ),
+            in: size
+        )
+    }
+
+    private func exportToolbarAutomaticPosition(for selection: CGRect, in size: CGSize) -> CGPoint {
+        let toolbarSize = CGSize(width: min(430, size.width - 20), height: 34)
+        let selectionSpacing: CGFloat = 5
+        let x = selection.midX.clamped(to: (toolbarSize.width / 2 + 10)...(size.width - toolbarSize.width / 2 - 10))
+        let preferredY = selection.minY - toolbarSize.height / 2 - selectionSpacing
+        let y = preferredY >= 12 ? preferredY : min(size.height - toolbarSize.height / 2 - 12, selection.maxY + toolbarSize.height / 2 + selectionSpacing)
+        return CGPoint(x: x, y: y)
+    }
+
+    private func updateExportToolbarDragOffset(translation: CGSize, selection: CGRect, in size: CGSize) {
+        let startOffset = exportToolbarDragStartOffset ?? exportToolbarDragOffset
+        exportToolbarDragStartOffset = startOffset
+
+        let automaticPosition = exportToolbarAutomaticPosition(for: selection, in: size)
+        let proposedPosition = CGPoint(
+            x: automaticPosition.x + startOffset.width + translation.width,
+            y: automaticPosition.y + startOffset.height + translation.height
+        )
+        let clampedPosition = clampedExportToolbarPosition(proposedPosition, in: size)
+        exportToolbarDragOffset = CGSize(
+            width: clampedPosition.x - automaticPosition.x,
+            height: clampedPosition.y - automaticPosition.y
+        )
+    }
+
+    private func clampedExportToolbarPosition(_ position: CGPoint, in size: CGSize) -> CGPoint {
+        let toolbarSize = CGSize(width: min(430, size.width - 20), height: 34)
+        return CGPoint(
+            x: position.x.clamped(to: (toolbarSize.width / 2 + 10)...(size.width - toolbarSize.width / 2 - 10)),
+            y: position.y.clamped(to: (toolbarSize.height / 2 + 12)...(size.height - toolbarSize.height / 2 - 12))
+        )
     }
 
     private func toolbarPosition(for selection: CGRect, in size: CGSize) -> CGPoint {
@@ -2816,6 +2938,225 @@ private extension Color {
             blue: Double(value & 0xFF) / 255,
             opacity: Double(alpha.clamped(to: 0...1))
         )
+    }
+}
+
+private struct ScreenshotSelectionSizePreset: Identifiable {
+    let id: String
+    let title: String
+    let size: CGSize
+
+    static let common: [ScreenshotSelectionSizePreset] = [
+        ScreenshotSelectionSizePreset(id: "640x360", title: "640 x 360", size: CGSize(width: 640, height: 360)),
+        ScreenshotSelectionSizePreset(id: "1280x720", title: "1280 x 720", size: CGSize(width: 1280, height: 720)),
+        ScreenshotSelectionSizePreset(id: "1920x1080", title: "1920 x 1080", size: CGSize(width: 1920, height: 1080)),
+        ScreenshotSelectionSizePreset(id: "1080x1080", title: "1080 x 1080", size: CGSize(width: 1080, height: 1080)),
+        ScreenshotSelectionSizePreset(id: "1080x1920", title: "1080 x 1920", size: CGSize(width: 1080, height: 1920))
+    ]
+}
+
+private struct ScreenshotSelectionExportToolbar: View {
+    @Binding var outputQualityPercent: Double
+    @Binding var selectionCornerRadius: Double
+    @Binding var selectionShadowEnabled: Bool
+    let selectionSize: CGSize
+    let recentSelectionSizes: [CGSize]
+    let applyPreset: (ScreenshotSelectionSizePreset) -> Void
+    let dragChanged: (CGSize) -> Void
+    let dragEnded: () -> Void
+    @State private var isQualityPopoverPresented = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            dragHandle
+
+            Divider()
+                .frame(height: 17)
+                .overlay(Color.black.opacity(0.14))
+
+            Menu {
+                Button("无损") {
+                    outputQualityPercent = 100
+                }
+                Button("高") {
+                    outputQualityPercent = 85
+                }
+                Button("中") {
+                    outputQualityPercent = 65
+                }
+                Button("低") {
+                    outputQualityPercent = 45
+                }
+
+                Divider()
+
+                Button("自定义...") {
+                    isQualityPopoverPresented = true
+                }
+            } label: {
+                toolbarControlLabel(systemImage: "slider.horizontal.3", text: qualityDisplayTitle)
+            }
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+            .popover(isPresented: $isQualityPopoverPresented, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("输出质量")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.black.opacity(0.78))
+                        Spacer()
+                        Text("\(Int(outputQualityPercent))%")
+                            .font(.system(size: 13, weight: .bold).monospacedDigit())
+                            .foregroundStyle(Color.accentColor)
+                    }
+
+                    Slider(value: $outputQualityPercent, in: 1...100, step: 1)
+                        .tint(Color.accentColor)
+
+                    HStack(spacing: 6) {
+                        ForEach([45, 65, 85, 100], id: \.self) { percent in
+                            Button("\(percent)%") {
+                                outputQualityPercent = Double(percent)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 12, weight: .semibold))
+                        }
+                    }
+                }
+                .frame(width: 220)
+                .padding(14)
+                .background(.regularMaterial)
+            }
+
+            Divider()
+                .frame(height: 17)
+                .overlay(Color.black.opacity(0.14))
+
+            Menu {
+                Button("当前：\(Int(selectionSize.width)) x \(Int(selectionSize.height))") {}
+                    .disabled(true)
+
+                if !recentSelectionSizes.isEmpty {
+                    Section("最近尺寸") {
+                        ForEach(Array(recentSelectionSizes.enumerated()), id: \.offset) { index, size in
+                            Button("\(Int(size.width)) x \(Int(size.height))") {
+                                applyPreset(ScreenshotSelectionSizePreset(
+                                    id: "recent-\(index)",
+                                    title: "最近",
+                                    size: size
+                                ))
+                            }
+                        }
+                    }
+                    Divider()
+                }
+
+                ForEach(ScreenshotSelectionSizePreset.common) { preset in
+                    Button(preset.title) {
+                        applyPreset(preset)
+                    }
+                }
+            } label: {
+                toolbarControlLabel(systemImage: "aspectratio", text: "\(Int(selectionSize.width)) x \(Int(selectionSize.height))")
+            }
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+
+            Divider()
+                .frame(height: 17)
+                .overlay(Color.black.opacity(0.14))
+
+            HStack(spacing: 6) {
+                Image(systemName: "rectangle.roundedtop")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.black.opacity(0.62))
+                Slider(value: $selectionCornerRadius, in: 0...36, step: 1)
+                    .tint(Color.accentColor)
+                    .frame(width: 82)
+                Text("\(Int(selectionCornerRadius))")
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.black.opacity(0.66))
+                    .frame(width: 22, alignment: .trailing)
+            }
+
+            Button {
+                selectionShadowEnabled.toggle()
+            } label: {
+                toolbarControlLabel(
+                    systemImage: selectionShadowEnabled ? "square.3.layers.3d.down.right" : "square",
+                    text: "阴影"
+                )
+                .background(
+                    selectionShadowEnabled ? Color.accentColor.opacity(0.12) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: 34)
+        .padding(.horizontal, 8)
+        .fixedSize(horizontal: true, vertical: false)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(.black.opacity(0.14), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 9, y: 4)
+    }
+
+    private var dragHandle: some View {
+        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.black.opacity(0.48))
+            .frame(width: 24, height: 24)
+            .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.openHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        dragChanged(value.translation)
+                    }
+                    .onEnded { _ in
+                        dragEnded()
+                    }
+            )
+    }
+
+    private var qualityDisplayTitle: String {
+        let percent = Int(outputQualityPercent.rounded())
+        switch percent {
+        case 100:
+            return "质量 无损"
+        case 85:
+            return "质量 高"
+        case 65:
+            return "质量 中"
+        case 45:
+            return "质量 低"
+        default:
+            return "质量 \(percent)%"
+        }
+    }
+
+    private func toolbarControlLabel(systemImage: String, text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+            Text(text)
+                .font(.system(size: 12.5, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.black.opacity(0.70))
+        .padding(.horizontal, 6)
+        .frame(height: 24)
+        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }
 
@@ -3948,6 +4289,17 @@ struct ScreenshotCapturePayload {
     let image: NSImage?
     let canvasSize: CGSize
     let annotations: [ScreenshotAnnotation]
+    let outputStyle: ScreenshotOutputStyle
+}
+
+struct ScreenshotOutputStyle {
+    var qualityPercent: Double = 100
+    var cornerRadius: CGFloat = 0
+    var shadowEnabled = false
+
+    var hasVisualEffects: Bool {
+        cornerRadius > 0 || shadowEnabled
+    }
 }
 
 struct ScreenshotAnnotation: Identifiable {

@@ -116,42 +116,44 @@ final class ImageProcessingStore: ObservableObject {
     @Published var selectedItemID: UUID?
     @Published private(set) var statusMessage: String?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var exportSuccessMessage: String?
+    private var pendingPreviewRebuild: Task<Void, Never>?
 
     @Published var processingMode: ImageProcessingMode = .compress {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var outputFormat: ImageProcessingOutputFormat = .jpeg {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var compressionMode: ImageProcessingCompressionMode = .quality {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var qualityPercent: Double = 72 {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var targetSizeKB: Double = 500 {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var exportNaming: ImageProcessingExportNaming = .addSuffix {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var resizeMode: ImageProcessingResizeMode = .longestSide {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var longestSidePixels: Double = 1600 {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var exactWidth: Double = 1440 {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var exactHeight: Double = 900 {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var lockAspectRatio = true {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
     @Published var cropMode: ImageProcessingCropMode = .none {
-        didSet { rebuildPreviews() }
+        didSet { schedulePreviewRebuild() }
     }
 
     var hasImages: Bool {
@@ -207,6 +209,10 @@ final class ImageProcessingStore: ObservableObject {
         loadImages(from: panel.urls, append: true)
     }
 
+    func appendDroppedImages(from urls: [URL]) {
+        loadImages(from: urls, append: true)
+    }
+
     func remove(_ item: ImageProcessingItem) {
         items.removeAll { $0.id == item.id }
         if selectedItemID == item.id {
@@ -220,6 +226,11 @@ final class ImageProcessingStore: ObservableObject {
         selectedItemID = nil
         statusMessage = nil
         errorMessage = nil
+        exportSuccessMessage = nil
+    }
+
+    func clearExportSuccessMessage() {
+        exportSuccessMessage = nil
     }
 
     func exportImages() {
@@ -261,6 +272,9 @@ final class ImageProcessingStore: ObservableObject {
         }
 
         statusMessage = "已导出 \(successCount) 张图片到：\(directoryURL.path)"
+        if successCount > 0 {
+            exportSuccessMessage = "已成功导出 \(successCount) 张图片。"
+        }
         errorMessage = failureMessages.first
     }
 
@@ -282,6 +296,9 @@ final class ImageProcessingStore: ObservableObject {
         }
 
         statusMessage = "已覆盖 \(successCount) 张图片"
+        if successCount > 0 {
+            exportSuccessMessage = "已成功覆盖 \(successCount) 张图片。"
+        }
         errorMessage = failureMessages.first
     }
 
@@ -335,6 +352,7 @@ final class ImageProcessingStore: ObservableObject {
         } else {
             statusMessage = loadedItems.isEmpty ? nil : "已载入 \(loadedItems.count) 张图片"
         }
+        exportSuccessMessage = nil
         errorMessage = failures.isEmpty ? nil : "有 \(failures.count) 张图片无法读取：\(failures.prefix(3).joined(separator: "、"))"
         rebuildPreviews()
     }
@@ -353,6 +371,15 @@ final class ImageProcessingStore: ObservableObject {
                 items[index].outputBytes = nil
                 items[index].errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func schedulePreviewRebuild() {
+        pendingPreviewRebuild?.cancel()
+        pendingPreviewRebuild = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            rebuildPreviews()
         }
     }
 

@@ -123,6 +123,6 @@ final class FinderRenameConfigStore: ObservableObject {
         loadFields(from: defaults).filter(\.isEnabled)
     }
 
-    private static let fieldsKey = "finderRenameFields"
-    private static let customStatusesKey = "finderRenameCustomStatuses"
+    nonisolated private static let fieldsKey = "finderRenameFields"
+    nonisolated private static let customStatusesKey = "finderRenameCustomStatuses"
 }

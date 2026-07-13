@@ -74,7 +74,8 @@ final class ScreenshotCaptureController: ObservableObject {
         let outputImage = ScreenshotAnnotationRenderer.render(
             baseImage: image,
             annotations: payload.annotations,
-            canvasSize: payload.canvasSize
+            canvasSize: payload.canvasSize,
+            outputStyle: payload.outputStyle
         )
 
         switch action {
@@ -85,9 +86,9 @@ final class ScreenshotCaptureController: ObservableObject {
         case .ocr:
             OCRPanelController.shared.show(image: outputImage, recognizeImmediately: true)
         case .copy:
-            ScreenshotImageWriter.copyToPasteboard(outputImage)
+            ScreenshotImageWriter.copyToPasteboard(outputImage, qualityPercent: payload.outputStyle.qualityPercent)
         case .save:
-            ScreenshotImageWriter.saveWithPanel(outputImage)
+            ScreenshotImageWriter.saveWithPanel(outputImage, qualityPercent: payload.outputStyle.qualityPercent)
         case .close:
             return
         }
@@ -258,17 +259,28 @@ enum ScreenshotImageCapturer {
 }
 
 enum ScreenshotImageWriter {
-    static func copyToPasteboard(_ image: NSImage) {
+    static func copyToPasteboard(_ image: NSImage, qualityPercent: Double = 100) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([image])
+
+        guard let data = imageData(from: image, qualityPercent: qualityPercent) else {
+            pasteboard.writeObjects([image])
+            return
+        }
+
+        pasteboard.setData(data, forType: pasteboardType(for: qualityPercent))
+        if let tiffData = image.tiffRepresentation {
+            pasteboard.setData(tiffData, forType: .tiff)
+        }
     }
 
     @discardableResult
-    static func saveWithPanel(_ image: NSImage) -> Bool {
+    static func saveWithPanel(_ image: NSImage, qualityPercent: Double = 100) -> Bool {
+        let isLossless = qualityPercent >= 100
+        let fileExtension = isLossless ? "png" : "jpg"
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "AirSentry Screenshot \(Self.timestamp()).png"
+        panel.allowedContentTypes = [isLossless ? .png : .jpeg]
+        panel.nameFieldStringValue = "AirSentry Screenshot \(Self.timestamp()).\(fileExtension)"
         panel.canCreateDirectories = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
 
@@ -277,7 +289,7 @@ enum ScreenshotImageWriter {
               let url = panel.url else { return false }
 
         do {
-            guard let data = pngData(from: image) else {
+            guard let data = imageData(from: image, qualityPercent: qualityPercent) else {
                 NSSound.beep()
                 return false
             }
@@ -294,6 +306,51 @@ enum ScreenshotImageWriter {
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData) else { return nil }
         return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private static func jpegData(from image: NSImage, qualityPercent: Double) -> Data? {
+        guard let bitmap = jpegBitmap(from: image) else { return nil }
+        let qualityValue = min(max(qualityPercent / 100, 0.01), 1)
+        let quality = CGFloat(qualityValue)
+        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: quality])
+    }
+
+    private static func jpegBitmap(from image: NSImage) -> NSBitmapImageRep? {
+        let imageRect = NSRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+
+        let pixelWidth = cgImage.width
+        let pixelHeight = cgImage.height
+        guard pixelWidth > 0, pixelHeight > 0,
+              let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                data: nil,
+                width: pixelWidth,
+                height: pixelHeight,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              ) else { return nil }
+
+        context.setFillColor(NSColor.white.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+
+        guard let flattenedImage = context.makeImage() else { return nil }
+        let bitmap = NSBitmapImageRep(cgImage: flattenedImage)
+        bitmap.size = imageRect.size
+        return bitmap
+    }
+
+    private static func imageData(from image: NSImage, qualityPercent: Double) -> Data? {
+        qualityPercent >= 100
+            ? pngData(from: image)
+            : jpegData(from: image, qualityPercent: qualityPercent)
+    }
+
+    private static func pasteboardType(for qualityPercent: Double) -> NSPasteboard.PasteboardType {
+        qualityPercent >= 100 ? .png : NSPasteboard.PasteboardType("public.jpeg")
     }
 
     private static func timestamp() -> String {
@@ -320,21 +377,32 @@ enum ScreenshotAnnotationRenderer {
     static func render(
         baseImage: NSImage,
         annotations: [ScreenshotAnnotation],
-        canvasSize: CGSize
+        canvasSize: CGSize,
+        outputStyle: ScreenshotOutputStyle = ScreenshotOutputStyle()
     ) -> NSImage {
-        guard !annotations.isEmpty,
-              canvasSize.width > 0,
-              canvasSize.height > 0 else {
+        guard canvasSize.width > 0,
+              canvasSize.height > 0,
+              (!annotations.isEmpty || outputStyle.hasVisualEffects) else {
             return baseImage
         }
 
         let outputSize = baseImage.size
-        let image = NSImage(size: outputSize)
+        let shadowPadding: CGFloat = outputStyle.shadowEnabled ? 18 : 0
+        let image = NSImage(size: CGSize(
+            width: outputSize.width + shadowPadding * 2,
+            height: outputSize.height + shadowPadding * 2
+        ))
         image.lockFocus()
-        baseImage.draw(in: CGRect(origin: .zero, size: outputSize))
+        drawBaseImage(
+            baseImage,
+            in: CGRect(x: shadowPadding, y: shadowPadding, width: outputSize.width, height: outputSize.height),
+            cornerRadius: outputStyle.cornerRadius,
+            shadowEnabled: outputStyle.shadowEnabled
+        )
 
         let scaleX = outputSize.width / canvasSize.width
         let scaleY = outputSize.height / canvasSize.height
+        let offset = CGPoint(x: shadowPadding, y: shadowPadding)
         let mosaicSampler = ScreenshotMosaicSampler(image: baseImage)
         for annotation in annotations {
             draw(
@@ -342,6 +410,7 @@ enum ScreenshotAnnotationRenderer {
                 scaleX: scaleX,
                 scaleY: scaleY,
                 outputHeight: outputSize.height,
+                offset: offset,
                 mosaicSampler: mosaicSampler
             )
         }
@@ -355,6 +424,7 @@ enum ScreenshotAnnotationRenderer {
         scaleX: CGFloat,
         scaleY: CGFloat,
         outputHeight: CGFloat,
+        offset: CGPoint,
         mosaicSampler: ScreenshotMosaicSampler?
     ) {
         let color = annotation.tool == .text ? annotation.effectiveNSColor : annotation.effectiveStrokeNSColor
@@ -369,7 +439,7 @@ enum ScreenshotAnnotationRenderer {
         switch annotation.tool {
         case .text:
             guard let origin = annotation.points.first else { return }
-            let point = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+            let point = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: annotation.nsFont(scale: min(scaleX, scaleY)),
                 .foregroundColor: color
@@ -385,34 +455,35 @@ enum ScreenshotAnnotationRenderer {
                 annotation,
                 scaleX: scaleX,
                 scaleY: scaleY,
-                outputHeight: outputHeight
+                outputHeight: outputHeight,
+                offset: offset
             )
         case .pen:
             guard let firstPoint = annotation.points.first else { return }
-            path.move(to: transform(firstPoint, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight))
+            path.move(to: transform(firstPoint, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset))
             annotation.points.dropFirst().forEach {
-                path.line(to: transform($0, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight))
+                path.line(to: transform($0, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset))
             }
             path.stroke()
         case .mosaic:
-            drawMosaic(annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, sampler: mosaicSampler)
+            drawMosaic(annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset, sampler: mosaicSampler)
         case .line:
             guard let start = annotation.points.first,
                   let end = annotation.points.last else { return }
-            path.move(to: transform(start, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight))
-            path.line(to: transform(end, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight))
+            path.move(to: transform(start, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset))
+            path.line(to: transform(end, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset))
             path.stroke()
         case .arrow:
             guard let start = annotation.points.first,
                   let end = annotation.points.last else { return }
-            let startPoint = transform(start, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
-            let endPoint = transform(end, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+            let startPoint = transform(start, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
+            let endPoint = transform(end, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
             path.move(to: startPoint)
             path.line(to: endPoint)
             path.stroke()
             drawArrowHead(from: startPoint, to: endPoint, color: color, lineWidth: path.lineWidth)
         case .rectangle:
-            guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight) else { return }
+            guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset) else { return }
             path.appendRect(rect)
             if let fillColor = annotation.effectiveFillNSColor {
                 fillColor.withAlphaComponent(0.24).setFill()
@@ -421,7 +492,7 @@ enum ScreenshotAnnotationRenderer {
             }
             path.stroke()
         case .ellipse:
-            guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight) else { return }
+            guard let rect = transformedRect(for: annotation, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset) else { return }
             path.appendOval(in: rect)
             if let fillColor = annotation.effectiveFillNSColor {
                 fillColor.withAlphaComponent(0.24).setFill()
@@ -436,11 +507,12 @@ enum ScreenshotAnnotationRenderer {
         _ annotation: ScreenshotAnnotation,
         scaleX: CGFloat,
         scaleY: CGFloat,
-        outputHeight: CGFloat
+        outputHeight: CGFloat,
+        offset: CGPoint
     ) {
         guard let origin = annotation.points.first else { return }
         let scale = min(scaleX, scaleY)
-        let topLeft = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+        let topLeft = transform(origin, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
         let size = CGSize(
             width: annotation.textBoxSize.width * scaleX,
             height: annotation.textBoxSize.height * scaleY
@@ -484,20 +556,21 @@ enum ScreenshotAnnotationRenderer {
         scaleX: CGFloat,
         scaleY: CGFloat,
         outputHeight: CGFloat,
+        offset: CGPoint,
         sampler: ScreenshotMosaicSampler?
     ) {
         let blockSize = max(8, annotation.lineWidth * min(scaleX, scaleY) * 5)
         let halfBlock = blockSize / 2
 
         for point in annotation.points {
-            let center = transform(point, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+            let center = transform(point, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
             let rect = CGRect(
                 x: center.x - halfBlock,
                 y: center.y - halfBlock,
                 width: blockSize,
                 height: blockSize
             )
-            let color = sampler?.averageColor(in: rect, outputHeight: outputHeight) ?? NSColor.systemGray
+            let color = sampler?.averageColor(in: rect.offsetBy(dx: -offset.x, dy: -offset.y), outputHeight: outputHeight) ?? NSColor.systemGray
             color.setFill()
             NSBezierPath(rect: rect).fill()
         }
@@ -507,13 +580,36 @@ enum ScreenshotAnnotationRenderer {
         for annotation: ScreenshotAnnotation,
         scaleX: CGFloat,
         scaleY: CGFloat,
-        outputHeight: CGFloat
+        outputHeight: CGFloat,
+        offset: CGPoint
     ) -> CGRect? {
         guard let start = annotation.points.first,
               let end = annotation.points.last else { return nil }
-        let p1 = transform(start, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
-        let p2 = transform(end, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight)
+        let p1 = transform(start, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
+        let p2 = transform(end, scaleX: scaleX, scaleY: scaleY, outputHeight: outputHeight, offset: offset)
         return CGRect(x: min(p1.x, p2.x), y: min(p1.y, p2.y), width: abs(p1.x - p2.x), height: abs(p1.y - p2.y))
+    }
+
+    private static func drawBaseImage(_ baseImage: NSImage, in rect: CGRect, cornerRadius: CGFloat, shadowEnabled: Bool) {
+        let radius = min(cornerRadius, min(rect.width, rect.height) / 2)
+        let clipPath = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
+
+        if shadowEnabled {
+            NSGraphicsContext.current?.saveGraphicsState()
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.28)
+            shadow.shadowBlurRadius = 18
+            shadow.shadowOffset = CGSize(width: 0, height: -5)
+            shadow.set()
+            NSColor.black.withAlphaComponent(0.10).setFill()
+            clipPath.fill()
+            NSGraphicsContext.current?.restoreGraphicsState()
+        }
+
+        NSGraphicsContext.current?.saveGraphicsState()
+        clipPath.addClip()
+        baseImage.draw(in: rect)
+        NSGraphicsContext.current?.restoreGraphicsState()
     }
 
     private static func drawArrowHead(from start: CGPoint, to end: CGPoint, color: NSColor, lineWidth: CGFloat) {
@@ -537,8 +633,14 @@ enum ScreenshotAnnotationRenderer {
         path.stroke()
     }
 
-    private static func transform(_ point: CGPoint, scaleX: CGFloat, scaleY: CGFloat, outputHeight: CGFloat) -> CGPoint {
-        CGPoint(x: point.x * scaleX, y: outputHeight - point.y * scaleY)
+    private static func transform(
+        _ point: CGPoint,
+        scaleX: CGFloat,
+        scaleY: CGFloat,
+        outputHeight: CGFloat,
+        offset: CGPoint = .zero
+    ) -> CGPoint {
+        CGPoint(x: point.x * scaleX + offset.x, y: outputHeight - point.y * scaleY + offset.y)
     }
 }
 
