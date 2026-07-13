@@ -349,17 +349,6 @@ struct MenuBarPanelView: View {
                 diskStorageStatusLine
             }
 
-            statusWideCell(
-                title: "内存使用",
-                value: "\(ByteFormatter.string(from: snapshot.memory.usedBytes)) / \(ByteFormatter.string(from: snapshot.memory.totalBytes))",
-                detail: percent(snapshot.memory.usageRatio),
-                systemImage: "memorychip",
-                tint: memoryPressureColor
-            ) {
-                ProgressView(value: snapshot.memory.usageRatio)
-                    .tint(memoryPressureColor)
-            }
-
             Button {
                 openActivityMonitor()
                 showsSystemStatusPopover = false

@@ -82,11 +82,25 @@ enum FinderNewFileService {
     /// 根据 templateId 返回模板文件内容
     static func contents(forTemplateId templateId: String) -> Data {
         switch templateId {
+        case "xlsx", "pptx", "docx": return bundledTemplateData(forTemplateId: templateId)
         case "md": return Data("# 新建文档\n".utf8)
         case "json": return Data("{\n  \n}\n".utf8)
+        case "rtf": return Data("{\\rtf1\\ansi\\deff0\n\\pard\\fs24\\par\n}\n".utf8)
         case "html": return Data("<!doctype html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>新建页面</title>\n</head>\n<body>\n</body>\n</html>\n".utf8)
         default: return Data()
         }
+    }
+
+    private static func bundledTemplateData(forTemplateId templateId: String) -> Data {
+        guard let url = Bundle.main.url(
+            forResource: "Blank",
+            withExtension: templateId,
+            subdirectory: "NewFileTemplates"
+        ) else {
+            assertionFailure("Missing bundled Office template for \(templateId)")
+            return Data()
+        }
+        return (try? Data(contentsOf: url)) ?? Data()
     }
 
     static func createFile(at requestedURL: URL, contents: Data, defaults: UserDefaults = .standard) -> FinderNewFileCreationResult {
