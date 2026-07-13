@@ -280,7 +280,7 @@ enum ScreenshotImageWriter {
         let fileExtension = isLossless ? "png" : "jpg"
         let panel = NSSavePanel()
         panel.allowedContentTypes = [isLossless ? .png : .jpeg]
-        panel.nameFieldStringValue = "AirSentry Screenshot \(Self.timestamp()).\(fileExtension)"
+        panel.nameFieldStringValue = "AirSentry_Screenshot_\(Self.timestamp()).\(fileExtension)"
         panel.canCreateDirectories = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
 
@@ -355,7 +355,7 @@ enum ScreenshotImageWriter {
 
     private static func timestamp() -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        formatter.dateFormat = "yyyy-MM-dd_HH.mm.ss"
         return formatter.string(from: Date())
     }
 }
