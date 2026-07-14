@@ -192,6 +192,27 @@ struct SettingsView: View {
                 InsetDivider()
 
                 PreferenceRow(
+                    title: "番茄钟声音提醒",
+                    subtitle: "时间到达时播放应用内提示音",
+                    systemImage: "speaker.wave.2",
+                    isOn: $settings.focusTimerSoundEnabled
+                )
+
+                InsetDivider()
+
+                SoundPreferenceRow(
+                    title: "番茄钟提示音",
+                    subtitle: "到点时连续播放两声",
+                    systemImage: "music.note",
+                    selection: $settings.focusTimerSoundName,
+                    preview: playFocusTimerSoundPreview
+                )
+                .disabled(!settings.focusTimerSoundEnabled)
+                .opacity(settings.focusTimerSoundEnabled ? 1 : 0.55)
+
+                InsetDivider()
+
+                PreferenceRow(
                     title: "菜单栏显示温度",
                     subtitle: "显示实时温度；不可用时显示热状态",
                     systemImage: "menubar.rectangle",
@@ -290,24 +311,6 @@ struct SettingsView: View {
                         systemImage: "power",
                         isOn: $settings.launchAtLoginEnabled
                     )
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                SectionTitle("鼠标")
-
-                SettingsGroup {
-                    PreferenceRow(
-                        title: "反转鼠标滚动方向",
-                        subtitle: mouseScrollDirectionSubtitle,
-                        systemImage: "computermouse",
-                        isOn: $settings.mouseScrollDirectionReversed
-                    )
-                    .onChange(of: settings.mouseScrollDirectionReversed) { isEnabled in
-                        if isEnabled {
-                            MouseScrollDirectionManager.requestAccessibilityPermission()
-                        }
-                    }
                 }
             }
 
@@ -608,11 +611,8 @@ struct SettingsView: View {
         }
     }
 
-    private var mouseScrollDirectionSubtitle: String {
-        if MouseScrollDirectionManager.isAccessibilityTrusted {
-            return "仅反转传统鼠标滚轮；触控板与连续滚动设备保持系统方向"
-        }
-        return "需要在「隐私与安全性 - 辅助功能」中允许 AirSentry 控制滚轮事件"
+    private func playFocusTimerSoundPreview() {
+        FocusTimerSoundPlayer.shared.playCompletionSound(named: settings.focusTimerSoundName)
     }
 
     private func dismissThresholdInput() {
@@ -912,6 +912,54 @@ private struct PreferenceRow: View {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 15)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SoundPreferenceRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    @Binding var selection: String
+    let preview: () -> Void
+
+    var body: some View {
+        HStack(spacing: 18) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.blue)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Picker("", selection: $selection) {
+                ForEach(FocusTimerCompletionSound.allCases) { sound in
+                    Text(sound.title).tag(sound.rawValue)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 96)
+
+            Button {
+                preview()
+            } label: {
+                Image(systemName: "play.fill")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("试听提示音")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 15)

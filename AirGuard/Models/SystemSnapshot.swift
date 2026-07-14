@@ -37,6 +37,7 @@ struct BatteryInfo: Equatable {
     var levelRatio: Double?
     var isCharging: Bool
     var isCharged: Bool
+    var isPowerAdapterConnected: Bool
     var isPresent: Bool
     var cycleCount: Int?
     var health: String?
@@ -45,6 +46,7 @@ struct BatteryInfo: Equatable {
         levelRatio: nil,
         isCharging: false,
         isCharged: false,
+        isPowerAdapterConnected: false,
         isPresent: false,
         cycleCount: nil,
         health: nil

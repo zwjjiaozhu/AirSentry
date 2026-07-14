@@ -376,7 +376,7 @@ private final class PinnedImageHostingView<Content: View>: NSHostingView<Content
     }
 
     override func mouseDown(with event: NSEvent) {
-        window?.makeKeyAndOrderFront(nil)
+        window?.makeKey()
         if event.clickCount >= 2 {
             onDoubleClick?()
             return

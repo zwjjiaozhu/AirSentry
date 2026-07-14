@@ -20,7 +20,7 @@ enum ScreenshotResultPanel {
 
         let panel = ScreenshotToolbarPanel(
             contentRect: hostingView.frame,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -29,7 +29,7 @@ enum ScreenshotResultPanel {
         panel.setFrameOrigin(previewOrigin(for: rect, size: hostingView.frame.size))
         panel.isMovableByWindowBackground = true
         panel.orderFrontRegardless()
-        panel.makeKeyAndOrderFront(nil)
+        panel.makeKey()
 
         ScreenshotImageWriter.copyToPasteboard(image)
     }

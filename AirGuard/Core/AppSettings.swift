@@ -165,6 +165,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(notificationCooldown, forKey: Keys.notificationCooldown) }
     }
 
+    @Published var focusTimerSoundEnabled: Bool {
+        didSet { defaults.set(focusTimerSoundEnabled, forKey: Keys.focusTimerSoundEnabled) }
+    }
+
+    @Published var focusTimerSoundName: String {
+        didSet { defaults.set(focusTimerSoundName, forKey: Keys.focusTimerSoundName) }
+    }
+
     @Published var launchAtLoginEnabled: Bool {
         didSet {
             defaults.set(launchAtLoginEnabled, forKey: Keys.launchAtLoginEnabled)
@@ -342,6 +350,9 @@ final class AppSettings: ObservableObject {
         refreshInterval = savedInterval > 0 ? savedInterval : 2
         let savedCooldown = defaults.double(forKey: Keys.notificationCooldown)
         notificationCooldown = savedCooldown >= 0 ? savedCooldown : 60
+        focusTimerSoundEnabled = defaults.object(forKey: Keys.focusTimerSoundEnabled) as? Bool ?? true
+        let savedFocusTimerSoundName = defaults.string(forKey: Keys.focusTimerSoundName) ?? ""
+        focusTimerSoundName = FocusTimerCompletionSound(rawValue: savedFocusTimerSoundName)?.rawValue ?? FocusTimerCompletionSound.glass.rawValue
         launchAtLoginEnabled = defaults.object(forKey: Keys.launchAtLoginEnabled) as? Bool ?? LaunchAtLoginManager.isEnabled
         displayLogLevel = LogLevel(storageValue: defaults.string(forKey: Keys.displayLogLevel) ?? "") ?? .info
         agentNotchEnabled = defaults.object(forKey: Keys.agentNotchEnabled) as? Bool ?? false
@@ -893,6 +904,8 @@ private enum Keys {
     static let criticalTemperatureThreshold = "criticalTemperatureThreshold"
     static let refreshInterval = "refreshInterval"
     static let notificationCooldown = "notificationCooldown"
+    static let focusTimerSoundEnabled = "focusTimerSoundEnabled"
+    static let focusTimerSoundName = "focusTimerSoundName"
     static let launchAtLoginEnabled = "launchAtLoginEnabled"
     static let displayLogLevel = "displayLogLevel"
     static let agentNotchEnabled = "agentNotchEnabled"

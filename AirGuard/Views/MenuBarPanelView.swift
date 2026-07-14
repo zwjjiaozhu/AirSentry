@@ -116,6 +116,12 @@ struct MenuBarPanelView: View {
         .help("查看更多系统状态")
         .popover(isPresented: $showsSystemStatusPopover, arrowEdge: .top) {
             moreSystemStatusPanel
+                .onAppear {
+                    refreshMoreSystemStatus()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+                    refreshMoreSystemStatus()
+                }
         }
     }
 
@@ -915,6 +921,7 @@ struct MenuBarPanelView: View {
     private var chargingStatusText: String {
         guard moreStatusBattery.isPresent else { return "不可用" }
         if moreStatusBattery.isCharged { return "已充满" }
+        if moreStatusBattery.isPowerAdapterConnected, !moreStatusBattery.isCharging { return "已接电源" }
         return moreStatusBattery.isCharging ? "充电中" : "未充电"
     }
 
@@ -1193,6 +1200,7 @@ private struct BatteryReader {
         let powerState = description[kIOPSPowerSourceStateKey] as? String
         let isCharging = (description[kIOPSIsChargingKey] as? Bool) ?? false
         let isCharged = (description[kIOPSIsChargedKey] as? Bool) ?? false
+        let isPowerAdapterConnected = powerState == kIOPSACPowerValue
         let isPresent = (description[kIOPSIsPresentKey] as? Bool) ?? (powerState != nil)
         let powerSourceCycleCount = (description["Cycle Count"] as? NSNumber)?.intValue
         let registryCycleCount = readCycleCountFromRegistry()
@@ -1214,6 +1222,7 @@ private struct BatteryReader {
             levelRatio: levelRatio,
             isCharging: isCharging,
             isCharged: isCharged,
+            isPowerAdapterConnected: isPowerAdapterConnected,
             isPresent: isPresent,
             cycleCount: cycleCount,
             health: health

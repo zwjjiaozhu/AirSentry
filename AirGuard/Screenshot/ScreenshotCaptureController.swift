@@ -284,7 +284,6 @@ enum ScreenshotImageWriter {
         panel.canCreateDirectories = true
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
 
-        NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK,
               let url = panel.url else { return false }
 

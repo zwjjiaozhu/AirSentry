@@ -68,9 +68,8 @@ final class ScreenshotOverlayController {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
-            NSApp.activate(ignoringOtherApps: true)
             windows.forEach { $0.orderFrontRegardless() }
-            windows.first?.makeKeyAndOrderFront(nil)
+            windows.first?.makeKey()
         }
     }
 
@@ -153,7 +152,7 @@ final class ScreenshotOverlayWindow: NSPanel {
     init(screen: NSScreen) {
         super.init(
             contentRect: screen.frame,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -2596,17 +2595,14 @@ private struct ScreenshotOverlayView: View {
         }
 
         let overlayWindow = activeOverlayWindowForColorPanel()
-        NSApp.activate(ignoringOtherApps: true)
-        overlayWindow?.makeKeyAndOrderFront(nil)
+        overlayWindow?.makeKey()
         positionColorPanel(panel, relativeTo: overlayWindow)
-        NSApp.orderFrontColorPanel(nil)
         panel.orderFrontRegardless()
-        panel.makeKeyAndOrderFront(nil)
+        panel.makeKey()
 
         DispatchQueue.main.async {
             self.configureColorPanelForScreenshotOverlay(panel)
             self.positionColorPanel(panel, relativeTo: self.activeOverlayWindowForColorPanel())
-            NSApp.orderFrontColorPanel(nil)
             panel.orderFrontRegardless()
             panel.makeKey()
         }
@@ -2614,7 +2610,7 @@ private struct ScreenshotOverlayView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             guard panel.isVisible else {
                 panel.orderFrontRegardless()
-                panel.makeKeyAndOrderFront(nil)
+                panel.makeKey()
                 return
             }
             self.configureColorPanelForScreenshotOverlay(panel)

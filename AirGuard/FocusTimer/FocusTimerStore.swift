@@ -61,6 +61,7 @@ final class FocusTimerStore: ObservableObject {
     @Published var showsFloatingReminder = false
 
     private let settings: AppSettings
+    private let soundPlayer = FocusTimerSoundPlayer.shared
     private var ticker: Timer?
     private var endDate: Date?
     private var pausedRemainingSeconds: Int?
@@ -185,6 +186,7 @@ final class FocusTimerStore: ObservableObject {
         showsFloatingReminder = true
 
         let completedMode = mode
+        playCompletionSound()
         if completedMode == .focus, pendingBreakMinutes != nil {
             sendNotification(title: "专注完成", body: "这一轮完成了，可以休息一下。")
         } else if completedMode == .breakTime {
@@ -206,6 +208,11 @@ final class FocusTimerStore: ObservableObject {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
+    }
+
+    private func playCompletionSound() {
+        guard settings.focusTimerSoundEnabled else { return }
+        soundPlayer.playCompletionSound(named: settings.focusTimerSoundName)
     }
 }
 

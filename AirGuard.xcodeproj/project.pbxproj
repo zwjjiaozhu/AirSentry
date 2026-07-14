@@ -85,6 +85,7 @@
 		A0000000000000000000004B /* FocusTimerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000153 /* FocusTimerStore.swift */; };
 		A0000000000000000000004C /* FocusTimerLauncherPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */; };
 		A0000000000000000000004D /* FocusTimerShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000155 /* FocusTimerShortcutManager.swift */; };
+		A0000000000000000000005A /* FocusTimerSoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000162 /* FocusTimerSoundPlayer.swift */; };
 		A0000000000000000000004E /* MenuBarSystemTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000156 /* MenuBarSystemTool.swift */; };
 		A0000000000000000000004F /* DiskHealthGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000157 /* DiskHealthGuideView.swift */; };
 		A00000000000000000000050 /* MouseScrollDirectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000158 /* MouseScrollDirectionManager.swift */; };
@@ -222,6 +223,7 @@
 		A00000000000000000000153 /* FocusTimerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerLauncherPanelController.swift; sourceTree = "<group>"; };
 		A00000000000000000000155 /* FocusTimerShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerShortcutManager.swift; sourceTree = "<group>"; };
+		A00000000000000000000162 /* FocusTimerSoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusTimerSoundPlayer.swift; sourceTree = "<group>"; };
 		A00000000000000000000156 /* MenuBarSystemTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSystemTool.swift; sourceTree = "<group>"; };
 		A00000000000000000000157 /* DiskHealthGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiskHealthGuideView.swift; sourceTree = "<group>"; };
 		A00000000000000000000158 /* MouseScrollDirectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MouseScrollDirectionManager.swift; sourceTree = "<group>"; };
@@ -387,6 +389,7 @@
 				A00000000000000000000153 /* FocusTimerStore.swift */,
 				A00000000000000000000154 /* FocusTimerLauncherPanelController.swift */,
 				A00000000000000000000155 /* FocusTimerShortcutManager.swift */,
+				A00000000000000000000162 /* FocusTimerSoundPlayer.swift */,
 			);
 			path = FocusTimer;
 			sourceTree = "<group>";
@@ -701,6 +704,7 @@
 				A0000000000000000000004B /* FocusTimerStore.swift in Sources */,
 				A0000000000000000000004C /* FocusTimerLauncherPanelController.swift in Sources */,
 				A0000000000000000000004D /* FocusTimerShortcutManager.swift in Sources */,
+				A0000000000000000000005A /* FocusTimerSoundPlayer.swift in Sources */,
 				A0000000000000000000004E /* MenuBarSystemTool.swift in Sources */,
 				A0000000000000000000004F /* DiskHealthGuideView.swift in Sources */,
 				A00000000000000000000050 /* MouseScrollDirectionManager.swift in Sources */,

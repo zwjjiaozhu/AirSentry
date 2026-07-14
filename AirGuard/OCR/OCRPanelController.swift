@@ -11,7 +11,7 @@ final class OCRPanelController: ObservableObject {
     func show(image: NSImage? = nil, recognizeImmediately: Bool = false) {
         if let panel {
             panel.orderFrontRegardless()
-            panel.makeKeyAndOrderFront(nil)
+            panel.makeKey()
             if let image {
                 store?.setImage(image, sourceName: "截图", recognizeImmediately: recognizeImmediately)
             }
@@ -27,7 +27,7 @@ final class OCRPanelController: ObservableObject {
 
         let panel = OCRWindowPanel(
             contentRect: hostingView.frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -44,8 +44,7 @@ final class OCRPanelController: ObservableObject {
 
         self.panel = panel
         panel.orderFrontRegardless()
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKey()
 
         if let image {
             store.setImage(image, sourceName: "截图", recognizeImmediately: recognizeImmediately)

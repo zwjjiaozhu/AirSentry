@@ -131,10 +131,25 @@ struct AppLauncherPanelView: View {
                     .font(.system(size: 17))
                     .focused($searchFocused)
                     .onSubmit(launchFirstResult)
+                    .frame(maxWidth: .infinity)
 
                 if store.isScanning {
                     ProgressView()
                         .controlSize(.small)
+                }
+
+                if !store.searchText.isEmpty {
+                    Button {
+                        store.searchText = ""
+                        searchFocused = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("清除搜索")
+                    .accessibilityLabel("清除搜索")
                 }
             }
             .padding(.horizontal, 14)
