@@ -2991,7 +2991,7 @@ private struct ScreenshotSelectionExportToolbar: View {
                     isQualityPopoverPresented = true
                 }
             } label: {
-                toolbarControlLabel(systemImage: "slider.horizontal.3", text: qualityDisplayTitle)
+                toolbarControlLabel(systemImage: "slider.horizontal.3", text: qualityDisplayTitle, minWidth: 76)
             }
             .menuStyle(.borderlessButton)
             .buttonStyle(.plain)
@@ -3142,17 +3142,18 @@ private struct ScreenshotSelectionExportToolbar: View {
         }
     }
 
-    private func toolbarControlLabel(systemImage: String, text: String) -> some View {
+    private func toolbarControlLabel(systemImage: String, text: String, minWidth: CGFloat? = nil) -> some View {
         HStack(spacing: 5) {
             Image(systemName: systemImage)
                 .font(.system(size: 14, weight: .semibold))
             Text(text)
                 .font(.system(size: 12.5, weight: .semibold))
+                .monospacedDigit()
                 .lineLimit(1)
         }
         .foregroundStyle(.black.opacity(0.70))
         .padding(.horizontal, 6)
-        .frame(height: 24)
+        .frame(minWidth: minWidth, minHeight: 24, maxHeight: 24)
         .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }

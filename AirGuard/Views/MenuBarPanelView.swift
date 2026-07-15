@@ -105,13 +105,13 @@ struct MenuBarPanelView: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(thermalColor.opacity(0.12), in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .foregroundStyle(thermalColor)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(thermalColor.opacity(0.12), in: Capsule())
-        .contentShape(Capsule())
         .pointingHandCursor()
         .help("查看更多系统状态")
         .popover(isPresented: $showsSystemStatusPopover, arrowEdge: .top) {
