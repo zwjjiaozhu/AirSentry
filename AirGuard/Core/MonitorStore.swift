@@ -18,6 +18,7 @@ final class MonitorStore: ObservableObject {
     private let processCPUReader = ProcessCPUReader()
     private let memoryReader = MemoryReader()
     private let networkReader = NetworkReader()
+    private let batteryReader = BatteryReader()
     private let maxHistorySamples = 24
     private let topProcessRefreshInterval: TimeInterval = 10
     private let thermalLogInterval: TimeInterval = 120
@@ -41,7 +42,7 @@ final class MonitorStore: ObservableObject {
             cpuUsage: cpuReader.readUsage(),
             memory: memoryReader.read(),
             network: networkReader.readSpeed(),
-            battery: .empty,
+            battery: batteryReader.read(),
             disk: .empty,
             capturedAt: Date()
         )

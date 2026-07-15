@@ -165,6 +165,18 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(notificationCooldown, forKey: Keys.notificationCooldown) }
     }
 
+    @Published var batteryAlertsEnabled: Bool {
+        didSet { defaults.set(batteryAlertsEnabled, forKey: Keys.batteryAlertsEnabled) }
+    }
+
+    @Published var lowBatteryThreshold: Double {
+        didSet { defaults.set(lowBatteryThreshold, forKey: Keys.lowBatteryThreshold) }
+    }
+
+    @Published var criticalBatteryThreshold: Double {
+        didSet { defaults.set(criticalBatteryThreshold, forKey: Keys.criticalBatteryThreshold) }
+    }
+
     @Published var focusTimerSoundEnabled: Bool {
         didSet { defaults.set(focusTimerSoundEnabled, forKey: Keys.focusTimerSoundEnabled) }
     }
@@ -350,6 +362,11 @@ final class AppSettings: ObservableObject {
         refreshInterval = savedInterval > 0 ? savedInterval : 2
         let savedCooldown = defaults.double(forKey: Keys.notificationCooldown)
         notificationCooldown = savedCooldown >= 0 ? savedCooldown : 60
+        batteryAlertsEnabled = defaults.object(forKey: Keys.batteryAlertsEnabled) as? Bool ?? true
+        let savedLowBatteryThreshold = defaults.double(forKey: Keys.lowBatteryThreshold)
+        lowBatteryThreshold = savedLowBatteryThreshold > 0 ? savedLowBatteryThreshold : 35
+        let savedCriticalBatteryThreshold = defaults.double(forKey: Keys.criticalBatteryThreshold)
+        criticalBatteryThreshold = savedCriticalBatteryThreshold > 0 ? savedCriticalBatteryThreshold : 20
         focusTimerSoundEnabled = defaults.object(forKey: Keys.focusTimerSoundEnabled) as? Bool ?? true
         let savedFocusTimerSoundName = defaults.string(forKey: Keys.focusTimerSoundName) ?? ""
         focusTimerSoundName = FocusTimerCompletionSound(rawValue: savedFocusTimerSoundName)?.rawValue ?? FocusTimerCompletionSound.glass.rawValue
@@ -397,6 +414,7 @@ final class AppSettings: ObservableObject {
         mouseScrollReversesVertical = defaults.object(forKey: Keys.mouseScrollReversesVertical) as? Bool ?? true
         mouseScrollReversesHorizontal = defaults.object(forKey: Keys.mouseScrollReversesHorizontal) as? Bool ?? true
         normalizeLoadedTemperatureThresholds()
+        normalizeLoadedBatteryThresholds()
         normalizeLoadedIntervals()
         normalizeTranslationSettings()
         normalizeFloatingBallSettings()
@@ -460,6 +478,20 @@ final class AppSettings: ObservableObject {
     func setNotificationCooldown(_ value: TimeInterval) {
         let clampedValue = min(max(value, 0), 60 * 60)
         notificationCooldown = (clampedValue / 5).rounded() * 5
+    }
+
+    func setLowBatteryThreshold(_ value: Double) {
+        lowBatteryThreshold = min(max(value.rounded(), 5), 80)
+        if criticalBatteryThreshold >= lowBatteryThreshold {
+            criticalBatteryThreshold = max(lowBatteryThreshold - 5, 1)
+        }
+    }
+
+    func setCriticalBatteryThreshold(_ value: Double) {
+        criticalBatteryThreshold = min(max(value.rounded(), 1), 75)
+        if lowBatteryThreshold <= criticalBatteryThreshold {
+            lowBatteryThreshold = min(criticalBatteryThreshold + 5, 80)
+        }
     }
 
     func setAgentCompletionDisplayDuration(_ value: TimeInterval) {
@@ -609,6 +641,14 @@ final class AppSettings: ObservableObject {
         fairTemperatureThreshold = min(max(fairTemperatureThreshold, 30), 123)
         seriousTemperatureThreshold = min(max(seriousTemperatureThreshold, fairTemperatureThreshold + 1), 124)
         criticalTemperatureThreshold = min(max(criticalTemperatureThreshold, seriousTemperatureThreshold + 1), 125)
+    }
+
+    private func normalizeLoadedBatteryThresholds() {
+        lowBatteryThreshold = min(max(lowBatteryThreshold.rounded(), 5), 80)
+        criticalBatteryThreshold = min(max(criticalBatteryThreshold.rounded(), 1), 75)
+        if criticalBatteryThreshold >= lowBatteryThreshold {
+            criticalBatteryThreshold = max(lowBatteryThreshold - 5, 1)
+        }
     }
 
     private func normalizeLoadedIntervals() {
@@ -904,6 +944,9 @@ private enum Keys {
     static let criticalTemperatureThreshold = "criticalTemperatureThreshold"
     static let refreshInterval = "refreshInterval"
     static let notificationCooldown = "notificationCooldown"
+    static let batteryAlertsEnabled = "batteryAlertsEnabled"
+    static let lowBatteryThreshold = "lowBatteryThreshold"
+    static let criticalBatteryThreshold = "criticalBatteryThreshold"
     static let focusTimerSoundEnabled = "focusTimerSoundEnabled"
     static let focusTimerSoundName = "focusTimerSoundName"
     static let launchAtLoginEnabled = "launchAtLoginEnabled"

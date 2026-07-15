@@ -20,6 +20,7 @@
 		A0000000000000000000000B /* CPUReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000010B /* CPUReader.swift */; };
 		A0000000000000000000000C /* MemoryReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000010C /* MemoryReader.swift */; };
 		A0000000000000000000000D /* NetworkReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000010D /* NetworkReader.swift */; };
+		A00000000000000000000070 /* BatteryReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000170 /* BatteryReader.swift */; };
 		A0000000000000000000000E /* SystemSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000010E /* SystemSnapshot.swift */; };
 		A0000000000000000000000F /* ThermalLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000010F /* ThermalLevel.swift */; };
 		A00000000000000000000010 /* MemoryInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000110 /* MemoryInfo.swift */; };
@@ -150,6 +151,7 @@
 		A0000000000000000000010B /* CPUReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUReader.swift; sourceTree = "<group>"; };
 		A0000000000000000000010C /* MemoryReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryReader.swift; sourceTree = "<group>"; };
 		A0000000000000000000010D /* NetworkReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkReader.swift; sourceTree = "<group>"; };
+		A00000000000000000000170 /* BatteryReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryReader.swift; sourceTree = "<group>"; };
 		A0000000000000000000010E /* SystemSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSnapshot.swift; sourceTree = "<group>"; };
 		A0000000000000000000010F /* ThermalLevel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThermalLevel.swift; sourceTree = "<group>"; };
 		A00000000000000000000110 /* MemoryInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryInfo.swift; sourceTree = "<group>"; };
@@ -401,6 +403,7 @@
 				A0000000000000000000010B /* CPUReader.swift */,
 				A0000000000000000000010C /* MemoryReader.swift */,
 				A0000000000000000000010D /* NetworkReader.swift */,
+				A00000000000000000000170 /* BatteryReader.swift */,
 				A0000000000000000000012B /* StorageReader.swift */,
 				A0000000000000000000014F /* AIUsageReader.swift */,
 				A00000000000000000000132 /* AppUninstallerReader.swift */,
@@ -643,6 +646,7 @@
 				A0000000000000000000000B /* CPUReader.swift in Sources */,
 				A0000000000000000000000C /* MemoryReader.swift in Sources */,
 				A0000000000000000000000D /* NetworkReader.swift in Sources */,
+				A00000000000000000000070 /* BatteryReader.swift in Sources */,
 				A0000000000000000000000E /* SystemSnapshot.swift in Sources */,
 				A0000000000000000000000F /* ThermalLevel.swift in Sources */,
 				A00000000000000000000010 /* MemoryInfo.swift in Sources */,
@@ -877,7 +881,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -905,7 +909,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID)";
 				PRODUCT_NAME = AirSentry;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -934,7 +938,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;
@@ -965,7 +969,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(AIR_SENTRY_BUNDLE_ID).finderextension";
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = AirSentryFinderExtension;

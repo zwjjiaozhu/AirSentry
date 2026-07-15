@@ -94,24 +94,24 @@ struct MenuBarPanelView: View {
         Button {
             openMoreSystemStatus()
         } label: {
-            HStack(spacing: 7) {
-                Image(systemName: snapshot.thermal.level.symbolName)
-                    .font(.system(size: 15, weight: .semibold))
+            HStack(spacing: 5) {
+                Image(systemName: headerBatterySymbolName)
+                    .font(.system(size: 14, weight: .semibold))
 
-                Text(snapshot.thermal.level.shortTitle)
-                    .font(.system(size: 15, weight: .semibold))
+                Text(headerBatteryText)
+                    .font(.system(size: 14, weight: .semibold))
 
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(thermalColor.opacity(0.12), in: Capsule())
+            .padding(.horizontal, 11)
+            .padding(.vertical, 8)
+            .background(headerBatteryColor.opacity(0.12), in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(thermalColor)
+        .foregroundStyle(headerBatteryColor)
         .pointingHandCursor()
         .help("查看更多系统状态")
         .popover(isPresented: $showsSystemStatusPopover, arrowEdge: .top) {
@@ -918,6 +918,24 @@ struct MenuBarPanelView: View {
         return percent(levelRatio)
     }
 
+    private var headerBatteryText: String {
+        guard snapshot.battery.isPresent, let levelRatio = snapshot.battery.levelRatio else { return "电池" }
+        return percent(levelRatio)
+    }
+
+    private var headerBatterySymbolName: String {
+        guard snapshot.battery.isPresent else { return "battery.0percent" }
+        if snapshot.battery.isCharging || snapshot.battery.isPowerAdapterConnected, !snapshot.battery.isCharged {
+            return "battery.100percent.bolt"
+        }
+        guard let levelRatio = snapshot.battery.levelRatio else { return "battery.0percent" }
+        if levelRatio <= 0.10 { return "battery.0percent" }
+        if levelRatio <= 0.35 { return "battery.25percent" }
+        if levelRatio <= 0.65 { return "battery.50percent" }
+        if levelRatio <= 0.90 { return "battery.75percent" }
+        return "battery.100percent"
+    }
+
     private var chargingStatusText: String {
         guard moreStatusBattery.isPresent else { return "不可用" }
         if moreStatusBattery.isCharged { return "已充满" }
@@ -1020,6 +1038,14 @@ struct MenuBarPanelView: View {
         guard let levelRatio = moreStatusBattery.levelRatio else { return .secondary }
         if levelRatio <= 0.20 { return .red }
         if levelRatio <= 0.35 { return .orange }
+        return .green
+    }
+
+    private var headerBatteryColor: Color {
+        guard snapshot.battery.isPresent, let levelRatio = snapshot.battery.levelRatio else { return .secondary }
+        if snapshot.battery.isCharging || snapshot.battery.isPowerAdapterConnected { return .green }
+        if levelRatio <= settings.criticalBatteryThreshold / 100 { return .red }
+        if levelRatio <= settings.lowBatteryThreshold / 100 { return .orange }
         return .green
     }
 
@@ -1170,85 +1196,6 @@ private struct Sparkline: View {
             ))
             context.stroke(line, with: .color(color), lineWidth: 2)
         }
-    }
-}
-
-private struct BatteryReader {
-    func read() -> BatteryInfo {
-        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef]
-        else {
-            LogArchiver.shared.warning("More system status battery read failed: power source snapshot/list unavailable")
-            return .empty
-        }
-
-        guard let source = sources.first,
-              let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any]
-        else {
-            LogArchiver.shared.warning("More system status battery read failed: no readable power source description, sourceCount=\(sources.count)")
-            return .empty
-        }
-
-        let currentCapacity = (description[kIOPSCurrentCapacityKey] as? NSNumber)?.doubleValue
-        let maxCapacity = (description[kIOPSMaxCapacityKey] as? NSNumber)?.doubleValue
-        let levelRatio = if let currentCapacity, let maxCapacity, maxCapacity > 0 {
-            min(max(currentCapacity / maxCapacity, 0), 1)
-        } else {
-            Optional<Double>.none
-        }
-
-        let powerState = description[kIOPSPowerSourceStateKey] as? String
-        let isCharging = (description[kIOPSIsChargingKey] as? Bool) ?? false
-        let isCharged = (description[kIOPSIsChargedKey] as? Bool) ?? false
-        let isPowerAdapterConnected = powerState == kIOPSACPowerValue
-        let isPresent = (description[kIOPSIsPresentKey] as? Bool) ?? (powerState != nil)
-        let powerSourceCycleCount = (description["Cycle Count"] as? NSNumber)?.intValue
-        let registryCycleCount = readCycleCountFromRegistry()
-        let cycleCount = powerSourceCycleCount ?? registryCycleCount
-        let health = description["BatteryHealth"] as? String ?? description["Battery Health"] as? String
-
-        if isPresent, cycleCount == nil {
-            let keys = description.keys.sorted().joined(separator: ", ")
-            let currentCapacityText = currentCapacity.map { String($0) } ?? "nil"
-            let maxCapacityText = maxCapacity.map { String($0) } ?? "nil"
-            let powerStateText = powerState ?? "nil"
-            let healthText = health ?? "nil"
-            let designCycleCountText = (description["DesignCycleCount"] as? NSNumber).map { String($0.intValue) } ?? "nil"
-            let message = "More system status battery cycle count unavailable: powerState=\(powerStateText) currentCapacity=\(currentCapacityText) maxCapacity=\(maxCapacityText) health=\(healthText) designCycleCount=\(designCycleCountText) keys=[\(keys)]"
-            LogArchiver.shared.warning(message)
-        }
-
-        return BatteryInfo(
-            levelRatio: levelRatio,
-            isCharging: isCharging,
-            isCharged: isCharged,
-            isPowerAdapterConnected: isPowerAdapterConnected,
-            isPresent: isPresent,
-            cycleCount: cycleCount,
-            health: health
-        )
-    }
-
-    private func readCycleCountFromRegistry() -> Int? {
-        let matching = IOServiceMatching("AppleSmartBattery")
-        let service = IOServiceGetMatchingService(kIOMainPortDefault, matching)
-        guard service != 0 else {
-            LogArchiver.shared.warning("More system status battery cycle count registry fallback failed: AppleSmartBattery service unavailable")
-            return nil
-        }
-        defer { IOObjectRelease(service) }
-
-        guard let value = IORegistryEntryCreateCFProperty(
-            service,
-            "CycleCount" as CFString,
-            kCFAllocatorDefault,
-            0
-        )?.takeRetainedValue() as? NSNumber else {
-            LogArchiver.shared.warning("More system status battery cycle count registry fallback failed: CycleCount property unavailable")
-            return nil
-        }
-
-        return value.intValue
     }
 }
 

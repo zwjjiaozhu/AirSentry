@@ -24,6 +24,8 @@ struct SettingsView: View {
                             .id(SettingsSectionID.reminder)
                         thresholdSection
                             .id(SettingsSectionID.threshold)
+                        batteryThresholdSection
+                            .id(SettingsSectionID.batteryThreshold)
                         labSection
                             .id(SettingsSectionID.labs)
                         systemSection
@@ -97,6 +99,14 @@ struct SettingsView: View {
                     isSelected: selectedSection == .threshold
                 ) {
                     selectedSection = .threshold
+                }
+
+                SidebarItem(
+                    title: "电池阈值",
+                    systemImage: "battery.50percent",
+                    isSelected: selectedSection == .batteryThreshold
+                ) {
+                    selectedSection = .batteryThreshold
                 }
 
                 SidebarItem(
@@ -292,6 +302,68 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 300)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+        }
+    }
+
+    private var batteryThresholdSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionTitle("电池阈值")
+                Spacer()
+                Text("%")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            SettingsGroup {
+                HStack(spacing: 12) {
+                    ThresholdCard(
+                        id: .batteryLow,
+                        title: "低电量",
+                        color: .orange,
+                        value: settings.lowBatteryThreshold,
+                        range: 5...80,
+                        unit: "%",
+                        inputHelpText: "点击直接输入电量",
+                        editingThreshold: $editingThreshold,
+                        focusedThreshold: $focusedThreshold,
+                        onChange: settings.setLowBatteryThreshold
+                    )
+
+                    ThresholdCard(
+                        id: .batteryCritical,
+                        title: "严重",
+                        color: .red,
+                        value: settings.criticalBatteryThreshold,
+                        range: 1...75,
+                        unit: "%",
+                        inputHelpText: "点击直接输入电量",
+                        editingThreshold: $editingThreshold,
+                        focusedThreshold: $focusedThreshold,
+                        onChange: settings.setCriticalBatteryThreshold
+                    )
+                }
+                .padding(14)
+
+                Divider()
+                    .padding(.horizontal, 16)
+
+                HStack(spacing: 12) {
+                    HStack(spacing: 7) {
+                        Text("电池提醒")
+                            .font(.system(size: 15, weight: .medium))
+                        InfoButton(text: "低于阈值且未接入电源时发送通知；充电中或接入电源时，菜单栏电池状态保持绿色。")
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $settings.batteryAlertsEnabled)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -644,6 +716,7 @@ struct SettingsView: View {
 private enum SettingsSectionID: Hashable {
     case reminder
     case threshold
+    case batteryThreshold
     case labs
     case system
 }
@@ -652,6 +725,8 @@ private enum TemperatureThresholdID: Hashable {
     case fair
     case serious
     case critical
+    case batteryLow
+    case batteryCritical
 }
 
 private struct ThresholdInputFocusResetter: NSViewRepresentable {
@@ -1078,6 +1153,8 @@ private struct ThresholdCard: View {
     let color: Color
     let value: Double
     let range: ClosedRange<Double>
+    var unit = "°C"
+    var inputHelpText = "点击直接输入温度"
     @Binding var editingThreshold: TemperatureThresholdID?
     let focusedThreshold: FocusState<TemperatureThresholdID?>.Binding
     let onChange: (Double) -> Void
@@ -1111,10 +1188,10 @@ private struct ThresholdCard: View {
                             .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
-                    .help("点击直接输入温度")
+                    .help(inputHelpText)
                 }
 
-                Text("°C")
+                Text(unit)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -1157,7 +1234,7 @@ private struct ThresholdCard: View {
                     .stroke(controlStrokeColor, lineWidth: 1)
             )
 
-            Text("\(Int(range.lowerBound))-\(Int(range.upperBound)) °C")
+            Text("\(Int(range.lowerBound))-\(Int(range.upperBound)) \(unit)")
                 .font(.system(size: 11.5, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
