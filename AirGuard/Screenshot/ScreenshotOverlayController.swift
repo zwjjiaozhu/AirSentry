@@ -1550,6 +1550,11 @@ private struct ScreenshotOverlayView: View {
                 return
             }
 
+            if selectedTextDragHandleHit(at: localPoint) != nil {
+                pushSelectionCursor(.openHand)
+                return
+            }
+
             if let handle = selectedTextResizeHandleHit(at: localPoint) {
                 pushSelectionCursor(handle.cursor)
                 return
@@ -1744,7 +1749,7 @@ private struct ScreenshotOverlayView: View {
         let bounds = CGRect(origin: .zero, size: textBounds(for: annotation))
 
         return ZStack {
-            ForEach(TextResizeHandle.allCases) { handle in
+            ForEach(textResizeHandles(for: annotation)) { handle in
                 Circle()
                     .fill(Color.blue)
                     .frame(width: 10, height: 10)
@@ -1753,6 +1758,16 @@ private struct ScreenshotOverlayView: View {
                     .position(handle.point(in: bounds))
                     .gesture(textResizeGesture(annotationID: annotation.id, handle: handle))
             }
+
+            Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 18, height: 18)
+                .background(Color.blue, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .contentShape(Rectangle())
+                .position(x: -8, y: -8)
+                .gesture(textMoveGesture(annotationID: annotation.id, in: selectionBoundsForTextResize()))
+                .help("拖动")
 
             Button {
                 deleteAnnotation(id: annotation.id)
@@ -1767,6 +1782,10 @@ private struct ScreenshotOverlayView: View {
             .position(x: bounds.width + 8, y: -8)
         }
         .allowsHitTesting(true)
+    }
+
+    private func textResizeHandles(for annotation: ScreenshotAnnotation) -> [TextResizeHandle] {
+        annotation.tool == .counter ? TextResizeHandle.cornerCases : TextResizeHandle.allCases
     }
 
     private func textResizeGesture(annotationID: UUID, handle: TextResizeHandle) -> some Gesture {
@@ -2758,6 +2777,16 @@ private struct ScreenshotOverlayView: View {
         return selectedAnnotationID
     }
 
+    private func selectedTextDragHandleHit(at localPoint: CGPoint) -> UUID? {
+        guard let selectedAnnotationID,
+              let annotation = annotations.first(where: { $0.id == selectedAnnotationID }),
+              annotation.tool.isTextLike,
+              let rect = textFrame(for: annotation) else { return nil }
+
+        let point = CGPoint(x: rect.minX - 8, y: rect.minY - 8)
+        let hitRect = CGRect(x: point.x - 9, y: point.y - 9, width: 18, height: 18)
+        return hitRect.contains(localPoint) ? selectedAnnotationID : nil
+    }
 
     private func selectedTextResizeHandleHit(at localPoint: CGPoint) -> TextResizeHandle? {
         guard let selectedAnnotationID,
@@ -2766,7 +2795,7 @@ private struct ScreenshotOverlayView: View {
               let rect = textFrame(for: annotation) else { return nil }
 
         let hitRadius: CGFloat = 13
-        return TextResizeHandle.allCases.first { handle in
+        return textResizeHandles(for: annotation).first { handle in
             let point = handle.point(in: rect)
             let dx = localPoint.x - point.x
             let dy = localPoint.y - point.y
@@ -4821,6 +4850,8 @@ private enum TextResizeHandle: CaseIterable, Identifiable {
     case bottomLeft
     case bottom
     case bottomRight
+
+    static let cornerCases: [TextResizeHandle] = [.topLeft, .topRight, .bottomLeft, .bottomRight]
 
     var id: Self { self }
 

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -14,6 +15,9 @@ struct AppLauncherPanelView: View {
     @State private var draftGroupNames: [UUID: String] = [:]
     @State private var scrollTargetSectionID: String?
     @State private var scrollRequestID = UUID()
+    @State private var selectedAppID: String?
+    @State private var selectedAppScrollRequestID = UUID()
+    @State private var keyMonitor: Any?
 
     private let columns = [
         GridItem(.adaptive(minimum: 82, maximum: 98), spacing: 12)
@@ -43,6 +47,20 @@ struct AppLauncherPanelView: View {
             for group in store.groups {
                 draftGroupNames[group.id] = group.name
             }
+            ensureSelectedApp()
+            installKeyMonitor()
+        }
+        .onDisappear {
+            removeKeyMonitor()
+        }
+        .onChange(of: store.searchText) { _ in
+            ensureSelectedApp(preferFirst: true)
+        }
+        .onChange(of: store.applications) { _ in
+            ensureSelectedApp()
+        }
+        .onChange(of: store.groups) { _ in
+            ensureSelectedApp()
         }
     }
 
@@ -177,14 +195,20 @@ struct AppLauncherPanelView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !store.searchText.isEmpty {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 14) {
-                        ForEach(searchResults) { app in
-                            appTile(app, groupID: nil)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 14) {
+                            ForEach(searchResults) { app in
+                                appTile(app, groupID: nil)
+                                    .id(app.id)
+                            }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 22)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 22)
+                    .onChange(of: selectedAppScrollRequestID) { _ in
+                        scrollToSelectedApp(with: proxy)
+                    }
                 }
             } else {
                 ScrollViewReader { proxy in
@@ -231,6 +255,9 @@ struct AppLauncherPanelView: View {
                     }
                     .onChange(of: store.isScanning) { _ in
                         scrollToSelectedSection(with: proxy, animated: false)
+                    }
+                    .onChange(of: selectedAppScrollRequestID) { _ in
+                        scrollToSelectedApp(with: proxy)
                     }
                 }
             }
@@ -392,6 +419,7 @@ struct AppLauncherPanelView: View {
                 LazyVGrid(columns: columns, spacing: 14) {
                     ForEach(apps) { app in
                         appTile(app, groupID: groupID)
+                            .id(app.id)
                     }
                 }
             }
@@ -405,28 +433,49 @@ struct AppLauncherPanelView: View {
     }
 
     private func appTile(_ app: AppLauncherItem, groupID: UUID?) -> some View {
-        VStack(spacing: 5) {
+        let isSelected = selectedAppID == app.id
+
+        return VStack(spacing: 5) {
             Button {
                 if !isEditing {
+                    selectedAppID = app.id
                     store.launch(app)
                     close()
                 }
             } label: {
                 VStack(spacing: 7) {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.path))
-                        .resizable()
-                        .frame(width: 48, height: 48)
+                    ZStack {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: app.path))
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 48, height: 48)
+                    }
+                    .frame(width: 66, height: 66, alignment: .center)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(isSelected ? Color.accentColor.opacity(0.95) : Color.clear, lineWidth: 2)
+                    )
+
                     Text(app.name)
                         .font(.system(size: 12.5, weight: .medium))
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
-                        .frame(height: 34, alignment: .top)
+                        .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34, alignment: .top)
                 }
-                .frame(width: 88, height: 96)
+                .frame(width: 88, height: 107)
+                .fixedSize()
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
             .help(app.path)
+            .onTapGesture {
+                selectedAppID = app.id
+                requestScrollToSelectedApp()
+            }
             .onDrag {
                 draggedAppID = app.id
                 return NSItemProvider(object: dragPayload(kind: .app, value: app.id) as NSString)
@@ -458,13 +507,11 @@ struct AppLauncherPanelView: View {
         }
         .padding(.vertical, isEditing ? 4 : 0)
         .background(
-            Group {
-                if isEditing {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.045))
-                }
-            }
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isEditing ? Color.primary.opacity(0.045) : Color.clear)
         )
+        .frame(width: 88, alignment: .center)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func colorSwatches(for group: AppLauncherGroup) -> some View {
@@ -593,9 +640,88 @@ struct AppLauncherPanelView: View {
     }
 
     private func launchFirstResult() {
-        guard !isEditing, let first = displayedApplications.first else { return }
-        store.launch(first)
+        guard !isEditing else { return }
+        ensureSelectedApp()
+        guard let app = selectedApp ?? displayedApplications.first else { return }
+        store.launch(app)
         close()
+    }
+
+    private var selectedApp: AppLauncherItem? {
+        guard let selectedAppID else { return nil }
+        return displayedApplications.first { $0.id == selectedAppID }
+    }
+
+    private func ensureSelectedApp(preferFirst: Bool = false) {
+        guard !displayedApplications.isEmpty else {
+            selectedAppID = nil
+            return
+        }
+
+        if preferFirst || selectedApp == nil {
+            selectedAppID = displayedApplications.first?.id
+        }
+        requestScrollToSelectedApp()
+    }
+
+    private func requestScrollToSelectedApp() {
+        selectedAppScrollRequestID = UUID()
+    }
+
+    private func moveSelectedApp(by delta: Int) {
+        guard !displayedApplications.isEmpty else { return }
+        ensureSelectedApp()
+
+        let currentIndex = selectedAppID.flatMap { id in
+            displayedApplications.firstIndex { $0.id == id }
+        } ?? 0
+        let targetIndex = min(max(currentIndex + delta, 0), displayedApplications.count - 1)
+        selectedAppID = displayedApplications[targetIndex].id
+        requestScrollToSelectedApp()
+    }
+
+    private func scrollToSelectedApp(with proxy: ScrollViewProxy) {
+        guard let selectedAppID else { return }
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                proxy.scrollTo(selectedAppID, anchor: .top)
+            }
+        }
+    }
+
+    private func installKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window?.title == "程序面板" else { return event }
+            return handleKeyDown(event) ? nil : event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        guard let keyMonitor else { return }
+        NSEvent.removeMonitor(keyMonitor)
+        self.keyMonitor = nil
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard !isEditing else { return false }
+
+        let gridColumnCount = 5
+        switch Int(event.keyCode) {
+        case kVK_LeftArrow:
+            moveSelectedApp(by: -1)
+        case kVK_RightArrow:
+            moveSelectedApp(by: 1)
+        case kVK_UpArrow:
+            moveSelectedApp(by: -gridColumnCount)
+        case kVK_DownArrow:
+            moveSelectedApp(by: gridColumnCount)
+        case kVK_Return, kVK_ANSI_KeypadEnter:
+            launchFirstResult()
+        default:
+            return false
+        }
+        return true
     }
 }
 
